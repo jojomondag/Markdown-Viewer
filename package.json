@@ -1,0 +1,25 @@
+{
+  "name": "viewer",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --debug",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "electron",
+    "desktop",
+    "app"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "An Electron application",
+  "devDependencies": {
+    "electron": "^35.1.5",
+    "electron-reload": "^2.0.0-alpha.1"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1"
+  }
+}
