@@ -1,0 +1,1275 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { IconFileText, IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconMaximize, IconPrinter, IconSort, IconSortAscending, IconSortDescending, IconAbc, IconCalendar, IconFileTypography, IconChevronDown } from '@tabler/icons-react';
+import Split from 'react-split';
+import FileExplorer from './components/FileExplorer';
+import FileHistory from './components/FileHistory';
+import MarkdownEditor from './components/MarkdownEditor';
+import TestEditor from './components/TestEditor';
+import MarkdownPreview from './components/MarkdownPreview';
+import SyntaxTree from './components/SyntaxTree';
+import SidebarTabs from './components/SidebarTabs';
+import ThemeToggle from './components/ThemeToggle';
+import StatusBar from './components/StatusBar';
+import MarkdownToolbar from './components/MarkdownToolbar';
+import NotificationExample from './components/NotificationExample';
+import LoadingOverlay from './components/LoadingOverlay';
+import LoadingSpinner from './components/LoadingSpinner';
+import SettingsPanel from './components/SettingsPanel';
+import AccessibilityHelper, { announceToScreenReader } from './components/AccessibilityHelper';
+import { NotificationProvider } from './context/NotificationContext';
+import { SettingsProvider } from './context/SettingsContext';
+import { AppStateProvider, useAppState } from './context/AppStateContext';
+import useFiles from './hooks/useFiles';
+import { registerGlobalShortcuts, KEYBOARD_SHORTCUTS, formatShortcut } from './utils/keyboardShortcuts';
+import useNotification from './hooks/useNotification';
+import { useSettings } from './context/SettingsContext';
+import SyntaxTreePresets from './components/SyntaxTreePresets';
+import EditorTabs from './components/EditorTabs';
+import FileSearch from './components/FileSearch';
+import CustomCSSEditor from './components/CustomCSSEditor';
+import ExportPanel from './components/ExportPanel';
+import ExportService from './services/ExportService';
+import FilePermissionsPanel from './components/FilePermissionsPanel';
+import { isValidDrop, createDropDestination } from './utils/fileOperations';
+import path from 'path';
+
+function App() {
+  const editorRef = useRef(null);
+  const editorContainerRef = useRef(null);
+  const previewRef = useRef(null);
+  const previousContentRef = useRef('');
+  const prevLoadingRef = useRef(false);
+  const prevCurrentFileRef = useRef(null);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [previewVisible, setPreviewVisible] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [customCSS, setCustomCSS] = useState('');
+  const {
+    files,
+    folders,
+    currentFile,
+    content,
+    loading,
+    error,
+    openAndScanFolder: originalOpenAndScanFolder,
+    openFile: originalOpenFile,
+    saveFile: originalSaveFile,
+    updateContent,
+    setFiles,
+    setFolders
+  } = useFiles();
+  
+  // Get the notification functions
+  const { showSuccess, showError, showInfo } = useNotification();
+  
+  // Get settings
+  const { settings } = useSettings();
+  
+  // Get app state
+  const { 
+    state,
+    setLoading,
+    setUnsavedChanges,
+    setSidebarTab,
+    setPanel,
+    addToHistory,
+    addOpenFile,
+    removeOpenFile,
+    updateOpenFile,
+    setFileDirty,
+    updatePreferences
+  } = useAppState();
+  
+  // Get open files from app state
+  const openFiles = state.openFiles;
+  
+  // Track the current folder path
+  const [currentFolder, setCurrentFolder] = useState(null);
+  
+  // Add state for file explorer sort settings
+  const [explorerSortBy, setExplorerSortBy] = useState(state.ui.preferences.explorerSortBy || 'name');
+  const [explorerSortDirection, setExplorerSortDirection] = useState(state.ui.preferences.explorerSortDirection || 'asc');
+  
+  // Update sidebar and preview visibility from settings
+  useEffect(() => {
+    setSidebarVisible(settings.ui.sidebarVisible);
+    setPreviewVisible(settings.ui.previewVisible);
+  }, [settings.ui.sidebarVisible, settings.ui.previewVisible]);
+  
+  // Show error notification when API error occurs
+  useEffect(() => {
+    if (error) {
+      showError(`Error: ${error}`);
+    }
+  }, [error, showError]);
+  
+  // Wrap the saveFile function to show notifications
+  const saveFile = (content) => {
+    try {
+      originalSaveFile(content);
+      
+      // Clear dirty flag for the saved file
+      if (currentFile) {
+        setFileDirty(currentFile, false);
+      }
+      
+      showSuccess(`File ${currentFile?.name} saved successfully!`);
+    } catch (error) {
+      showError(`Failed to save file: ${error.message}`);
+    }
+  };
+  
+  // Wrap the openFile function to show notifications and handle tabs
+  const openFile = (file) => {
+    try {
+      // Check if file is already open
+      const isAlreadyOpen = openFiles.some(f => f.path === file.path);
+      
+      if (!isAlreadyOpen) {
+        // Add file to open files
+        addOpenFile(file);
+      }
+      
+      // Actually open the file
+      originalOpenFile(file);
+      showInfo(`Opened file: ${file.name}`);
+      announceToScreenReader(`Opened file: ${file.name}`);
+      
+      // Add file to history
+      addToHistory(file);
+      
+      // Focus the editor after opening the file
+      setTimeout(() => {
+        if (editorRef.current && editorRef.current.focus) {
+          editorRef.current.focus();
+        }
+      }, 300);
+    } catch (error) {
+      showError(`Failed to open file: ${error.message}`);
+      announceToScreenReader(`Error: Failed to open file`);
+    }
+  };
+  
+  // Wrap the openAndScanFolder function to show notifications
+  const openAndScanFolder = async () => {
+    try {
+      const result = await originalOpenAndScanFolder();
+      if (result && result.folderPath) {
+        setCurrentFolder(result.folderPath);
+      }
+      showSuccess('Folder opened successfully!');
+    } catch (error) {
+      showError(`Failed to open folder: ${error.message}`);
+    }
+  };
+
+  // Auto-save when content changes
+  useEffect(() => {
+    if (!settings.editor.autoSave) return;
+    
+    const autoSaveTimer = setTimeout(() => {
+      if (currentFile && content) {
+        saveFile(content);
+      }
+    }, settings.editor.autoSaveInterval);
+
+    return () => clearTimeout(autoSaveTimer);
+  }, [content, currentFile, settings.editor.autoSave, settings.editor.autoSaveInterval]);
+
+  // Handle scrolling to a heading in the editor
+  const handleHeadingClick = (position) => {
+    if (editorRef.current && position !== undefined) {
+      // If using CodeMirror, we would use the editor instance to scroll to position
+      // This is a placeholder for now
+      console.log('Scroll to position:', position);
+    }
+  };
+
+  // Handle toolbar formatting actions
+  const handleToolbarAction = (action) => {
+    let newText = '';
+    
+    // Get current selection or cursor position
+    // In a real implementation, we would use the CodeMirror editor state
+    // For this demo, we'll just append the markdown to the end
+    
+    switch (action) {
+      case 'heading':
+        newText = content + '\n\n## Heading';
+        break;
+      case 'bold':
+        newText = content + '\n\n**Bold Text**';
+        break;
+      case 'italic':
+        newText = content + '\n\n*Italic Text*';
+        break;
+      case 'unordered-list':
+        newText = content + '\n\n- List item 1\n- List item 2\n- List item 3';
+        break;
+      case 'ordered-list':
+        newText = content + '\n\n1. List item 1\n2. List item 2\n3. List item 3';
+        break;
+      case 'link':
+        newText = content + '\n\n[Link Text](https://example.com)';
+        break;
+      case 'image':
+        newText = content + '\n\n![Image Alt Text](https://example.com/image.jpg)';
+        break;
+      case 'code':
+        newText = content + '\n\n```\ncode block\n```';
+        break;
+      case 'blockquote':
+        newText = content + '\n\n> Blockquote text';
+        break;
+      case 'table':
+        newText = content + '\n\n| Header 1 | Header 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |';
+        break;
+      default:
+        newText = content;
+    }
+    
+    updateContent(newText);
+  };
+
+  // Register keyboard shortcuts
+  useEffect(() => {
+    const unregister = registerGlobalShortcuts({
+      // File operations
+      OPEN_FILE: () => openAndScanFolder(),
+      SAVE_FILE: () => {
+        if (currentFile) {
+          saveFile(content);
+        }
+      },
+      
+      // Formatting operations
+      BOLD: () => handleToolbarAction('bold'),
+      ITALIC: () => handleToolbarAction('italic'),
+      HEADING: () => handleToolbarAction('heading'),
+      LINK: () => handleToolbarAction('link'),
+      CODE: () => handleToolbarAction('code'),
+      LIST: () => handleToolbarAction('unordered-list'),
+      ORDERED_LIST: () => handleToolbarAction('ordered-list'),
+      
+      // View operations
+      TOGGLE_SIDEBAR: () => setSidebarVisible(prev => !prev),
+      TOGGLE_PREVIEW: () => setPreviewVisible(prev => !prev),
+      
+      // Explorer operations
+      TOGGLE_SORT_DIRECTION: () => {
+        const newDirection = explorerSortDirection === 'asc' ? 'desc' : 'asc';
+        handleExplorerSortChange(explorerSortBy, newDirection);
+        showInfo(`Sorting ${newDirection === 'asc' ? 'ascending' : 'descending'}`);
+      },
+    });
+    
+    return unregister;
+  }, [content, currentFile, saveFile, openAndScanFolder, explorerSortBy, explorerSortDirection, handleExplorerSortChange, showInfo]);
+
+  // Update isMobile state when window size changes
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  // For mobile view, ensure sidebar is closed by default
+  useEffect(() => {
+    if (isMobile) {
+      setSidebarVisible(false);
+    } else {
+      setSidebarVisible(settings.ui.sidebarVisible);
+    }
+  }, [isMobile, settings.ui.sidebarVisible]);
+  
+  // Calculate split sizes based on visibility and settings
+  const getSplitSizes = () => {
+    if (!sidebarVisible) return [0, 100];
+    
+    // On mobile, sidebar takes up more space when open
+    if (isMobile) {
+      return [80, 20]; // Sidebar takes 80% on mobile when open
+    }
+    
+    return [settings.ui.sidebarWidth, 100 - settings.ui.sidebarWidth];
+  };
+  
+  const getEditorPreviewSizes = () => {
+    if (!previewVisible) return [100, 0];
+    
+    // On mobile, stack editor and preview when both are visible
+    if (isMobile) {
+      return [50, 50]; // Equal sizing for vertical layout
+    }
+    
+    return [100 - settings.ui.previewWidth, settings.ui.previewWidth];
+  };
+
+  // Announce file changes to screen readers
+  useEffect(() => {
+    if (currentFile) {
+      announceToScreenReader(`Opened file: ${currentFile.name}`);
+    }
+  }, [currentFile]);
+
+  // Update loading states
+  useEffect(() => {
+    // Use refs to track previous values to prevent unnecessary rerenders
+    if (prevLoadingRef.current !== loading || prevCurrentFileRef.current !== currentFile) {
+      setLoading('files', loading);
+      setLoading('content', loading && !!currentFile);
+      
+      // Update refs
+      prevLoadingRef.current = loading;
+      prevCurrentFileRef.current = currentFile;
+    }
+  }, [loading, currentFile, setLoading]);
+  
+  // Track unsaved changes
+  useEffect(() => {
+    if (currentFile) {
+      // Compare current content with previous content to determine if there are changes
+      // Only update state if content has actually changed
+      if (content !== previousContentRef.current) {
+        setUnsavedChanges(true);
+        previousContentRef.current = content;
+        
+        // When auto-saving, we'd set unsavedChanges to false after the interval
+        if (settings.editor.autoSave) {
+          const timer = setTimeout(() => {
+            setUnsavedChanges(false);
+          }, settings.editor.autoSaveInterval + 100);
+          
+          return () => clearTimeout(timer);
+        }
+      }
+    } else {
+      setUnsavedChanges(false);
+      previousContentRef.current = '';
+    }
+  }, [content, currentFile, setUnsavedChanges, settings.editor.autoSave, settings.editor.autoSaveInterval]);
+  
+  // Update app state with sidebar tab changes
+  const handleSidebarTabChange = (tabId) => {
+    setSidebarTab(tabId);
+  };
+
+  // Use sidebar tab from app state
+  const activeTab = state.ui.preferences.selectedSidebarTab;
+
+  // Inside the App function, add the following refs and state
+  const [scrollSyncEnabled, setScrollSyncEnabled] = useState(false);
+  const [scrollSource, setScrollSource] = useState(null);
+  const scrollSyncTimeoutRef = useRef(null);
+  const lastEditorScrollRef = useRef(0);
+  const lastPreviewScrollRef = useRef(0);
+
+  // Add a flag to track if any component is forcing scroll position
+  const forcingScrollRef = useRef(false);
+
+  // Add an effect to maintain scroll position when scroll sync is toggled
+  useEffect(() => {
+    // Only run this effect when scrollSyncEnabled changes to true
+    if (scrollSyncEnabled && editorRef.current && previewRef.current) {
+      // When enabling scroll sync, determine which scroll position to use
+      // Use the most recently scrolled component as the source of truth
+      const useEditor = scrollSource === 'editor' || 
+        (lastEditorScrollRef.current > 0.02 && (!scrollSource || lastEditorScrollRef.current > lastPreviewScrollRef.current));
+        
+      const usePreview = scrollSource === 'preview' || 
+        (lastPreviewScrollRef.current > 0.02 && (!scrollSource || lastPreviewScrollRef.current > lastEditorScrollRef.current));
+        
+      // Apply the synchronization based on the determined source
+      if (useEditor && lastEditorScrollRef.current > 0.02) {
+        // Delay the scroll to avoid conflicts with other effects
+        setTimeout(() => {
+          if (previewRef.current) {
+            previewRef.current.scrollToPosition(lastEditorScrollRef.current);
+          }
+        }, 50);
+      } else if (usePreview && lastPreviewScrollRef.current > 0.02) {
+        // Delay the scroll to avoid conflicts with other effects
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.scrollToPosition(lastPreviewScrollRef.current);
+          }
+        }, 50);
+      }
+      // If neither has a meaningful position, don't sync at all
+    }
+  }, [scrollSyncEnabled]);
+
+  // Toggle scroll sync
+  const toggleScrollSync = () => {
+    // Store current positions before toggling
+    try {
+      if (!scrollSyncEnabled && editorRef.current && previewRef.current) {
+        // When enabling, capture current positions to maintain them
+        const editorInfo = editorRef.current.getScrollInfo?.();
+        if (editorInfo && editorInfo.scrollPercentage > 0) {
+          lastEditorScrollRef.current = editorInfo.scrollPercentage;
+        }
+      }
+    } catch (error) {
+      console.error("Error capturing scroll position:", error);
+    }
+    
+    // Toggle the state
+    setScrollSyncEnabled(!scrollSyncEnabled);
+    showInfo(`Scroll sync ${!scrollSyncEnabled ? 'enabled' : 'disabled'}`);
+  };
+
+  // Handle scroll synchronization
+  const handleEditorScroll = (scrollInfo) => {
+    // Skip tiny scroll amounts or resets to 0
+    const scrollPercentage = scrollInfo.scrollPercentage;
+    if (scrollPercentage < 0.01 && lastEditorScrollRef.current > 0) {
+      return; // Skip syncing when we detect reset to near-zero
+    }
+    
+    // Update our stored position for the editor
+    lastEditorScrollRef.current = scrollPercentage;
+    
+    if (scrollSyncEnabled && previewRef.current && scrollSource !== 'preview') {
+      // Set forcing scroll flag
+      forcingScrollRef.current = true;
+      
+      setScrollSource('editor');
+      previewRef.current.scrollToPosition(scrollPercentage);
+      
+      // Reset scroll source after a delay
+      if (scrollSyncTimeoutRef.current) {
+        clearTimeout(scrollSyncTimeoutRef.current);
+      }
+      
+      // Also clear any long timeout
+      if (window._longScrollTimeout) {
+        clearTimeout(window._longScrollTimeout);
+      }
+      
+      scrollSyncTimeoutRef.current = setTimeout(() => {
+        // Double-check the scroll position before clearing source
+        if (previewRef.current) {
+          const info = previewRef.current.getScrollInfo();
+          if (info && Math.abs(info.scrollPercentage - scrollPercentage) > 0.05) {
+            // Try one more time if the positions are very different
+            previewRef.current.scrollToPosition(scrollPercentage);
+          }
+        }
+        
+        // Keep forcing scroll flag active for a shorter time to avoid lockups
+        setTimeout(() => {
+          forcingScrollRef.current = false;
+        }, 500);
+        
+        // Clear the scroll source after a shorter delay
+        const longTimeoutId = setTimeout(() => {
+          // Only clear if not actively forcing
+          if (!forcingScrollRef.current) {
+            setScrollSource(null);
+          }
+        }, 500); // Shorter delay to allow scroll source to change
+        
+        // Store this timeout so we can clear it if user scrolls again
+        window._longScrollTimeout = longTimeoutId;
+      }, 250);
+    }
+  };
+  
+  const handlePreviewScroll = (scrollPercentage) => {
+    // Skip tiny scroll amounts or resets to 0
+    if (scrollPercentage < 0.01 && lastPreviewScrollRef.current > 0) {
+      return; // Skip syncing when we detect reset to near-zero
+    }
+    
+    // Update our stored position for the preview
+    lastPreviewScrollRef.current = scrollPercentage;
+    
+    if (scrollSyncEnabled && editorRef.current && scrollSource !== 'editor') {
+      // Set forcing scroll flag
+      forcingScrollRef.current = true;
+      
+      setScrollSource('preview');
+      editorRef.current.scrollToPosition(scrollPercentage);
+      
+      // Reset scroll source after a delay
+      if (scrollSyncTimeoutRef.current) {
+        clearTimeout(scrollSyncTimeoutRef.current);
+      }
+      
+      // Also clear any long timeout
+      if (window._longScrollTimeout) {
+        clearTimeout(window._longScrollTimeout);
+      }
+      
+      scrollSyncTimeoutRef.current = setTimeout(() => {
+        // Double-check the scroll position before clearing source
+        if (editorRef.current) {
+          const info = editorRef.current.getScrollInfo();
+          if (info && Math.abs(info.scrollPercentage - scrollPercentage) > 0.05) {
+            // Try one more time if the positions are very different
+            editorRef.current.scrollToPosition(scrollPercentage);
+          }
+        }
+        
+        // Keep forcing scroll flag active for a shorter time to avoid lockups
+        setTimeout(() => {
+          forcingScrollRef.current = false;
+        }, 500);
+        
+        // Clear the scroll source after a shorter delay
+        const longTimeoutId = setTimeout(() => {
+          // Only clear if not actively forcing
+          if (!forcingScrollRef.current) {
+            setScrollSource(null);
+          }
+        }, 500); // Shorter delay to allow scroll source to change
+        
+        // Store this timeout so we can clear it if user scrolls again
+        window._longScrollTimeout = longTimeoutId;
+      }, 250);
+    }
+  };
+  
+  // Handle cursor position changes
+  const handleCursorChange = (position) => {
+    // Optional: Update app state or perform actions based on cursor position
+    console.log('Cursor position:', position);
+  };
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollSyncTimeoutRef.current) {
+        clearTimeout(scrollSyncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Inside the App function, add this additional state:
+  const [previewZoom, setPreviewZoom] = useState(100);
+
+  // Replace the zoom control handlers with memoized functions
+  const handleZoomIn = useCallback(() => {
+    if (previewRef.current) {
+      const newZoom = previewRef.current.zoomIn();
+      setPreviewZoom(newZoom);
+      showInfo(`Zoom: ${newZoom}%`);
+    }
+  }, [previewRef, showInfo]);
+  
+  const handleZoomOut = useCallback(() => {
+    if (previewRef.current) {
+      const newZoom = previewRef.current.zoomOut();
+      setPreviewZoom(newZoom);
+      showInfo(`Zoom: ${newZoom}%`);
+    }
+  }, [previewRef, showInfo]);
+  
+  const handleZoomReset = useCallback(() => {
+    if (previewRef.current) {
+      const newZoom = previewRef.current.resetZoom();
+      setPreviewZoom(newZoom);
+      showInfo(`Zoom: ${newZoom}%`);
+    }
+  }, [previewRef, showInfo]);
+
+  // Add keyboard event handler for zoom controls
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Only handle if preview is visible
+      if (!previewVisible) return;
+      
+      // Zoom in: Ctrl/Cmd + Plus
+      if ((e.ctrlKey || e.metaKey) && e.key === '=') {
+        e.preventDefault();
+        handleZoomIn();
+      }
+      
+      // Zoom out: Ctrl/Cmd + Minus
+      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        e.preventDefault();
+        handleZoomOut();
+      }
+      
+      // Reset zoom: Ctrl/Cmd + 0
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        handleZoomReset();
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [previewVisible, handleZoomIn, handleZoomOut, handleZoomReset]);
+
+  // Handle tab change
+  const handleTabChange = (file) => {
+    if (file.path !== currentFile?.path) {
+      // If there are unsaved changes, confirm before switching
+      if (currentFile && openFiles.find(f => f.path === currentFile.path)?.isDirty) {
+        const confirmed = window.confirm(`You have unsaved changes in ${currentFile.name}. Continue?`);
+        if (!confirmed) return;
+      }
+      
+      // Open the selected file
+      originalOpenFile(file);
+    }
+  };
+  
+  // Handle tab close
+  const handleTabClose = (file) => {
+    // If the file has unsaved changes, confirm before closing
+    if (file.isDirty) {
+      const confirmed = window.confirm(`You have unsaved changes in ${file.name}. Close anyway?`);
+      if (!confirmed) return;
+    }
+    
+    // Remove from open files
+    removeOpenFile(file);
+    
+    // If closing the current file, open another one if available
+    if (currentFile && file.path === currentFile.path) {
+      const remainingFiles = openFiles.filter(f => f.path !== file.path);
+      if (remainingFiles.length > 0) {
+        // Open the previous file in the list, or the next one if closing the first file
+        const currentIndex = openFiles.findIndex(f => f.path === file.path);
+        const nextIndex = currentIndex > 0 ? currentIndex - 1 : 0;
+        originalOpenFile(remainingFiles[nextIndex]);
+      } else {
+        // No files left open, clear the editor
+        updateContent('');
+      }
+    }
+  };
+  
+  // Handle new tab
+  const handleNewTab = () => {
+    // For now, just show a message - in a real app this would open a new blank file
+    showInfo('Select a file from the explorer to open it');
+  };
+
+  // Update content and mark file as dirty
+  const handleContentChange = (newContent) => {
+    updateContent(newContent);
+    
+    // Mark the current file as dirty
+    if (currentFile) {
+      setFileDirty(currentFile, true);
+    }
+  };
+
+  // Handle applying custom CSS
+  const handleApplyCSS = (css) => {
+    setCustomCSS(css);
+  };
+
+  // Handler for exporting documents
+  const handleExport = async (exportType, exportOptions) => {
+    if (!currentFile || !content) {
+      showError('No document to export');
+      return;
+    }
+
+    try {
+      const fileName = currentFile.name.replace(/\.[^/.]+$/, '');
+      
+      if (exportType === 'html') {
+        // Export to HTML
+        const html = await ExportService.exportAsHTML(content, {
+          ...exportOptions,
+          customCSS: exportOptions.includeStyles ? customCSS : ''
+        });
+        ExportService.downloadFile(html, `${fileName}.html`, 'text/html');
+        showSuccess(`Exported ${fileName}.html successfully`);
+      } else if (exportType === 'pdf') {
+        // Export to PDF
+        await ExportService.exportAsPDF(content, {
+          ...exportOptions,
+          customCSS: exportOptions.includeStyles ? customCSS : ''
+        });
+        showSuccess(`Exported ${fileName}.pdf successfully`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      showError(`Failed to export: ${error.message}`);
+    }
+  };
+
+  // Add a handler function for printing
+  const handlePrintPreview = () => {
+    if (previewRef.current) {
+      previewRef.current.print();
+      showInfo('Printing markdown preview...');
+    }
+  };
+
+  // Add after other state variables
+  const [fileOperationStatus, setFileOperationStatus] = useState(null);
+
+  // Add new file operation handlers
+  const handleMoveFile = useCallback((sourceItem, targetItem) => {
+    if (!isValidDrop(sourceItem, targetItem)) {
+      showInfo('Cannot move to this location', 'error');
+      return;
+    }
+    
+    const newPath = createDropDestination(sourceItem, targetItem);
+    
+    // Simulate moving file
+    setFileOperationStatus({ type: 'moving', source: sourceItem.path, target: newPath });
+    
+    // In a real app, you would perform actual file operations here
+    setTimeout(() => {
+      // Update file list based on the drag operation
+      if (sourceItem.type === 'file') {
+        setFiles(prevFiles => {
+          // Remove the file from its old location
+          const updatedFiles = prevFiles.filter(f => f.path !== sourceItem.path);
+          // Add it to its new location
+          updatedFiles.push({
+            ...sourceItem,
+            path: newPath,
+            name: path.basename(newPath)
+          });
+          return updatedFiles;
+        });
+      } else {
+        // For folders, update all files and subfolders within that folder
+        const folderPrefix = sourceItem.path + '/';
+        const newPrefix = newPath + '/';
+        
+        // Update folders
+        setFolders(prevFolders => {
+          const updatedFolders = prevFolders.filter(f => f.path !== sourceItem.path);
+          
+          // Move the folder itself
+          updatedFolders.push({
+            ...sourceItem,
+            path: newPath,
+            name: path.basename(newPath)
+          });
+          
+          // Move all subfolders
+          prevFolders.forEach(folder => {
+            if (folder.path.startsWith(folderPrefix)) {
+              const relativePath = folder.path.slice(folderPrefix.length);
+              const newFolderPath = newPrefix + relativePath;
+              updatedFolders.push({
+                ...folder,
+                path: newFolderPath,
+                name: path.basename(newFolderPath)
+              });
+            }
+          });
+          
+          return updatedFolders;
+        });
+        
+        // Update files
+        setFiles(prevFiles => {
+          const updatedFiles = prevFiles.filter(f => !f.path.startsWith(folderPrefix));
+          
+          // Move all files in the folder
+          prevFiles.forEach(file => {
+            if (file.path.startsWith(folderPrefix)) {
+              const relativePath = file.path.slice(folderPrefix.length);
+              const newFilePath = newPrefix + relativePath;
+              updatedFiles.push({
+                ...file,
+                path: newFilePath,
+                name: path.basename(newFilePath)
+              });
+            }
+          });
+          
+          return updatedFiles;
+        });
+      }
+      
+      setFileOperationStatus(null);
+      showInfo(`Moved ${sourceItem.name} to ${path.basename(newPath)}`, 'success');
+    }, 500);
+  }, [showInfo]);
+
+  // Add handler for sort changes
+  const handleExplorerSortChange = (sortBy, direction) => {
+    setExplorerSortBy(sortBy);
+    setExplorerSortDirection(direction);
+    
+    // Save to preferences
+    updatePreferences({
+      explorerSortBy: sortBy,
+      explorerSortDirection: direction
+    });
+  };
+
+  // Add a state for the file menu dropdown
+  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const fileMenuRef = useRef(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (fileMenuRef.current && !fileMenuRef.current.contains(event.target)) {
+        setIsFileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  return (
+    <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
+      <AccessibilityHelper />
+      
+      <header className="bg-primary-700 dark:bg-primary-800 text-white p-2 md:p-4 shadow-md" role="banner">
+        <div className="container mx-auto flex items-center justify-between">
+          <div className="w-1/3 flex items-center justify-start">
+            <button 
+              className="flex items-center bg-primary-600 dark:bg-primary-700 hover:bg-primary-500 dark:hover:bg-primary-600 px-2 py-1 md:px-3 md:py-1 rounded text-sm md:text-base"
+              onClick={openAndScanFolder}
+              title={`Add Folder ${KEYBOARD_SHORTCUTS.OPEN_FILE}`}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <LoadingSpinner size="sm" color="white" className="mr-1 md:mr-2" />
+                  {!isMobile && "Adding..."}
+                </>
+              ) : (
+                <>
+                  <IconFolderOpen size={isMobile ? 18 : 20} className="mr-1 md:mr-2" />
+                  {isMobile ? "Add" : "Add Folder"}
+                </>
+              )}
+            </button>
+            {state.editor.unsavedChanges && (
+              <span className="ml-2 text-xs bg-warning-500 px-1.5 py-0.5 rounded">
+                Unsaved
+              </span>
+            )}
+          </div>
+          
+          <div className="w-1/3 flex justify-center">
+            {/* Intentionally left empty for spacing */}
+          </div>
+          
+          <div className="w-1/3 flex items-center justify-end space-x-1 md:space-x-2">
+            <div className="relative" ref={fileMenuRef}>
+              <button 
+                className="p-1 md:p-2 rounded hover:bg-primary-600 dark:hover:bg-primary-700 flex items-center"
+                onClick={() => setIsFileMenuOpen(!isFileMenuOpen)}
+                title="File Menu"
+              >
+                <span className="mr-1 hidden md:inline">File</span>
+                <IconChevronDown size={isMobile ? 18 : 20} />
+              </button>
+              {isFileMenuOpen && (
+                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-surface-800 rounded shadow-lg z-50 text-surface-900 dark:text-surface-100">
+                  <div className="py-1">
+                    <div className="px-4 py-2 text-xs font-semibold text-surface-500 dark:text-surface-400">
+                      Sort Files
+                    </div>
+                    <button 
+                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700 
+                        ${explorerSortBy === 'name' ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
+                      onClick={() => {
+                        handleExplorerSortChange('name', explorerSortDirection);
+                        setIsFileMenuOpen(false);
+                      }}
+                    >
+                      <IconAbc size={16} className="mr-2" />
+                      <span>By Name</span>
+                      {explorerSortBy === 'name' && (
+                        <span className="ml-auto">
+                          {explorerSortDirection === 'asc' ? 
+                            <IconSortAscending size={16} /> : 
+                            <IconSortDescending size={16} />
+                          }
+                        </span>
+                      )}
+                    </button>
+                    <button 
+                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700 
+                        ${explorerSortBy === 'type' ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
+                      onClick={() => {
+                        handleExplorerSortChange('type', explorerSortDirection);
+                        setIsFileMenuOpen(false);
+                      }}
+                    >
+                      <IconFileTypography size={16} className="mr-2" />
+                      <span>By Type</span>
+                      {explorerSortBy === 'type' && (
+                        <span className="ml-auto">
+                          {explorerSortDirection === 'asc' ? 
+                            <IconSortAscending size={16} /> : 
+                            <IconSortDescending size={16} />
+                          }
+                        </span>
+                      )}
+                    </button>
+                    <button 
+                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700 
+                        ${explorerSortBy === 'date' ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
+                      onClick={() => {
+                        handleExplorerSortChange('date', explorerSortDirection);
+                        setIsFileMenuOpen(false);
+                      }}
+                    >
+                      <IconCalendar size={16} className="mr-2" />
+                      <span>By Date</span>
+                      {explorerSortBy === 'date' && (
+                        <span className="ml-auto">
+                          {explorerSortDirection === 'asc' ? 
+                            <IconSortAscending size={16} /> : 
+                            <IconSortDescending size={16} />
+                          }
+                        </span>
+                      )}
+                    </button>
+                    <div className="border-t border-surface-200 dark:border-surface-700 my-1"></div>
+                    <button 
+                      className="flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700"
+                      onClick={() => {
+                        handleExplorerSortChange(explorerSortBy, explorerSortDirection === 'asc' ? 'desc' : 'asc');
+                        setIsFileMenuOpen(false);
+                      }}
+                      title={formatShortcut(KEYBOARD_SHORTCUTS.TOGGLE_SORT_DIRECTION)}
+                    >
+                      {explorerSortDirection === 'asc' ? 
+                        <IconSortAscending size={16} className="mr-2" /> : 
+                        <IconSortDescending size={16} className="mr-2" />
+                      }
+                      <span>Toggle Sort Direction</span>
+                      <span className="ml-auto text-xs text-surface-500 dark:text-surface-400">
+                        {formatShortcut(KEYBOARD_SHORTCUTS.TOGGLE_SORT_DIRECTION)}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <ThemeToggle />
+            <button 
+              className="p-1 md:p-2 rounded hover:bg-primary-600 dark:hover:bg-primary-700"
+              onClick={() => setIsSettingsOpen(true)}
+              title="Settings"
+            >
+              <IconSettings size={isMobile ? 18 : 20} />
+            </button>
+          </div>
+        </div>
+      </header>
+      
+      <main id="main-content" className="flex-grow flex flex-col overflow-hidden" role="main">
+        <Split 
+          className="flex-grow flex overflow-hidden"
+          sizes={getSplitSizes()}
+          minSize={sidebarVisible ? (isMobile ? 250 : 150) : 0}
+          expandToMin={false}
+          gutterSize={sidebarVisible ? 5 : 0}
+          gutterAlign="center"
+          snapOffset={30}
+          dragInterval={1}
+          direction="horizontal"
+          cursor="col-resize"
+        >
+          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
+            {/* Mobile close button */}
+            {isMobile && sidebarVisible && (
+              <div className="flex justify-end p-1">
+                <button 
+                  onClick={() => setSidebarVisible(false)}
+                  className="p-1 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600"
+                  aria-label="Close sidebar"
+                >
+                  <IconX size={16} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+            
+            <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
+              <SidebarTabs.Pane id="files">
+                <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent>
+                  {error && (
+                    <div className="p-4 text-sm text-error-500 bg-error-100 dark:bg-error-900/20 border-l-4 border-error-500 mb-2">
+                      Error: {error}
+                    </div>
+                  )}
+                  
+                  {/* Add file history */}
+                  {state.fileHistory.length > 0 && (
+                    <FileHistory onFileSelect={openFile} />
+                  )}
+                  
+                  {files.length > 0 || folders.length > 0 ? (
+                    <FileExplorer 
+                      files={files} 
+                      folders={folders} 
+                      onFileSelect={openFile} 
+                      onCreateFile={handleNewTab}
+                      onCreateFolder={handleNewTab}
+                      onMoveFile={handleMoveFile}
+                      fileOperationStatus={fileOperationStatus}
+                      sortBy={explorerSortBy}
+                      sortDirection={explorerSortDirection}
+                      onSortChange={handleExplorerSortChange}
+                    />
+                  ) : (
+                    <div className="text-sm text-surface-600 p-4">
+                      No files loaded. Click "Open Folder" to get started.
+                    </div>
+                  )}
+                </LoadingOverlay>
+              </SidebarTabs.Pane>
+              <SidebarTabs.Pane id="search">
+                <FileSearch 
+                  files={files} 
+                  folders={folders} 
+                  onFileSelect={openFile} 
+                />
+              </SidebarTabs.Pane>
+              <SidebarTabs.Pane id="syntax">
+                <SyntaxTree 
+                  content={content}
+                  onHeadingClick={handleHeadingClick}
+                />
+              </SidebarTabs.Pane>
+              <SidebarTabs.Pane id="presets">
+                <div className="p-4">
+                  <SyntaxTreePresets 
+                    content={content} 
+                    onPresetSelect={(preset) => {
+                      if (preset && preset.headings && preset.headings.length > 0) {
+                        handleHeadingClick(preset.headings[0].position);
+                      }
+                    }}
+                  />
+                </div>
+              </SidebarTabs.Pane>
+              <SidebarTabs.Pane id="styles">
+                <CustomCSSEditor onApplyCSS={handleApplyCSS} />
+              </SidebarTabs.Pane>
+              <SidebarTabs.Pane id="export">
+                <ExportPanel 
+                  currentFile={currentFile}
+                  markdownContent={content}
+                  onExport={handleExport}
+                />
+              </SidebarTabs.Pane>
+              <SidebarTabs.Pane id="permissions">
+                <FilePermissionsPanel 
+                  currentFile={currentFile}
+                  currentFolder={currentFolder}
+                />
+              </SidebarTabs.Pane>
+              <SidebarTabs.Pane id="notifications">
+                <div className="p-4">
+                  <NotificationExample />
+                </div>
+              </SidebarTabs.Pane>
+            </SidebarTabs>
+          </aside>
+          
+          <div className="flex-grow flex flex-col" role="region" aria-label="Content area">
+            <Split
+              className={`flex overflow-hidden ${isMobile ? 'flex-col' : ''}`}
+              sizes={getEditorPreviewSizes()}
+              minSize={previewVisible ? (isMobile ? 150 : 200) : 0}
+              gutterSize={previewVisible ? 5 : 0}
+              gutterAlign="center"
+              snapOffset={30}
+              dragInterval={1}
+              direction={isMobile ? "vertical" : "horizontal"}
+              cursor={isMobile ? "row-resize" : "col-resize"}
+            >
+              <div className="overflow-hidden flex flex-col" role="region" aria-label="Editor">
+                {/* Add editor tabs */}
+                <div className="editor-tabs-container">
+                  <EditorTabs 
+                    currentFile={currentFile}
+                    openFiles={openFiles}
+                    onTabChange={handleTabChange}
+                    onTabClose={handleTabClose}
+                    onNewTab={handleNewTab}
+                  />
+                </div>
+                
+                <div className="toolbar-container mt-2">
+                  <MarkdownToolbar onAction={handleToolbarAction} />
+                </div>
+                
+                {/* EDITOR CONTAINER: Restructured to ensure proper input handling */}
+                <div 
+                  className="editor h-full flex-grow overflow-hidden p-4 pt-2" 
+                  style={{ 
+                    position: "relative", 
+                    isolation: "isolate" // Create a stacking context
+                  }}
+                >
+                  {state.loading.content && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm z-50 pointer-events-none">
+                      <div className="pointer-events-none">
+                        <LoadingSpinner />
+                        <p className="mt-4 text-surface-700 dark:text-surface-300 font-medium">Loading content...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Direct editor mount without unnecessary wrappers */}
+                  <TestEditor
+                    ref={editorRef}
+                    initialContent={content}
+                    onChange={handleContentChange}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+              
+              <div className={`p-4 overflow-hidden flex flex-col ${!previewVisible ? 'hidden' : ''}`} role="region" aria-label="Preview">
+                <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800">
+                  <h3 className="text-sm font-medium">Preview</h3>
+                  <div className="flex items-center space-x-2">
+                    {/* Zoom Controls */}
+                    <div className="flex items-center space-x-1 mr-2">
+                      <button
+                        className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                        onClick={handleZoomOut}
+                        title="Zoom Out (Ctrl+-)"
+                      >
+                        <IconZoomOut size={16} />
+                      </button>
+                      <span className="text-xs text-surface-600 dark:text-surface-400 w-12 text-center">
+                        {previewZoom}%
+                      </span>
+                      <button
+                        className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                        onClick={handleZoomIn}
+                        title="Zoom In (Ctrl++)"
+                      >
+                        <IconZoomIn size={16} />
+                      </button>
+                      <button
+                        className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                        onClick={handleZoomReset}
+                        title="Reset Zoom (Ctrl+0)"
+                      >
+                        <IconZoomReset size={16} />
+                      </button>
+                    </div>
+                    
+                    {/* Print Button */}
+                    <button
+                      className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                      onClick={handlePrintPreview}
+                      title="Print Preview"
+                    >
+                      <IconPrinter size={16} />
+                    </button>
+                    
+                    {/* Scroll Sync Toggle */}
+                    <button
+                      className={`p-1 rounded ${
+                        scrollSyncEnabled
+                          ? 'text-primary-600 dark:text-primary-400 bg-primary-100 dark:bg-primary-900'
+                          : 'text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600'
+                      }`}
+                      onClick={toggleScrollSync}
+                      title={`${scrollSyncEnabled ? 'Disable' : 'Enable'} Scroll Sync`}
+                    >
+                      {scrollSyncEnabled ? <IconLink size={16} /> : <IconUnlink size={16} />}
+                    </button>
+                    
+                    {/* Close Button */}
+                    <button
+                      className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                      onClick={() => setPreviewVisible(false)}
+                      title="Close Preview"
+                    >
+                      <IconX size={16} />
+                    </button>
+                  </div>
+                </div>
+                <div className="preview-container flex-grow overflow-hidden">
+                  <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent>
+                    <MarkdownPreview 
+                      ref={previewRef}
+                      content={content}
+                      onScroll={handlePreviewScroll}
+                      customCSS={customCSS}
+                      inScrollSync={scrollSyncEnabled}
+                      scrollSource={scrollSource}
+                    />
+                  </LoadingOverlay>
+                </div>
+              </div>
+            </Split>
+          </div>
+        </Split>
+      </main>
+      
+      <footer role="contentinfo">
+        <StatusBar 
+          currentFile={currentFile} 
+          content={content} 
+          isMobile={isMobile}
+          unsavedChanges={state.editor.unsavedChanges} 
+        />
+      </footer>
+      
+      {/* Mobile controls */}
+      {isMobile && (
+        <div className="fixed bottom-4 right-4 flex space-x-2 z-10">
+          {!sidebarVisible && (
+            <button
+              onClick={() => setSidebarVisible(true)}
+              className="p-3 rounded-full bg-primary-600 text-white shadow-lg"
+              title="Show Sidebar"
+              aria-label="Show sidebar"
+            >
+              <IconFolderOpen size={18} aria-hidden="true" />
+            </button>
+          )}
+          <button
+            onClick={() => setPreviewVisible(!previewVisible)}
+            className="p-3 rounded-full bg-primary-600 text-white shadow-lg"
+            title={previewVisible ? "Hide Preview" : "Show Preview"}
+            aria-label={previewVisible ? "Hide Preview" : "Show Preview"}
+          >
+            <IconEye size={18} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      
+      {/* Settings Panel */}
+      <SettingsPanel 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)}
+      />
+    </div>
+  );
+}
+
+// Wrap the App component with providers
+const AppWithProviders = () => (
+  <AppStateProvider>
+    <SettingsProvider>
+      <NotificationProvider>
+        <App />
+      </NotificationProvider>
+    </SettingsProvider>
+  </AppStateProvider>
+);
+
+export default AppWithProviders;

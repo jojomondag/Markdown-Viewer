@@ -1,0 +1,44 @@
+/* Split pane styling */
+.gutter {
+  background-color: #eee;
+  background-repeat: no-repeat;
+  background-position: 50%;
+}
+
+.dark .gutter {
+  background-color: #2a2a2a;
+}
+
+.gutter:hover {
+  background-color: #ddd;
+}
+
+.dark .gutter:hover {
+  background-color: #3a3a3a;
+}
+
+.gutter.gutter-horizontal {
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==');
+  cursor: col-resize;
+}
+
+.gutter.gutter-vertical {
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAFAQMAAABo7865AAAABlBMVEVHcEzMzMzyAv2sAAAAAXRSTlMAQObYZgAAABBJREFUeF5jOAMEEAIEEFwAn3kMwcB6I2AAAAAASUVORK5CYII=');
+  cursor: row-resize;
+}
+
+/* Make sure the split container takes full height */
+.split {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+}
+
+.split.vertical {
+  flex-direction: column;
+}
+
+/* Fix for split panes in flex containers */
+.split, .gutter.gutter-horizontal {
+  float: left;
+} 

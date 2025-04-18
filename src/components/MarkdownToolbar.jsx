@@ -1,0 +1,103 @@
+import React from 'react';
+import { 
+  IconBold, 
+  IconItalic, 
+  IconList, 
+  IconListNumbers, 
+  IconLink, 
+  IconCode, 
+  IconBlockquote,
+  IconTable,
+  IconHeading,
+  IconPhoto
+} from '@tabler/icons-react';
+import { getShortcutTooltip } from '../utils/keyboardShortcuts';
+
+const MarkdownToolbar = ({ onAction }) => {
+  const tools = [
+    { 
+      id: 'heading', 
+      icon: IconHeading, 
+      title: 'Add Heading',
+      shortcutKey: 'HEADING',
+      action: () => onAction('heading')
+    },
+    { 
+      id: 'bold', 
+      icon: IconBold, 
+      title: 'Bold',
+      shortcutKey: 'BOLD',
+      action: () => onAction('bold')
+    },
+    { 
+      id: 'italic', 
+      icon: IconItalic, 
+      title: 'Italic',
+      shortcutKey: 'ITALIC',
+      action: () => onAction('italic')
+    },
+    { 
+      id: 'list', 
+      icon: IconList, 
+      title: 'Bulleted List',
+      shortcutKey: 'LIST',
+      action: () => onAction('unordered-list')
+    },
+    { 
+      id: 'ordered-list', 
+      icon: IconListNumbers, 
+      title: 'Ordered List',
+      shortcutKey: 'ORDERED_LIST',
+      action: () => onAction('ordered-list')
+    },
+    { 
+      id: 'link', 
+      icon: IconLink, 
+      title: 'Add Link',
+      shortcutKey: 'LINK',
+      action: () => onAction('link')
+    },
+    { 
+      id: 'image', 
+      icon: IconPhoto, 
+      title: 'Add Image',
+      action: () => onAction('image')
+    },
+    { 
+      id: 'code', 
+      icon: IconCode, 
+      title: 'Code Block',
+      shortcutKey: 'CODE',
+      action: () => onAction('code')
+    },
+    { 
+      id: 'blockquote', 
+      icon: IconBlockquote, 
+      title: 'Blockquote',
+      action: () => onAction('blockquote')
+    },
+    { 
+      id: 'table', 
+      icon: IconTable, 
+      title: 'Add Table',
+      action: () => onAction('table')
+    }
+  ];
+
+  return (
+    <div className="markdown-toolbar flex items-center space-x-1 p-1 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 relative z-5">
+      {tools.map((tool) => (
+        <button
+          key={tool.id}
+          title={`${tool.title} ${tool.shortcutKey ? getShortcutTooltip(tool.shortcutKey) : ''}`}
+          onClick={tool.action}
+          className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+        >
+          <tool.icon size={18} />
+        </button>
+      ))}
+    </div>
+  );
+};
+
+export default MarkdownToolbar; 

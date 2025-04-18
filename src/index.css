@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100vh;
+}
+
+#root {
+  height: 100%;
+}
+
+/* Dark mode styles */
+.dark body {
+  @apply bg-surface-900 text-surface-100;
+}
+
+.dark .markdown-preview {
+  @apply bg-surface-800 text-surface-100 border-surface-700;
+}
+
+.dark .markdown-preview pre {
+  @apply bg-surface-900;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  /* Adjust gutters */
+  .gutter {
+    background-color: rgba(120, 120, 120, 0.2);
+  }
+  
+  .gutter.gutter-horizontal {
+    cursor: col-resize;
+    height: 100%;
+    width: 8px !important;
+  }
+  
+  .gutter.gutter-vertical {
+    cursor: row-resize;
+    width: 100%;
+    height: 8px !important;
+  }
+  
+  /* Make sure the mobile preview is scrollable */
+  .preview-container {
+    max-height: 100%;
+    overflow-y: auto;
+  }
+  
+  /* Ensure the mobile floating buttons are visible */
+  .fixed {
+    z-index: 50;
+  }
+}
+
+/* Override react-split styles for mobile */
+@media (max-width: 768px) {
+  .responsive-split {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .responsive-split > .gutter {
+    width: 100% !important;
+    height: 8px !important;
+    cursor: row-resize !important;
+  }
+  
+  .responsive-split-vertical {
+    flex-direction: column !important;
+  }
+  
+  .responsive-split-vertical > .gutter {
+    width: 100% !important;
+    height: 8px !important;
+  }
+}
+
+/* Ensure the mobile sidebar is scrollable */
+.sidebar-mobile {
+  overflow-y: auto !important;
+  max-height: 100vh;
+}
+
+/* Accessibility styles */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* High contrast focus styles */
+:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+
+/* Improves readability in high contrast mode */
+@media (forced-colors: active) {
+  * {
+    border-color: currentColor;
+  }
+  
+  button, 
+  a, 
+  .gutter {
+    forced-color-adjust: none;
+  }
+  
+  /* Ensure focus outlines are visible in high contrast mode */
+  :focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}
+
+/* Reduce motion for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Improved keyboard navigation */
+[tabindex]:not([tabindex="-1"]):focus,
+a:focus,
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+
+/* Skip to content link when focused */
+.skip-to-content {
+  background: #0ea5e9;
+  color: white;
+  font-weight: bold;
+  left: 50%;
+  padding: 8px;
+  position: absolute;
+  transform: translateY(-100%);
+  transition: transform 0.3s;
+  z-index: 100;
+}
+
+.skip-to-content:focus {
+  transform: translateY(0%);
+}
+
+/* Focus trap for modals - prevent background interaction when modal is open */
+body.modal-open {
+  overflow: hidden;
+} 

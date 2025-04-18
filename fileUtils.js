@@ -56,7 +56,24 @@ async function readMarkdownFile(filePath) {
   }
 }
 
+/**
+ * Writes content to a markdown file
+ * @param {string} filePath - Path to the markdown file
+ * @param {string} content - Content to write to the file
+ * @returns {Promise<void>}
+ */
+async function writeMarkdownFile(filePath, content) {
+  try {
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+    return true;
+  } catch (error) {
+    console.error('Error writing markdown file:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   scanDirectoryForMarkdownFiles,
-  readMarkdownFile
+  readMarkdownFile,
+  writeMarkdownFile
 }; 

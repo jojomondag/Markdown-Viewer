@@ -8,11 +8,13 @@ contextBridge.exposeInMainWorld('api', {
   // Example API method
   sayHello: () => 'Hello from Electron!',
   // File dialog methods
-  openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
+  openFileDialog: () => ipcRenderer.invoke('open-folder'),
   // Directory scanning method
-  scanDirectory: (directoryPath) => ipcRenderer.invoke('scan-directory', directoryPath),
+  scanDirectory: (directoryPath) => ipcRenderer.invoke('scan-folder', directoryPath),
   // Read markdown file
-  readMarkdownFile: (filePath) => ipcRenderer.invoke('read-markdown-file', filePath),
+  readMarkdownFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  // Write markdown file
+  writeMarkdownFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
   // You can add more API methods here as needed
 });
 

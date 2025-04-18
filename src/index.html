@@ -1,36 +1,12 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
-  <title>Electron App</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="Sidebar/sidebar.css">
-  <link rel="stylesheet" href="main-container.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Viewer</title>
 </head>
 <body>
-  <div class="header">
-    <h1>Welcome to your Electron App!</h1>
-  </div>
-  <div class="sidebar">
-    <div class="sidebar-main">
-      <div class="sidebar-header">
-      </div>
-      <div class="sidebar-content">
-      </div>
-      <div class="sidebar-footer">
-        <button class="sidebar-footer-button">Load Folder</button>
-      </div>
-    </div>
-    <div class="sidebar-side">
-      <!-- Here we have a button in the middle of the sidebar -->
-      <button class="sidebar-side-button"><</button> 
-    </div>
-  </div>
-  <div class="main-container">
-    <p>Your content goes here</p>
-  </div>
-  <script src="./renderer.js"></script>
-  <script src="./Sidebar/sidebar.js"></script>
+    <div id="root"></div>
+    <script type="module" src="./index.jsx"></script>
 </body>
-</html> 
+</html>
