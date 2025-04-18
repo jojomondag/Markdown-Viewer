@@ -35,11 +35,17 @@ const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, showInfo, 
       className={`file-item ${isActive ? 'active' : ''}`}
       onClick={() => onFileSelect(file)}
       onContextMenu={(e) => onContextMenu(e, file)}
+      style={{ 
+        display: 'flex', 
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%'
+      }}
     >
-      <div className="file-icon">
+      <div className="file-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
         <IconFile />
       </div>
-      <div className="file-name" title={file.name}>
+      <div className="file-name" title={file.name} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {file.name}
       </div>
     </div>
@@ -59,17 +65,23 @@ const MemoizedFolderItem = memo(({
   return (
     <div 
       className={`folder-item ${isExpanded ? 'expanded' : ''}`}
-      style={{ paddingLeft: `${depth * 16}px` }}
+      style={{ 
+        paddingLeft: `${depth * 16}px`,
+        display: 'flex', 
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%'
+      }}
       onClick={(e) => {
         e.stopPropagation();
         toggleFolder(folder.path);
       }}
       onContextMenu={(e) => onContextMenu(e, folder)}
     >
-      <div className="folder-icon">
+      <div className="folder-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
         {isExpanded ? <IconFolderOpen /> : <IconFolder />}
       </div>
-      <div className="folder-name" title={folder.name}>
+      <div className="folder-name" title={folder.name} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {folder.name}
       </div>
     </div>
@@ -523,38 +535,6 @@ const FileExplorer = ({
     },
   ];
 
-  // Replace existing renderItem function with a function that uses the memoized components
-  const renderItem = (item) => {
-    if (item.type === 'file') {
-      return (
-        <MemoizedFileItem
-          key={item.path}
-          file={item}
-          currentFilePath={currentFilePath}
-          onFileSelect={onFileSelect}
-          showInfo={showInfo}
-          showError={showError}
-          setSelectedItem={setFocusedItem}
-          onContextMenu={handleContextMenu}
-        />
-      );
-    } else if (item.type === 'folder') {
-      return (
-        <React.Fragment key={item.path}>
-          <MemoizedFolderItem
-            folder={item}
-            expandedFolders={expandedFolders}
-            toggleFolder={toggleFolder}
-            depth={item.level}
-            onContextMenu={handleContextMenu}
-          />
-          {expandedFolders[item.path] && item.children && item.children.map(renderItem)}
-        </React.Fragment>
-      );
-    }
-    return null;
-  };
-
   // Group files and folders by top-level directory
   const topLevelFolders = folders.filter(folder => !folders.some(f => folder.path.startsWith(f.path) && folder.path !== f.path));
   const topLevelFiles = files.filter(file => !folders.some(folder => file.path.startsWith(folder.path)));
@@ -754,9 +734,44 @@ const FileExplorer = ({
           </div>
         ) : (
           <>
-            {flattenedItems.map(item => (
-              renderItem(item))
-            )}
+            {flattenedItems.map(item => {
+              // Assign ref to item for keyboard navigation
+              const refKey = `${item.type}-${item.path}`;
+              return (
+                <div 
+                  key={item.path}
+                  ref={el => itemRefs.current[refKey] = el}
+                  tabIndex={0}
+                  onFocus={() => handleFocus(item)}
+                  draggable
+                  onDragStart={e => handleDragStart(e, item)}
+                  onDragOver={e => handleDragOver(e, item)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={e => handleDrop(e, item)}
+                  className={`${dragOverItem && dragOverItem.path === item.path ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
+                >
+                  {item.type === 'file' ? (
+                    <MemoizedFileItem
+                      file={item}
+                      currentFilePath={currentFilePath}
+                      onFileSelect={onFileSelect}
+                      showInfo={showInfo}
+                      showError={showError}
+                      setSelectedItem={setFocusedItem}
+                      onContextMenu={handleContextMenu}
+                    />
+                  ) : (
+                    <MemoizedFolderItem
+                      folder={item}
+                      expandedFolders={expandedFolders}
+                      toggleFolder={toggleFolder}
+                      depth={item.level}
+                      onContextMenu={handleContextMenu}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
       </div>

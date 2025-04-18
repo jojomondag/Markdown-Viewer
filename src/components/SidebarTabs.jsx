@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { IconFolder, IconListTree, IconBell, IconBookmarks, IconSearch, IconBrush, IconFileExport, IconShield } from '@tabler/icons-react';
+import { IconFolder, IconSearch } from '@tabler/icons-react';
 
 const SidebarTabs = ({ children, activeTab: externalActiveTab, onTabChange, ...rest }) => {
   const [internalActiveTab, setInternalActiveTab] = useState('files');
@@ -14,12 +14,6 @@ const SidebarTabs = ({ children, activeTab: externalActiveTab, onTabChange, ...r
   const tabs = [
     { id: 'files', label: 'Files', icon: IconFolder },
     { id: 'search', label: 'Search', icon: IconSearch },
-    { id: 'syntax', label: 'Syntax Tree', icon: IconListTree },
-    { id: 'presets', label: 'Presets', icon: IconBookmarks },
-    { id: 'styles', label: 'Styles', icon: IconBrush },
-    { id: 'export', label: 'Export', icon: IconFileExport },
-    { id: 'permissions', label: 'Permissions', icon: IconShield },
-    { id: 'notifications', label: 'Notifications', icon: IconBell },
   ];
   
   // Handle tab change

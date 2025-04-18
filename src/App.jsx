@@ -6,12 +6,10 @@ import FileHistory from './components/FileHistory';
 import MarkdownEditor from './components/MarkdownEditor';
 import TestEditor from './components/TestEditor';
 import MarkdownPreview from './components/MarkdownPreview';
-import SyntaxTree from './components/SyntaxTree';
 import SidebarTabs from './components/SidebarTabs';
 import ThemeToggle from './components/ThemeToggle';
 import StatusBar from './components/StatusBar';
 import MarkdownToolbar from './components/MarkdownToolbar';
-import NotificationExample from './components/NotificationExample';
 import LoadingOverlay from './components/LoadingOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
 import SettingsPanel from './components/SettingsPanel';
@@ -23,13 +21,8 @@ import useFiles from './hooks/useFiles';
 import { registerGlobalShortcuts, KEYBOARD_SHORTCUTS, formatShortcut } from './utils/keyboardShortcuts';
 import useNotification from './hooks/useNotification';
 import { useSettings } from './context/SettingsContext';
-import SyntaxTreePresets from './components/SyntaxTreePresets';
 import EditorTabs from './components/EditorTabs';
 import FileSearch from './components/FileSearch';
-import CustomCSSEditor from './components/CustomCSSEditor';
-import ExportPanel from './components/ExportPanel';
-import ExportService from './services/ExportService';
-import FilePermissionsPanel from './components/FilePermissionsPanel';
 import { isValidDrop, createDropDestination } from './utils/fileOperations';
 import path from 'path';
 
@@ -176,15 +169,6 @@ function App() {
 
     return () => clearTimeout(autoSaveTimer);
   }, [content, currentFile, settings.editor.autoSave, settings.editor.autoSaveInterval]);
-
-  // Handle scrolling to a heading in the editor
-  const handleHeadingClick = (position) => {
-    if (editorRef.current && position !== undefined) {
-      // If using CodeMirror, we would use the editor instance to scroll to position
-      // This is a placeholder for now
-      console.log('Scroll to position:', position);
-    }
-  };
 
   // Handle toolbar formatting actions
   const handleToolbarAction = (action) => {
@@ -660,54 +644,23 @@ function App() {
   const handleContentChange = (newContent) => {
     updateContent(newContent);
     
-    // Mark the current file as dirty
+    // Mark file as dirty (unsaved changes)
     if (currentFile) {
       setFileDirty(currentFile, true);
     }
   };
-
-  // Handle applying custom CSS
-  const handleApplyCSS = (css) => {
-    setCustomCSS(css);
-  };
-
-  // Handler for exporting documents
-  const handleExport = async (exportType, exportOptions) => {
-    if (!currentFile || !content) {
-      showError('No document to export');
-      return;
-    }
-
-    try {
-      const fileName = currentFile.name.replace(/\.[^/.]+$/, '');
-      
-      if (exportType === 'html') {
-        // Export to HTML
-        const html = await ExportService.exportAsHTML(content, {
-          ...exportOptions,
-          customCSS: exportOptions.includeStyles ? customCSS : ''
-        });
-        ExportService.downloadFile(html, `${fileName}.html`, 'text/html');
-        showSuccess(`Exported ${fileName}.html successfully`);
-      } else if (exportType === 'pdf') {
-        // Export to PDF
-        await ExportService.exportAsPDF(content, {
-          ...exportOptions,
-          customCSS: exportOptions.includeStyles ? customCSS : ''
-        });
-        showSuccess(`Exported ${fileName}.pdf successfully`);
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      showError(`Failed to export: ${error.message}`);
-    }
-  };
-
-  // Add a handler function for printing
+  
+  // Handler for print preview
   const handlePrintPreview = () => {
-    if (previewRef.current) {
-      previewRef.current.print();
-      showInfo('Printing markdown preview...');
+    if (!previewVisible) {
+      showInfo('Preview must be visible to print');
+      setPreviewVisible(true);
+      // Wait for the preview to be rendered
+      setTimeout(() => {
+        window.print();
+      }, 500);
+    } else {
+      window.print();
     }
   };
 
@@ -1039,45 +992,6 @@ function App() {
                   folders={folders} 
                   onFileSelect={openFile} 
                 />
-              </SidebarTabs.Pane>
-              <SidebarTabs.Pane id="syntax">
-                <SyntaxTree 
-                  content={content}
-                  onHeadingClick={handleHeadingClick}
-                />
-              </SidebarTabs.Pane>
-              <SidebarTabs.Pane id="presets">
-                <div className="p-4">
-                  <SyntaxTreePresets 
-                    content={content} 
-                    onPresetSelect={(preset) => {
-                      if (preset && preset.headings && preset.headings.length > 0) {
-                        handleHeadingClick(preset.headings[0].position);
-                      }
-                    }}
-                  />
-                </div>
-              </SidebarTabs.Pane>
-              <SidebarTabs.Pane id="styles">
-                <CustomCSSEditor onApplyCSS={handleApplyCSS} />
-              </SidebarTabs.Pane>
-              <SidebarTabs.Pane id="export">
-                <ExportPanel 
-                  currentFile={currentFile}
-                  markdownContent={content}
-                  onExport={handleExport}
-                />
-              </SidebarTabs.Pane>
-              <SidebarTabs.Pane id="permissions">
-                <FilePermissionsPanel 
-                  currentFile={currentFile}
-                  currentFolder={currentFolder}
-                />
-              </SidebarTabs.Pane>
-              <SidebarTabs.Pane id="notifications">
-                <div className="p-4">
-                  <NotificationExample />
-                </div>
               </SidebarTabs.Pane>
             </SidebarTabs>
           </aside>
