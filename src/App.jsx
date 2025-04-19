@@ -12,7 +12,7 @@ import MarkdownToolbar from './components/MarkdownToolbar';
 import LoadingOverlay from './components/LoadingOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
 import SettingsPanel from './components/SettingsPanel';
-import AccessibilityHelper, { announceToScreenReader } from './components/AccessibilityHelper';
+import AccessibilityHelper from './components/AccessibilityHelper';
 import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
@@ -96,7 +96,7 @@ function App() {
     }
   }, [error, showError]);
   
-  // Wrap the saveFile function to show notifications
+  // Wrap the saveFile function
   const saveFile = (content) => {
     try {
       originalSaveFile(content);
@@ -105,14 +105,12 @@ function App() {
       if (currentFile) {
         setFileDirty(currentFile, false);
       }
-      
-      showSuccess(`File ${currentFile?.name} saved successfully!`);
     } catch (error) {
-      showError(`Failed to save file: ${error.message}`);
+      console.error(`Failed to save file: ${error.message}`);
     }
   };
   
-  // Wrap the openFile function to show notifications and handle tabs
+  // Wrap the openFile function to handle tabs
   const openFile = (file) => {
     try {
       // Check if file is already open
@@ -125,8 +123,6 @@ function App() {
       
       // Actually open the file
       originalOpenFile(file);
-      showInfo(`Opened file: ${file.name}`);
-      announceToScreenReader(`Opened file: ${file.name}`);
       
       // Add file to history
       addToHistory(file);
@@ -138,21 +134,19 @@ function App() {
         }
       }, 300);
     } catch (error) {
-      showError(`Failed to open file: ${error.message}`);
-      announceToScreenReader(`Error: Failed to open file`);
+      console.error(`Failed to open file: ${error.message}`);
     }
   };
   
-  // Wrap the openAndScanFolder function to show notifications
+  // Wrap the openAndScanFolder function
   const openAndScanFolder = async () => {
     try {
       const result = await originalOpenAndScanFolder();
       if (result && result.folderPath) {
         setCurrentFolder(result.folderPath);
       }
-      showSuccess('Folder opened successfully!');
     } catch (error) {
-      showError(`Failed to open folder: ${error.message}`);
+      console.error(`Failed to open folder: ${error.message}`);
     }
   };
 
@@ -253,7 +247,6 @@ function App() {
       TOGGLE_SORT_DIRECTION: () => {
         const newDirection = explorerSortDirection === 'asc' ? 'desc' : 'asc';
         handleExplorerSortChange(explorerSortBy, newDirection);
-        showInfo(`Sorting ${newDirection === 'asc' ? 'ascending' : 'descending'}`);
       },
 
       // Add Undo/Redo shortcuts
@@ -269,8 +262,7 @@ function App() {
     openAndScanFolder, 
     explorerSortBy, 
     explorerSortDirection, 
-    handleExplorerSortChange, 
-    showInfo,
+    handleExplorerSortChange,
     handleUndo,
     handleRedo
   ]);
@@ -316,13 +308,6 @@ function App() {
     
     return [100 - settings.ui.previewWidth, settings.ui.previewWidth];
   };
-
-  // Announce file changes to screen readers
-  useEffect(() => {
-    if (currentFile) {
-      announceToScreenReader(`Opened file: ${currentFile.name}`);
-    }
-  }, [currentFile]);
 
   // Safety timeout to prevent infinite loading
   useEffect(() => {
@@ -453,7 +438,6 @@ function App() {
     
     // Toggle the state
     setScrollSyncEnabled(!scrollSyncEnabled);
-    showInfo(`Scroll sync ${!scrollSyncEnabled ? 'enabled' : 'disabled'}`);
   };
 
   // Handle scroll synchronization
@@ -591,25 +575,22 @@ function App() {
     if (previewRef.current) {
       const newZoom = previewRef.current.zoomIn();
       setPreviewZoom(newZoom);
-      showInfo(`Zoom: ${newZoom}%`);
     }
-  }, [previewRef, showInfo]);
+  }, [previewRef]);
   
   const handleZoomOut = useCallback(() => {
     if (previewRef.current) {
       const newZoom = previewRef.current.zoomOut();
       setPreviewZoom(newZoom);
-      showInfo(`Zoom: ${newZoom}%`);
     }
-  }, [previewRef, showInfo]);
+  }, [previewRef]);
   
   const handleZoomReset = useCallback(() => {
     if (previewRef.current) {
       const newZoom = previewRef.current.resetZoom();
       setPreviewZoom(newZoom);
-      showInfo(`Zoom: ${newZoom}%`);
     }
-  }, [previewRef, showInfo]);
+  }, [previewRef]);
 
   // Add keyboard event handler for zoom controls
   useEffect(() => {
@@ -685,8 +666,8 @@ function App() {
   
   // Handle new tab
   const handleNewTab = () => {
-    // For now, just show a message - in a real app this would open a new blank file
-    showInfo('Select a file from the explorer to open it');
+    // For now, just a placeholder - in a real app this would open a new blank file
+    console.log('Select a file from the explorer to open it');
   };
 
   // Update content and mark file as dirty
@@ -702,7 +683,6 @@ function App() {
   // Handler for print preview
   const handlePrintPreview = () => {
     if (!previewVisible) {
-      showInfo('Preview must be visible to print');
       setPreviewVisible(true);
       // Wait for the preview to be rendered
       setTimeout(() => {
@@ -719,14 +699,11 @@ function App() {
   // Add new file operation handlers
   const handleMoveFile = useCallback((sourceItem, targetItem) => {
     if (!isValidDrop(sourceItem, targetItem)) {
-      showInfo('Cannot move to this location', 'error');
+      console.log('Cannot move to this location');
       return;
     }
     
     const newPath = createDropDestination(sourceItem, targetItem);
-    
-    // Don't show loading indicator as it causes UI refresh and selection loss
-    // setFileOperationStatus({ type: 'moving', source: sourceItem.path, target: newPath });
     
     // In a real app, you would perform actual file operations here
     setTimeout(() => {
@@ -796,10 +773,9 @@ function App() {
         });
       }
       
-      // setFileOperationStatus(null);
-      showInfo(`Moved ${sourceItem.name} to ${path.basename(newPath)}`, 'success');
+      console.log(`Moved ${sourceItem.name} to ${path.basename(newPath)}`);
     }, 500);
-  }, [showInfo]);
+  }, []);
 
   // Add handler for sort changes - memoize it with useCallback to prevent infinite loop
   const handleExplorerSortChange = useCallback((sortBy, direction) => {
@@ -876,19 +852,6 @@ function App() {
           cursor="col-resize"
         >
           <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
-            {/* Mobile close button */}
-            {isMobile && sidebarVisible && (
-              <div className="flex justify-end p-1">
-                <button 
-                  onClick={() => setSidebarVisible(false)}
-                  className="p-1 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600"
-                  aria-label="Close sidebar"
-                >
-                  <IconX size={16} aria-hidden="true" />
-                </button>
-              </div>
-            )}
-            
             <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
               <SidebarTabs.Pane id="files">
                 <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>

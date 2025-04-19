@@ -16,8 +16,6 @@ import {
 } from '@tabler/icons-react';
 import path from 'path-browserify';
 import { ContextMenu } from './ui/context-menu';
-import useNotification from '../hooks/useNotification';
-import { announceToScreenReader } from './AccessibilityHelper';
 import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
 
@@ -244,8 +242,6 @@ const FileExplorer = ({
       setSortDirection(externalSortDirection);
     }
   }, [externalSortDirection]);
-
-  const { showInfo, showError, showNotification } = useNotification();
   
   // Flatten the file/folder structure for keyboard navigation
   const getFlattenedItems = () => {
@@ -386,7 +382,6 @@ const FileExplorer = ({
     if (onSortChange) {
       onSortChange(sortBy, newDirection);
     }
-    announceToScreenReader(`Sorting ${sortDirection === 'asc' ? 'descending' : 'ascending'}`);
   };
   
   // Update change sort field to use onSortChange
@@ -395,7 +390,6 @@ const FileExplorer = ({
     if (onSortChange) {
       onSortChange(field, sortDirection);
     }
-    announceToScreenReader(`Sorting by ${field}`);
   };
   
   // Set up keyboard navigation
@@ -417,7 +411,6 @@ const FileExplorer = ({
           if (currentIndex < flattenedItems.length - 1) {
             const nextItem = flattenedItems[currentIndex + 1];
             setFocusedItem(nextItem);
-            announceToScreenReader(`${nextItem.type === 'folder' ? 'Folder' : 'File'}: ${nextItem.name}`);
             // Focus the DOM element
             if (itemRefs.current[`${nextItem.type}-${nextItem.path}`]) {
               itemRefs.current[`${nextItem.type}-${nextItem.path}`].focus();
@@ -430,7 +423,6 @@ const FileExplorer = ({
           if (currentIndex > 0) {
             const prevItem = flattenedItems[currentIndex - 1];
             setFocusedItem(prevItem);
-            announceToScreenReader(`${prevItem.type === 'folder' ? 'Folder' : 'File'}: ${prevItem.name}`);
             // Focus the DOM element
             if (itemRefs.current[`${prevItem.type}-${prevItem.path}`]) {
               itemRefs.current[`${prevItem.type}-${prevItem.path}`].focus();
@@ -442,7 +434,6 @@ const FileExplorer = ({
           e.preventDefault();
           if (focusedItem && focusedItem.type === 'folder' && !expandedFolders[focusedItem.path]) {
             toggleFolder(focusedItem.path);
-            announceToScreenReader(`Expanded folder: ${focusedItem.name}`);
           }
           break;
           
@@ -450,7 +441,6 @@ const FileExplorer = ({
           e.preventDefault();
           if (focusedItem && focusedItem.type === 'folder' && expandedFolders[focusedItem.path]) {
             toggleFolder(focusedItem.path);
-            announceToScreenReader(`Collapsed folder: ${focusedItem.name}`);
           } else if (focusedItem && focusedItem.parentPath) {
             // Move to parent folder
             const parentFolder = folders.find(folder => folder.path === focusedItem.parentPath);
@@ -459,7 +449,6 @@ const FileExplorer = ({
               if (itemRefs.current[`folder-${parentFolder.path}`]) {
                 itemRefs.current[`folder-${parentFolder.path}`].focus();
               }
-              announceToScreenReader(`Moved to parent folder: ${parentFolder.name}`);
             }
           }
           break;
@@ -469,10 +458,8 @@ const FileExplorer = ({
           if (focusedItem) {
             if (focusedItem.type === 'file') {
               onFileSelect(focusedItem);
-              announceToScreenReader(`Opening file: ${focusedItem.name}`);
             } else {
               toggleFolder(focusedItem.path);
-              announceToScreenReader(`${expandedFolders[focusedItem.path] ? 'Collapsed' : 'Expanded'} folder: ${focusedItem.name}`);
             }
           }
           break;
@@ -481,7 +468,6 @@ const FileExplorer = ({
           e.preventDefault();
           if (focusedItem && focusedItem.type === 'file') {
             onFileSelect(focusedItem);
-            announceToScreenReader(`Opening file: ${focusedItem.name}`);
           }
           break;
           
@@ -498,7 +484,6 @@ const FileExplorer = ({
                   clientX: rect.left + rect.width / 2,
                   clientY: rect.top + rect.height / 2
                 }, focusedItem);
-                announceToScreenReader(`Context menu opened for ${focusedItem.type}: ${focusedItem.name}`);
               }
             }
           }
@@ -507,7 +492,6 @@ const FileExplorer = ({
         case 'Escape':
           if (contextMenu.show) {
             closeContextMenu();
-            announceToScreenReader('Context menu closed');
           }
           break;
           
@@ -519,7 +503,6 @@ const FileExplorer = ({
             if (itemRefs.current[`${firstItem.type}-${firstItem.path}`]) {
               itemRefs.current[`${firstItem.type}-${firstItem.path}`].focus();
             }
-            announceToScreenReader(`Moved to first item: ${firstItem.name}`);
           }
           break;
           
@@ -531,7 +514,6 @@ const FileExplorer = ({
             if (itemRefs.current[`${lastItem.type}-${lastItem.path}`]) {
               itemRefs.current[`${lastItem.type}-${lastItem.path}`].focus();
             }
-            announceToScreenReader(`Moved to last item: ${lastItem.name}`);
           }
           break;
           
@@ -548,7 +530,7 @@ const FileExplorer = ({
         fileExplorerRef.current.removeEventListener('keydown', handleKeyDown);
       }
     };
-  }, [expandedFolders, focusedItem, flattenedItems, folders, onFileSelect, showError]);
+  }, [expandedFolders, focusedItem, flattenedItems, folders, onFileSelect]);
 
   const toggleFolder = (folderPath) => {
     setExpandedFolders(prev => {
@@ -556,13 +538,6 @@ const FileExplorer = ({
       newState[folderPath] = !prev[folderPath];
       return newState;
     });
-    
-    // Announce the change for accessibility
-    const folder = folders.find(f => f.path === folderPath);
-    const isExpanded = !expandedFolders[folderPath];
-    if (folder) {
-      announceToScreenReader(`${isExpanded ? 'Expanded' : 'Collapsed'} folder: ${folder.name}`);
-    }
   };
 
   // Handle right-click context menu
@@ -615,24 +590,20 @@ const FileExplorer = ({
     // Copy file path to clipboard
     navigator.clipboard.writeText(target.path)
       .then(() => {
-        showInfo('Path copied to clipboard');
-        announceToScreenReader('Path copied to clipboard');
+        console.log('Path copied to clipboard');
       })
       .catch(() => {
-        showError('Failed to copy path to clipboard');
-        announceToScreenReader('Failed to copy path to clipboard');
+        console.error('Failed to copy path to clipboard');
       });
   };
 
   const handleNewFile = (parentFolder) => {
-    showInfo(`New file will be created in: ${parentFolder ? parentFolder.name : 'root'}`);
-    announceToScreenReader(`New file will be created in: ${parentFolder ? parentFolder.name : 'root'}`);
+    console.log(`New file will be created in: ${parentFolder ? parentFolder.name : 'root'}`);
     // TODO: Implement new file creation
   };
 
   const handleNewFolder = (parentFolder) => {
-    showInfo(`New folder will be created in: ${parentFolder ? parentFolder.name : 'root'}`);
-    announceToScreenReader(`New folder will be created in: ${parentFolder ? parentFolder.name : 'root'}`);
+    console.log(`New folder will be created in: ${parentFolder ? parentFolder.name : 'root'}`);
     // TODO: Implement new folder creation
   };
 
@@ -751,9 +722,6 @@ const FileExplorer = ({
     }, 0);
     
     setDraggingItem(item);
-    
-    // Announce to screen reader
-    announceToScreenReader(`Started dragging ${item.type}: ${item.name}`);
   };
 
   const handleDragOver = (e, item) => {
@@ -808,15 +776,13 @@ const FileExplorer = ({
     
     // Check if this is a valid drop
     if (!isValidDrop(sourceItem, targetItem)) {
-      showError(`Cannot move ${sourceItem.type} to this location`);
-      announceToScreenReader(`Cannot move ${sourceItem.type} to this location`);
+      console.error(`Cannot move ${sourceItem.type} to this location`);
       return;
     }
     
     // Call the onMoveFile callback
     if (onMoveFile) {
       onMoveFile(sourceItem, targetItem);
-      announceToScreenReader(`Moved ${sourceItem.type} ${sourceItem.name} to ${targetItem.type} ${targetItem.name}`);
     }
   };
 
@@ -905,16 +871,18 @@ const FileExplorer = ({
             <span>Date</span>
           </button>
         </div>
-        <button
-          className="p-1 rounded hover:bg-surface-300 dark:hover:bg-surface-600"
-          onClick={toggleSortDirection}
-          title={`${sortDirection === 'asc' ? 'Sort ascending' : 'Sort descending'} (${formatShortcut(KEYBOARD_SHORTCUTS.TOGGLE_SORT_DIRECTION)})`}
-        >
-          {sortDirection === 'asc' ? 
-            <IconSortAscending size={16} /> : 
-            <IconSortDescending size={16} />
-          }
-        </button>
+        <div className="flex items-center space-x-1">
+          <button
+            className="p-1 rounded hover:bg-surface-300 dark:hover:bg-surface-600"
+            onClick={toggleSortDirection}
+            title={`${sortDirection === 'asc' ? 'Sort ascending' : 'Sort descending'} (${formatShortcut(KEYBOARD_SHORTCUTS.TOGGLE_SORT_DIRECTION)})`}
+          >
+            {sortDirection === 'asc' ? 
+              <IconSortAscending size={16} /> : 
+              <IconSortDescending size={16} />
+            }
+          </button>
+        </div>
       </div>
       
       {/* Keyboard navigation instructions - visually hidden but accessible to screen readers */}
@@ -1000,4 +968,4 @@ const FileExplorer = ({
   );
 };
 
-export default FileExplorer; 
+export default FileExplorer;

@@ -105,8 +105,6 @@ import {
   codeFolding, 
   foldCode, 
   unfoldCode, 
-  foldAll, 
-  unfoldAll,
   foldKeymap 
 } from '@codemirror/language';
 import { 
@@ -118,7 +116,7 @@ import {
   defaultHighlightStyle
 } from './highlightFix';
 import SearchReplaceDialog from './SearchReplaceDialog';
-import { IconSearch, IconCornerDownRight, IconFold, IconChevronDown } from '@tabler/icons-react';
+import { IconSearch, IconCornerDownRight } from '@tabler/icons-react';
 import { useAppState } from '../context/AppStateContext';
 import CodeEditorStyle from './CodeEditorStyle';
 
@@ -175,7 +173,6 @@ const MarkdownEditor = forwardRef(({
   const initializedRef = useRef(false);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const { setCursorPosition: setAppCursorPosition } = useAppState();
-  const [isFolded, setIsFolded] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
@@ -279,33 +276,6 @@ const MarkdownEditor = forwardRef(({
     
     // Get editor content
     getContent: () => viewRef.current ? viewRef.current.state.doc.toString() : content,
-    
-    // Fold controls
-    foldAll: () => {
-      if (viewRef.current) {
-        foldAll(viewRef.current);
-        setIsFolded(true);
-      }
-    },
-    
-    unfoldAll: () => {
-      if (viewRef.current) {
-        unfoldAll(viewRef.current);
-        setIsFolded(false);
-      }
-    },
-    
-    toggleFolding: () => {
-      if (viewRef.current) {
-        if (isFolded) {
-          unfoldAll(viewRef.current);
-          setIsFolded(false);
-        } else {
-          foldAll(viewRef.current);
-          setIsFolded(true);
-        }
-      }
-    },
     
     // Fold a specific heading or code block at the current cursor position
     foldCurrent: () => {
@@ -453,19 +423,6 @@ const MarkdownEditor = forwardRef(({
       replaceAll(view);
     } catch (error) {
       console.error('Error during replace all:', error);
-    }
-  };
-  
-  // Toggle folding all sections
-  const toggleFolding = () => {
-    if (viewRef.current) {
-      if (isFolded) {
-        unfoldAll(viewRef.current);
-        setIsFolded(false);
-      } else {
-        foldAll(viewRef.current);
-        setIsFolded(true);
-      }
     }
   };
 
@@ -647,20 +604,6 @@ const MarkdownEditor = forwardRef(({
         className="flex-grow overflow-auto border border-surface-300 dark:border-surface-700 rounded" 
         style={{ position: "relative", zIndex: 40 }}
       />
-      
-      {/* Folding controls */}
-      <div className="absolute top-2 left-2 flex space-x-2 z-50">
-        <button 
-          className="p-1.5 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600"
-          onClick={toggleFolding}
-          title={isFolded ? "Unfold All (Ctrl+Alt+])" : "Fold All (Ctrl+Alt+[)"}
-        >
-          {isFolded 
-            ? <IconChevronDown size={16} className="text-surface-700 dark:text-surface-300" /> 
-            : <IconFold size={16} className="text-surface-700 dark:text-surface-300" />
-          }
-        </button>
-      </div>
       
       {/* Cursor position indicator */}
       <div className="absolute bottom-2 right-10 bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 px-2 py-1 rounded text-xs flex items-center z-50">
