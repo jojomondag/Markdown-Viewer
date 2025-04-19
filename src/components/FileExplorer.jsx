@@ -22,7 +22,7 @@ import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
 
 // Memoize FileItem to prevent unnecessary re-renders
-const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextMenu }) => {
+const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextMenu, depth, isLastChild }) => {
   const isActive = currentFilePath === file.path;
   
   return (
@@ -31,12 +31,42 @@ const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextM
       onClick={() => onFileSelect(file)}
       onContextMenu={(e) => onContextMenu(e, file)}
       style={{ 
+        paddingLeft: `${depth * 16}px`,
         display: 'flex', 
         flexDirection: 'row',
         alignItems: 'center',
-        width: '100%'
+        width: '100%',
+        position: 'relative'
       }}
     >
+      {depth > 0 && (
+        <>
+          {/* Horizontal connector line */}
+          <div 
+            className="tree-line-horizontal" 
+            style={{
+              position: 'absolute',
+              left: `${(depth - 0.75) * 16}px`,
+              top: '50%',
+              height: '1px',
+              width: '8px',
+              backgroundColor: 'var(--color-border, #ccc)'
+            }}
+          />
+          {/* Vertical connector line (only show for non-last children or for open folders) */}
+          <div 
+            className="tree-line-vertical" 
+            style={{
+              position: 'absolute',
+              left: `${(depth - 0.75) * 16}px`,
+              top: '-8px', 
+              height: isLastChild ? '50%' : '100%', // Only extend halfway if last child
+              width: '1px',
+              backgroundColor: 'var(--color-border, #ccc)'
+            }}
+          />
+        </>
+      )}
       <div className="file-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
         <IconFile />
       </div>
@@ -53,7 +83,8 @@ const MemoizedFolderItem = memo(({
   expandedFolders,
   toggleFolder,
   depth,
-  onContextMenu
+  onContextMenu,
+  isLastChild
 }) => {
   const isExpanded = expandedFolders[folder.path] || false;
   
@@ -65,7 +96,8 @@ const MemoizedFolderItem = memo(({
         display: 'flex', 
         flexDirection: 'row',
         alignItems: 'center',
-        width: '100%'
+        width: '100%',
+        position: 'relative'
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -73,6 +105,34 @@ const MemoizedFolderItem = memo(({
       }}
       onContextMenu={(e) => onContextMenu(e, folder)}
     >
+      {depth > 0 && (
+        <>
+          {/* Horizontal connector line */}
+          <div 
+            className="tree-line-horizontal" 
+            style={{
+              position: 'absolute',
+              left: `${(depth - 0.75) * 16}px`,
+              top: '50%',
+              height: '1px',
+              width: '8px',
+              backgroundColor: 'var(--color-border, #ccc)'
+            }}
+          />
+          {/* Vertical connector line (only show for non-last children or for open folders) */}
+          <div 
+            className="tree-line-vertical" 
+            style={{
+              position: 'absolute',
+              left: `${(depth - 0.75) * 16}px`,
+              top: '-8px',
+              height: isLastChild ? '50%' : '100%', // Only extend halfway if last child
+              width: '1px',
+              backgroundColor: 'var(--color-border, #ccc)'
+            }}
+          />
+        </>
+      )}
       <div className="folder-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
         {isExpanded ? <IconFolderOpen /> : <IconFolder />}
       </div>
@@ -138,29 +198,45 @@ const FileExplorer = ({
     const items = [];
     const addedPaths = new Set(); // Prevent adding duplicates if structure is complex
 
+    // Normalize paths to handle both slash types
+    const normalizePath = (p) => p.replace(/\\/g, '/');
+    
+    // Get all folder paths in normalized form
+    const normalizedFolderPaths = folders.map(f => normalizePath(f.path));
+
     // Helper function to recursively add items with their levels
     const addItemsRecursive = (currentFolders, currentFiles, level = 0, parentPath = null) => {
+      const normalizedParentPath = parentPath ? normalizePath(parentPath) : null;
       
       // Filter and sort folders for the current level
       const foldersForLevel = currentFolders.filter(f => {
+        // Normalize the folder path
+        const normalizedFolderPath = normalizePath(f.path);
         // Determine the expected parent path based on the current parentPath
-        const folderParentPath = path.dirname(f.path);
-        if (parentPath === null) {
+        const folderParentPath = path.dirname(normalizedFolderPath);
+        
+        if (normalizedParentPath === null) {
           // Top level: Parent directory should not be within any *other* listed folder's path
-           return !currentFolders.some(pf => pf.path !== f.path && folderParentPath.startsWith(pf.path));
+          return !currentFolders.some(pf => {
+            if (pf.path === f.path) return false; // Skip comparing with self
+            const normalizedPfPath = normalizePath(pf.path);
+            return folderParentPath === normalizedPfPath || 
+                   folderParentPath.startsWith(normalizedPfPath + '/');
+          });
         } else {
           // Nested level: Parent directory must match the parentPath passed in
-          return folderParentPath === parentPath;
+          return folderParentPath === normalizedParentPath;
         }
       });
       sortItems(foldersForLevel, 'folder');
 
       foldersForLevel.forEach(folder => {
-        if (addedPaths.has(folder.path)) return; // Skip if already added
+        const normalizedFolderPath = normalizePath(folder.path);
+        if (addedPaths.has(normalizedFolderPath)) return; // Skip if already added
         
         const isExpanded = expandedFolders[folder.path] || false;
         items.push({ ...folder, type: 'folder', level, parentPath });
-        addedPaths.add(folder.path);
+        addedPaths.add(normalizedFolderPath);
 
         // If folder is expanded, recursively add its children
         if (isExpanded) {
@@ -169,24 +245,34 @@ const FileExplorer = ({
         }
       });
 
-      // Filter and sort files for the current level
-      const filesForLevel = currentFiles.filter(file => {
-        const fileParentPath = path.dirname(file.path);
-         if (parentPath === null) {
-           // Top level: Parent directory should not be within *any* listed folder's path
-           return !currentFolders.some(f => fileParentPath.startsWith(f.path));
-         } else {
-           // Nested level: Parent directory must match the parentPath passed in
-           return fileParentPath === parentPath;
-         }
-      });
-      sortItems(filesForLevel, 'file');
+      // Only process files if we're at the root level or the parent folder is expanded
+      if (parentPath === null || expandedFolders[parentPath]) {
+        // Filter and sort files for the current level
+        const filesForLevel = currentFiles.filter(file => {
+          // Normalize the file path
+          const normalizedFilePath = normalizePath(file.path);
+          // Get the direct parent directory of the file
+          const fileParentDir = path.dirname(normalizedFilePath);
+          
+          if (normalizedParentPath === null) {
+            // Root level: Include files that aren't in any folder
+            return !normalizedFolderPaths.some(folderPath => 
+              fileParentDir === folderPath || fileParentDir.startsWith(folderPath + '/')
+            );
+          } else {
+            // Inside folders: Only include files whose direct parent matches this folder
+            return fileParentDir === normalizedParentPath;
+          }
+        });
+        sortItems(filesForLevel, 'file');
 
-      filesForLevel.forEach(file => {
-         if (addedPaths.has(file.path)) return; // Skip if already added
-        items.push({ ...file, type: 'file', level, parentPath });
-        addedPaths.add(file.path);
-      });
+        filesForLevel.forEach(file => {
+          const normalizedFilePath = normalizePath(file.path);
+          if (addedPaths.has(normalizedFilePath)) return; // Skip if already added
+          items.push({ ...file, type: 'file', level, parentPath });
+          addedPaths.add(normalizedFilePath);
+        });
+      }
     };
 
     // Start the recursion with the full lists at the top level (parentPath = null)
@@ -411,10 +497,18 @@ const FileExplorer = ({
   }, [expandedFolders, focusedItem, flattenedItems, folders, onFileSelect, showError]);
 
   const toggleFolder = (folderPath) => {
-    setExpandedFolders(prev => ({
-      ...prev,
-      [folderPath]: !prev[folderPath]
-    }));
+    setExpandedFolders(prev => {
+      const newState = { ...prev };
+      newState[folderPath] = !prev[folderPath];
+      return newState;
+    });
+    
+    // Announce the change for accessibility
+    const folder = folders.find(f => f.path === folderPath);
+    const isExpanded = !expandedFolders[folderPath];
+    if (folder) {
+      announceToScreenReader(`${isExpanded ? 'Expanded' : 'Collapsed'} folder: ${folder.name}`);
+    }
   };
 
   // Handle right-click context menu
@@ -746,16 +840,20 @@ const FileExplorer = ({
       </div>
       
       {/* File and folder listing */}
-      <div className="file-explorer-content p-1">
+      <div className="file-explorer-content p-1" style={{ position: 'relative' }}>
         {topLevelFolders.length === 0 && topLevelFiles.length === 0 ? (
           <div className="p-4 text-surface-500 dark:text-surface-400 text-sm text-center">
             No files or folders to display
           </div>
         ) : (
           <>
-            {flattenedItems.map(item => {
+            {flattenedItems.map((item, index) => {
               // Assign ref to item for keyboard navigation
               const refKey = `${item.type}-${item.path}`;
+              const isLastChild = index === flattenedItems.length - 1 || 
+                                  (flattenedItems[index + 1] && 
+                                   (flattenedItems[index + 1].level <= item.level));
+              
               return (
                 <div 
                   key={item.path}
@@ -768,6 +866,7 @@ const FileExplorer = ({
                   onDragLeave={handleDragLeave}
                   onDrop={e => handleDrop(e, item)}
                   className={`${dragOverItem && dragOverItem.path === item.path ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
+                  style={{ position: 'relative', minHeight: '24px' }}
                 >
                   {item.type === 'file' ? (
                     <MemoizedFileItem
@@ -775,6 +874,8 @@ const FileExplorer = ({
                       currentFilePath={currentFilePath}
                       onFileSelect={onFileSelect}
                       onContextMenu={handleContextMenu}
+                      depth={item.level}
+                      isLastChild={isLastChild}
                     />
                   ) : (
                     <MemoizedFolderItem
@@ -783,6 +884,7 @@ const FileExplorer = ({
                       toggleFolder={toggleFolder}
                       depth={item.level}
                       onContextMenu={handleContextMenu}
+                      isLastChild={isLastChild}
                     />
                   )}
                 </div>
