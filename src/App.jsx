@@ -171,48 +171,45 @@ function App() {
 
   // Handle toolbar formatting actions
   const handleToolbarAction = (action) => {
-    let newText = '';
-    
-    // Get current selection or cursor position
-    // In a real implementation, we would use the CodeMirror editor state
-    // For this demo, we'll just append the markdown to the end
-    
+    if (!editorRef.current) return;
+
     switch (action) {
       case 'heading':
-        newText = content + '\n\n## Heading';
+        editorRef.current.applyHeading?.(2); // Using optional chaining
         break;
       case 'bold':
-        newText = content + '\n\n**Bold Text**';
+        editorRef.current.applyBold?.();
         break;
       case 'italic':
-        newText = content + '\n\n*Italic Text*';
+        editorRef.current.applyItalic?.();
         break;
       case 'unordered-list':
-        newText = content + '\n\n- List item 1\n- List item 2\n- List item 3';
+        editorRef.current.applyUnorderedList?.();
         break;
       case 'ordered-list':
-        newText = content + '\n\n1. List item 1\n2. List item 2\n3. List item 3';
+        editorRef.current.applyOrderedList?.();
         break;
       case 'link':
-        newText = content + '\n\n[Link Text](https://example.com)';
+        editorRef.current.applyLink?.();
         break;
       case 'image':
-        newText = content + '\n\n![Image Alt Text](https://example.com/image.jpg)';
+        editorRef.current.applyImage?.();
         break;
-      case 'code':
-        newText = content + '\n\n```\ncode block\n```';
+      case 'code': // Assuming this is for inline code based on toolbar icon
+        editorRef.current.applyCode?.(); 
+        break;
+      case 'code-block': // Add a case if you want a dedicated code block button
+        editorRef.current.applyCodeBlock?.(); 
         break;
       case 'blockquote':
-        newText = content + '\n\n> Blockquote text';
+        editorRef.current.applyBlockquote?.();
         break;
       case 'table':
-        newText = content + '\n\n| Header 1 | Header 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |';
+        editorRef.current.applyTable?.();
         break;
       default:
-        newText = content;
+        console.warn(`Unknown toolbar action: ${action}`);
     }
-    
-    updateContent(newText);
   };
 
   // Add Undo/Redo handlers
@@ -1055,6 +1052,7 @@ function App() {
                       customCSS={customCSS}
                       inScrollSync={scrollSyncEnabled}
                       scrollSource={scrollSource}
+                      currentFilePath={currentFile?.path}
                     />
                   </LoadingOverlay>
                 </div>

@@ -42,6 +42,11 @@ contextBridge.exposeInMainWorld(
     },
     removeFileChangeListener: () => {
       ipcRenderer.removeAllListeners('file-changed');
-    }
+    },
+    openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
+
+    // *** NEW: Expose path functions via IPC ***
+    pathDirname: (filePath) => ipcRenderer.invoke('path-dirname', filePath),
+    pathResolve: (...paths) => ipcRenderer.invoke('path-resolve', ...paths)
   }
 ); 

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { EditorState } from '@codemirror/state';
+import { EditorState, EditorSelection, Text } from '@codemirror/state';
 import { 
   EditorView, 
   keymap, 
@@ -16,9 +16,25 @@ import {
   defaultKeymap, 
   history, 
   historyKeymap, 
-  indentWithTab,
-  undo, redo
+  indentWithTab
 } from '@codemirror/commands';
+
+// Import commands from the new module
+import {
+  undoCommand,
+  redoCommand,
+  applyBold,
+  applyItalic,
+  applyCode,
+  applyHeading,
+  applyUnorderedList,
+  applyOrderedList,
+  applyLink,
+  applyImage,
+  applyCodeBlock,
+  applyBlockquote,
+  applyTable
+} from '../utils/editorMenu';
 
 // REPLACED: We won't use the actual markdown parser since it's causing errors
 // import { markdown as originalMarkdown } from '@codemirror/lang-markdown';
@@ -305,17 +321,49 @@ const MarkdownEditor = forwardRef(({
       }
     },
 
-    // Expose undo/redo functions
+    // Expose undo/redo functions (calling imported commands)
     undo: () => {
-      if (viewRef.current) {
-        undo(viewRef.current);
-      }
+      undoCommand(viewRef.current);
     },
     redo: () => {
-      if (viewRef.current) {
-        redo(viewRef.current);
-      }
+      redoCommand(viewRef.current);
     },
+
+    // --- Formatting Actions (calling imported commands) ---
+    applyBold: () => {
+      applyBold(viewRef.current);
+    },
+    applyItalic: () => {
+      applyItalic(viewRef.current);
+    },
+    applyHeading: (level = 2) => { 
+       applyHeading(viewRef.current, level);
+     },
+    applyUnorderedList: () => {
+      applyUnorderedList(viewRef.current);
+    },
+    applyOrderedList: () => {
+      applyOrderedList(viewRef.current);
+    },
+    applyLink: () => {
+      applyLink(viewRef.current);
+    },
+    applyImage: () => {
+      applyImage(viewRef.current);
+    },
+    applyCodeBlock: () => {
+      applyCodeBlock(viewRef.current);
+    },
+    applyBlockquote: () => {
+      applyBlockquote(viewRef.current);
+    },
+    applyTable: () => {
+      applyTable(viewRef.current);
+    },
+    applyCode: () => {
+       applyCode(viewRef.current);
+    },
+
   }));
   
   // Check if dark mode is enabled

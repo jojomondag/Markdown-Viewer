@@ -1,5 +1,8 @@
 import React, { useMemo, useRef, useImperativeHandle, forwardRef, useState, useEffect } from 'react';
 import { marked } from 'marked';
+// Assuming path functions are available (e.g., from preload or bundled)
+// If not, adjust access method (e.g., window.api.path.resolve)
+// const path = require('path'); 
 
 // Configure marked options with custom renderer for media
 const renderer = new marked.Renderer();
@@ -86,8 +89,14 @@ renderer.link = function(href, title, text) {
       </div>
     `;
   } else {
-    // Regular link
-    return `<a href="${href}" title="${title || ''}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    // Regular link - **REMOVED onclick here**
+    // The event listener below will handle clicks.
+    return `<a 
+              href="${href}" 
+              title="${title || ''}" 
+            >
+              ${text}
+            </a>`;
   }
 };
 
@@ -131,7 +140,8 @@ const MarkdownPreview = forwardRef(({
   onScroll, 
   customCSS = '',
   inScrollSync = false,
-  scrollSource = null
+  scrollSource = null,
+  currentFilePath
 }, ref) => {
   // Create ref for the preview container
   const previewRef = useRef(null);
@@ -143,10 +153,114 @@ const MarkdownPreview = forwardRef(({
   // State for lightbox
   const [lightboxImage, setLightboxImage] = useState(null);
   
-  // Effect to set up lightbox functionality after content changes
+  // Effect to set up lightbox and link click handler
   useEffect(() => {
-    addLightboxFunctionality(previewRef.current);
-  }, [content]);
+    const container = previewRef.current;
+    if (!container) return;
+
+    // --- Lightbox Setup (existing) ---
+    const images = container.querySelectorAll('img.markdown-image');
+    const imageClickHandler = (e) => {
+      const imgContainer = e.target.closest('.image-container');
+      if (imgContainer) {
+        imgContainer.classList.toggle('expanded');
+      }
+    };
+    images.forEach(img => {
+      img.addEventListener('click', imageClickHandler);
+    });
+
+    // --- Link Click Handler Setup --- 
+    const linkClickHandler = (event) => {
+        // Find the link element
+        const link = event.target.closest('a[href]');
+        if (!link) return;
+
+        const href = link.getAttribute('href');
+        if (!href) return;
+
+        event.preventDefault(); // Stop default navigation
+
+        try {
+            let urlToOpen = href;
+            let isExternal = false;
+
+            // Check if it's an external link (http/https)
+            if (href.startsWith('http://') || href.startsWith('https://')) {
+                isExternal = true;
+            } 
+            // Check if it starts with www.
+            else if (href.startsWith('www.')) {
+                isExternal = true;
+                urlToOpen = 'https://' + href; // Prepend https://
+            }
+
+            if (isExternal) {
+                // Try multiple ways to open the link
+                console.log(`External link detected: ${urlToOpen}`);
+                if (window.api && typeof window.api.openExternalLink === 'function') {
+                    console.log(`Using window.api.openExternalLink to open URL`);
+                    window.api.openExternalLink(urlToOpen)
+                        .then(result => console.log(`openExternalLink result:`, result))
+                        .catch(err => console.error(`openExternalLink error:`, err));
+                } else if (window.electronAPI && typeof window.electronAPI.openExternalLink === 'function') {
+                    console.log(`Using window.electronAPI.openExternalLink to open URL`);
+                    window.electronAPI.openExternalLink(urlToOpen)
+                        .then(result => console.log(`electronAPI.openExternalLink result:`, result))
+                        .catch(err => console.error(`electronAPI.openExternalLink error:`, err));
+                } else {
+                    // Fallback to window.open with _blank target
+                    console.log("Using fallback method to open URL:", urlToOpen);
+                    const newWindow = window.open(urlToOpen, '_blank');
+                    if (newWindow) newWindow.opener = null; // Security best practice
+                }
+            } 
+            // Check if it's likely a file path
+            else if (currentFilePath && !href.startsWith('#')) {
+                // Try to resolve the path if path API is available
+                let absolutePath = href;
+                
+                if (window.api?.pathDirname && window.api?.pathResolve) {
+                    const currentDir = window.api.pathDirname(currentFilePath);
+                    absolutePath = window.api.pathResolve(currentDir, href);
+                }
+                
+                // Try multiple ways to open the file
+                if (window.api && typeof window.api.openFile === 'function') {
+                    window.api.openFile(absolutePath);
+                } else if (window.electronAPI && typeof window.electronAPI.openFile === 'function') {
+                    window.electronAPI.openFile(absolutePath);
+                } else {
+                    console.warn(`Unable to open file: ${absolutePath} - API not available`);
+                }
+            } else {
+                console.warn(`Unhandled link type or missing currentFilePath: ${href}`);
+            }
+        } catch (error) {
+            console.error(`Error handling link click for ${href}:`, error);
+            
+            // Last resort fallback - try regular navigation
+            try {
+                if (href.startsWith('http') || href.startsWith('www')) {
+                    const urlToOpen = href.startsWith('www') ? 'https://' + href : href;
+                    window.open(urlToOpen, '_blank');
+                }
+            } catch (fallbackError) {
+                console.error('Fallback navigation also failed:', fallbackError);
+            }
+        }
+    };
+
+    container.addEventListener('click', linkClickHandler);
+
+    // Cleanup function
+    return () => {
+      images.forEach(img => {
+        img.removeEventListener('click', imageClickHandler);
+      });
+      container.removeEventListener('click', linkClickHandler);
+    };
+  }, [content, currentFilePath]); // Re-run if content or current file path changes
   
   // Expose methods to parent components
   useImperativeHandle(ref, () => ({

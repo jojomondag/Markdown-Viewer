@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const chokidar = require('chokidar');
@@ -27,6 +27,27 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+
+  // Handle navigation attempts within the app
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Prevent navigation within the app for external URLs
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      event.preventDefault();
+      shell.openExternal(url);
+      console.log(`Intercepted will-navigate to ${url} - opening in external browser`);
+    }
+  });
+
+  // Handle new window creation (e.g., target="_blank" links)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // For external URLs, open in default browser and prevent new electron window
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+      console.log(`Intercepted new-window for ${url} - opening in external browser`);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
   });
 
   // Load the app - in development or production
@@ -116,18 +137,24 @@ ipcMain.handle('unwatch-file', async (event, filePath) => {
 });
 
 ipcMain.handle('open-folder', async () => {
+  console.log("[Main Process] Received 'open-folder' request.");
   try {
+    console.log("[Main Process] Calling dialog.showOpenDialog...");
     const { canceled, filePaths } = await dialog.showOpenDialog({
       properties: ['openDirectory']
     });
     
+    console.log(`[Main Process] dialog.showOpenDialog result: canceled=${canceled}, filePaths=${filePaths}`);
+    
     if (canceled) {
+      console.log("[Main Process] Dialog was cancelled by user.");
       return null;
     }
     
+    console.log(`[Main Process] Returning selected path: ${filePaths[0]}`);
     return filePaths[0];
   } catch (error) {
-    console.error('Error opening folder dialog:', error);
+    console.error('[Main Process] Error opening folder dialog:', error);
     throw error;
   }
 });
@@ -422,5 +449,44 @@ ipcMain.handle('rename-item', async (event, sourcePath, newName, isDirectory) =>
       success: false,
       message: `Failed to rename ${isDirectory ? 'directory' : 'file'}: ${error.message}`
     };
+  }
+});
+
+// *** NEW: Add handler for opening external links ***
+ipcMain.handle('open-external-link', async (event, url) => {
+  try {
+    console.log(`Attempting to open external URL in system browser: ${url}`);
+    // Basic validation: Ensure it's a http/https URL
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      console.log(`URL validation passed, calling shell.openExternal`);
+      await shell.openExternal(url);
+      console.log(`shell.openExternal completed successfully`);
+      return { success: true };
+    } else {
+      console.warn(`Attempted to open non-http(s) URL: ${url}`);
+      return { success: false, error: 'Invalid URL protocol. Only http and https are allowed.' };
+    }
+  } catch (error) {
+    console.error(`Failed to open external link ${url}:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+// *** NEW: IPC Handlers for path operations ***
+ipcMain.handle('path-dirname', (event, filePath) => {
+  try {
+    return path.dirname(filePath);
+  } catch (error) {
+    console.error('[Main Process] Error in path-dirname handler:', error);
+    throw error; // Propagate error back to renderer
+  }
+});
+
+ipcMain.handle('path-resolve', (event, ...paths) => {
+  try {
+    return path.resolve(...paths);
+  } catch (error) {
+    console.error('[Main Process] Error in path-resolve handler:', error);
+    throw error; // Propagate error back to renderer
   }
 });

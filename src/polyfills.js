@@ -56,12 +56,15 @@ export function applyLezerFixes() {
       // Mock file dialog methods
       openFileDialog: () => {
         console.warn('Mock openFileDialog called. Electron API not available.');
-        alert('Cannot open file dialog: Electron API not available');
-        return Promise.resolve(null);
+        // Return an empty folder path instead of showing an alert
+        return Promise.resolve(['/mock/folder/path']);
       },
       scanDirectory: () => {
         console.warn('Mock scanDirectory called. Electron API not available.');
-        return Promise.resolve({ files: [], folders: [] });
+        return Promise.resolve({ 
+          files: [{ name: 'README.md', path: '/mock/folder/path/README.md', type: 'file' }], 
+          folders: [] 
+        });
       },
       readMarkdownFile: () => {
         console.warn('Mock readMarkdownFile called. Electron API not available.');
@@ -70,6 +73,27 @@ export function applyLezerFixes() {
       writeMarkdownFile: () => {
         console.warn('Mock writeMarkdownFile called. Electron API not available.');
         return Promise.resolve();
+      },
+      // Add missing functions for link handling
+      openExternalLink: (url) => {
+        console.warn('Mock openExternalLink called. Opening URL in new tab:', url);
+        const newWindow = window.open(url, '_blank');
+        if (newWindow) newWindow.opener = null; // Security best practice
+        return Promise.resolve({ success: true });
+      },
+      openFile: (path) => {
+        console.warn('Mock openFile called. Electron API not available:', path);
+        return Promise.resolve('');
+      },
+      pathDirname: (path) => {
+        console.warn('Mock pathDirname called. Returning path as is:', path);
+        return path.substring(0, path.lastIndexOf('/') + 1);
+      },
+      pathResolve: (basePath, relativePath) => {
+        console.warn('Mock pathResolve called:', basePath, relativePath);
+        if (relativePath.startsWith('/')) return relativePath;
+        // Simple path resolution for relative paths
+        return basePath + (basePath.endsWith('/') ? '' : '/') + relativePath;
       }
     };
   }

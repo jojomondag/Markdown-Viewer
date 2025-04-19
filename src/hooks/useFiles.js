@@ -16,33 +16,36 @@ const useFiles = () => {
       setLoading(true);
       setError(null);
       
+      // Try to open folder using fileSystem utility
       const selectedFolders = await openFolder();
-      // Handle cases where user cancels the dialog or API returns null
-      if (!selectedFolders) {
-        console.log('Folder selection was cancelled');
+      
+      // Check if folder selection was cancelled or empty
+      if (!selectedFolders || selectedFolders.length === 0) {
+        console.log('Folder selection was cancelled or returned empty');
+        setLoading(false);
         return null;
       }
       
-      if (selectedFolders.length > 0) {
-        const directoryPath = selectedFolders[0];
-        setCurrentDirectory(directoryPath);
-        
-        const result = await scanDirectory(directoryPath);
-        // Make sure we have valid folders and files
-        const scannedFolders = result?.folders || [];
-        const markdownFiles = result?.files || [];
-        
-        setFolders(scannedFolders);
-        setFiles(markdownFiles);
-        
-        // Return the folder path to inform the caller
-        return { 
-          folderPath: directoryPath,
-          folders: scannedFolders,
-          files: markdownFiles
-        };
-      }
-      return null;
+      // Get the selected directory path
+      const directoryPath = Array.isArray(selectedFolders) ? selectedFolders[0] : selectedFolders;
+      setCurrentDirectory(directoryPath);
+      
+      // Scan the directory for files and folders
+      const result = await scanDirectory(directoryPath);
+      
+      // Make sure we have valid folders and files
+      const scannedFolders = result?.folders || [];
+      const markdownFiles = result?.files || [];
+      
+      setFolders(scannedFolders);
+      setFiles(markdownFiles);
+      
+      // Return the folder path to inform the caller
+      return { 
+        folderPath: directoryPath,
+        folders: scannedFolders,
+        files: markdownFiles
+      };
     } catch (err) {
       setError(err.message || 'Failed to open folder');
       console.error('Error opening folder:', err);
