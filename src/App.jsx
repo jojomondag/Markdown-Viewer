@@ -3,7 +3,7 @@ import { IconFileText, IconFolderOpen, IconSettings, IconX, IconEye, IconLink, I
 import Split from 'react-split';
 import FileExplorer from './components/FileExplorer';
 import FileHistory from './components/FileHistory';
-import TestEditor from './components/TestEditor';
+import MarkdownEditor from './components/MarkdownEditor';
 import MarkdownPreview from './components/MarkdownPreview';
 import SidebarTabs from './components/SidebarTabs';
 import ThemeToggle from './components/ThemeToggle';
@@ -931,7 +931,9 @@ function App() {
                   className="editor h-full flex-grow overflow-hidden p-4 pt-2" 
                   style={{ 
                     position: "relative", 
-                    isolation: "isolate" // Create a stacking context
+                    isolation: "isolate", // Create a stacking context
+                    pointerEvents: "auto", // Ensure it captures pointer events
+                    zIndex: 30 // Increase z-index to ensure it's above other elements
                   }}
                 >
                   {state.loading.content && (
@@ -944,10 +946,14 @@ function App() {
                   )}
                   
                   {/* Direct editor mount without unnecessary wrappers */}
-                  <TestEditor
+                  <MarkdownEditor
                     ref={editorRef}
-                    initialContent={content}
+                    content={content}
                     onChange={handleContentChange}
+                    onCursorChange={handleCursorChange}
+                    onScroll={handleEditorScroll}
+                    inScrollSync={scrollSyncEnabled}
+                    scrollSource={scrollSource}
                     className="w-full h-full"
                   />
                 </div>

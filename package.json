@@ -9,7 +9,12 @@
     "electron:dev": "concurrently \"npm run watch\" \"electron . --inspect\"",
     "electron:start": "electron .",
     "build": "webpack --mode production",
-    "test": "jest"
+    "test": "jest",
+    "clean-build": "node clean-build.js",
+    "clean-build:win": "clean-build.bat",
+    "clean-build:fast": "node clean-build.js --fast",
+    "clean-build:start": "node clean-build.js --start",
+    "clean-build:fast-start": "node clean-build.js --fast --start"
   },
   "keywords": [
     "electron",

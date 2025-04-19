@@ -155,26 +155,65 @@ const MarkdownEditor = forwardRef(({
 }, ref) => {
   const editorRef = useRef(null);
   const viewRef = useRef(null);
-  const [isContentChanged, setIsContentChanged] = useState(false);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollTimeoutRef = useRef(null);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const initializedRef = useRef(false);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const { setCursorPosition: setAppCursorPosition } = useAppState();
   const [isFolded, setIsFolded] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef(null);
+  
+  // Basic cursor position tracking
+  const trackCursorPosition = useCallback((view) => {
+    if (!view) return;
+    
+    try {
+      const doc = view.state.doc;
+      const selection = view.state.selection.main;
+      const cursor = selection.head;
+      
+      // Calculate line and column from cursor position
+      let line = 1;
+      let lineStart = 0;
+      
+      // Find the line containing this position
+      for (let i = 1; i <= doc.lines; i++) {
+        const lineEnd = doc.line(i).to;
+        if (cursor <= lineEnd) {
+          line = i;
+          lineStart = doc.line(i).from;
+          break;
+        }
+      }
+      
+      // Calculate column (1-based, accounting for tabs)
+      const lineText = doc.sliceString(lineStart, cursor);
+      const column = lineText.length + 1;
+      
+      // Update local state
+      setCursorPosition({ line, column });
+      
+      // Notify parent component if callback is provided
+      if (onCursorChange) {
+        onCursorChange({ line, column });
+      }
+      
+      // Also update app-wide state for cursor position
+      if (setAppCursorPosition) {
+        setAppCursorPosition({ line, column });
+      }
+    } catch (err) {
+      console.error("Error tracking cursor:", err);
+    }
+  }, [onCursorChange, setAppCursorPosition]);
   
   // Expose methods for parent components
   useImperativeHandle(ref, () => ({
     // Scroll to a specific percentage of the content
     scrollToPosition: (scrollPercentage) => {
-      if (!viewRef.current || !viewRef.current.scrollDOM) {
-        console.log('Cannot scroll, editor not initialized');
-        return;
-      }
+      if (!viewRef.current || !viewRef.current.scrollDOM) return;
       
       try {
-        console.log('Scrolling editor to position:', scrollPercentage);
-        
         const { scrollDOM } = viewRef.current;
         const totalHeight = scrollDOM.scrollHeight - scrollDOM.clientHeight;
         const targetPosition = Math.max(0, Math.min(totalHeight, totalHeight * scrollPercentage));
@@ -182,32 +221,13 @@ const MarkdownEditor = forwardRef(({
         // Set flag to indicate we're in a programmatic scroll
         setIsScrolling(true);
         
-        // Store the target position to maintain it
-        viewRef.current._lastScrollPosition = targetPosition;
-        
         // Scroll to position
         scrollDOM.scrollTop = targetPosition;
-        console.log('Editor scrolled to:', targetPosition);
-        
-        // Clear any existing timeout
-        if (scrollTimeoutRef.current) {
-          clearTimeout(scrollTimeoutRef.current);
-        }
         
         // After a delay, release the scrolling lock
-        scrollTimeoutRef.current = setTimeout(() => {
-          // Double-check the scroll position before releasing the lock
-          if (viewRef.current && viewRef.current.scrollDOM) {
-            const currentPos = viewRef.current.scrollDOM.scrollTop;
-            if (Math.abs(currentPos - targetPosition) > 5) {
-              // Try one more time if the position drifted
-              viewRef.current.scrollDOM.scrollTop = targetPosition;
-            }
-          }
-          
+        setTimeout(() => {
           setIsScrolling(false);
-          console.log('Editor scroll lock released');
-        }, 300);
+        }, 100);
       } catch (error) {
         console.error('Error scrolling editor:', error);
         setIsScrolling(false);
@@ -216,10 +236,7 @@ const MarkdownEditor = forwardRef(({
     
     // Get current scroll information
     getScrollInfo: () => {
-      if (!viewRef.current || !viewRef.current.scrollDOM) {
-        console.log('Cannot get scroll info, editor not initialized');
-        return null;
-      }
+      if (!viewRef.current || !viewRef.current.scrollDOM) return null;
       
       try {
         const { scrollDOM } = viewRef.current;
@@ -227,12 +244,7 @@ const MarkdownEditor = forwardRef(({
         const maxScrollTop = scrollHeight - clientHeight;
         const scrollPercentage = maxScrollTop > 0 ? scrollTop / maxScrollTop : 0;
         
-        return {
-          scrollTop,
-          scrollHeight,
-          clientHeight,
-          scrollPercentage
-        };
+        return { scrollTop, scrollHeight, clientHeight, scrollPercentage };
       } catch (error) {
         console.error('Error getting scroll info:', error);
         return null;
@@ -247,6 +259,9 @@ const MarkdownEditor = forwardRef(({
     
     // Get current editor view
     getView: () => viewRef.current,
+    
+    // Get editor content
+    getContent: () => viewRef.current ? viewRef.current.state.doc.toString() : content,
     
     // Fold controls
     foldAll: () => {
@@ -379,61 +394,6 @@ const MarkdownEditor = forwardRef(({
       console.error('Error during replace all:', error);
     }
   };
-
-  // Track cursor position when it changes
-  const trackCursorPosition = useCallback((view) => {
-    if (!view) return;
-    
-    const doc = view.state.doc;
-    const selection = view.state.selection.main;
-    const cursor = selection.head;
-    
-    // Calculate line and column from cursor position
-    let line = 1;
-    let lineStart = 0;
-    
-    // Find the line containing this position
-    for (let i = 1; i <= doc.lines; i++) {
-      const lineEnd = doc.line(i).to;
-      if (cursor <= lineEnd) {
-        line = i;
-        lineStart = doc.line(i).from;
-        break;
-      }
-    }
-    
-    // Calculate column (1-based, accounting for tabs)
-    const lineText = doc.sliceString(lineStart, cursor);
-    const column = lineText.length + 1;
-    
-    // Update local state
-    setCursorPosition({ line, column });
-    
-    // Notify parent component if callback is provided
-    if (onCursorChange) {
-      onCursorChange({ line, column });
-    }
-    
-    // Also update app-wide state for cursor position
-    if (setAppCursorPosition) {
-      setAppCursorPosition({ line, column });
-    }
-  }, [onCursorChange, setAppCursorPosition]);
-  
-  // Handle scroll events in the editor
-  const handleEditorScroll = () => {
-    if (viewRef.current && onScroll && !isScrolling) {
-      const { scrollDOM } = viewRef.current;
-      const { scrollTop, scrollHeight, clientHeight } = scrollDOM;
-      const maxScrollTop = scrollHeight - clientHeight;
-      const scrollPercentage = maxScrollTop > 0 ? scrollTop / maxScrollTop : 0;
-      
-      // Track the scroll position
-      viewRef.current._lastScrollPosition = scrollTop;
-      
-      onScroll(scrollPercentage);
-    }
-  };
   
   // Toggle folding all sections
   const toggleFolding = () => {
@@ -448,194 +408,103 @@ const MarkdownEditor = forwardRef(({
     }
   };
 
-  // Create a new editor instance when the component mounts or when extensions change
+  // Create editor only once when component mounts
   useEffect(() => {
-    if (!editorRef.current) {
-      console.log('Editor ref not available');
-      return;
-    }
+    // Skip if already initialized or ref not ready
+    if (initializedRef.current || !editorRef.current) return;
     
-    // DEBUG: Log DOM element properties to ensure it can receive input
-    console.log('Editor DOM element:', {
-      element: editorRef.current,
-      style: window.getComputedStyle(editorRef.current),
-      parentElement: editorRef.current.parentElement,
-      offsetParent: editorRef.current.offsetParent,
-      visibility: window.getComputedStyle(editorRef.current).visibility,
-      display: window.getComputedStyle(editorRef.current).display,
-      pointerEvents: window.getComputedStyle(editorRef.current).pointerEvents,
-    });
+    // Set flag to prevent multiple initializations
+    initializedRef.current = true;
     
     try {
       console.log('Creating editor with content:', content);
       
-      // WORKAROUND: Clear any existing child nodes that might interfere
+      // Clear any existing child nodes
       while (editorRef.current.firstChild) {
         editorRef.current.removeChild(editorRef.current.firstChild);
       }
       
-      // Define standard editor extensions
-      const standardExtensions = [
-        // Basic editor features
-        EditorView.editable.of(true), // MOVED to top to ensure it's applied first
-        EditorState.readOnly.of(false), // Ensure editor is not in read-only mode
-        highlightSpecialChars(),
-        history(),
-        drawSelection(),
-        dropCursor(),
-        EditorState.allowMultipleSelections.of(true),
-        rectangularSelection(),
-        crosshairCursor(),
-        highlightActiveLine(),
-        highlightActiveLineGutter(),
-        // Keyboard input handling - these are crucial for editing!
-        keymap.of([
-          ...defaultKeymap,
-          ...historyKeymap,
-          indentWithTab
-        ]),
-        // Explicit navigation key handling
-        EditorView.domEventHandlers({
-          keydown: (event, view) => {
-            // Ensure arrow keys and navigation keys are handled
-            if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", 
-                 "Home", "End", "PageUp", "PageDown"].includes(event.key)) {
-              // Don't return true - let the default handlers work
-              console.log(`Navigation key pressed: ${event.key}`);
-            }
-            return false;
-          },
-          mousedown: (event, view) => {
-            // Force focus on mouse clicks
-            view.focus();
-            console.log("Mouse down on editor");
-            return false; // Don't prevent default behavior
-          }
-        }),
-        // Line numbers and gutter features
-        lineNumbers(),
-        foldGutter(),
-        // Styling
-        syntaxHighlighting(defaultHighlightStyle),
-        // Matching brackets
-        bracketMatching(),
-        // Search
-        search({
-          top: true
-        }),
-        // Theme and styling - minimal setup to avoid duplication with CodeEditorStyle
-        EditorView.theme({
-          "&": { 
-            height: "100%", 
-            overflow: "auto"
-          },
-          ".cm-scroller": { 
-            overflow: "auto" 
-          },
-          ".cm-content": { 
-            whiteSpace: "pre-wrap"
-          },
-          "&.cm-focused .cm-cursor": {
-            borderLeftWidth: "2px",
-            borderLeftStyle: "solid"
-          },
-          "&.cm-editor.cm-focused": {
-            outline: "none"
-          }
-        }),
-        // Update listener for content changes
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged && onChange) {
-            // Only trigger onChange for actual document changes
-            setIsContentChanged(true);
-            onChange(update.state.doc.toString());
-          }
-          
-          // Track cursor position on selection changes or document changes
-          if (update.selectionSet || update.docChanged) {
-            trackCursorPosition(update.view);
-          }
-        }),
-        // Add our custom scroll handling
-        handleScrollEvents()
-      ];
-      
-      // Create editor state with all extensions
-      const state = EditorState.create({
-        doc: content || '',
-        extensions: [
-          ...standardExtensions,
-          ...extensions // User-provided custom extensions
-        ]
-      });
-
-      // Create the editor view
+      // Create the editor with ONLY essential extensions
       const view = new EditorView({
-        state,
-        parent: editorRef.current,
-        dispatchTransactions: (trs) => {
-          // Default transaction handling
-          let newState = view.state;
-          for (const tr of trs) {
-            newState = newState.update(tr);
-          }
-          view.update([...trs]);
-          
-          // Track cursor position on selection changes
-          if (trs.some(tr => tr.selection)) {
-            trackCursorPosition(view);
-          }
-        },
+        state: EditorState.create({
+          doc: content || '',
+          extensions: [
+            // Critical keyboard handling (this is key for cursor movement)
+            keymap.of(defaultKeymap),
+            keymap.of(historyKeymap),
+            keymap.of([indentWithTab]),
+            
+            // Basic editor functionality
+            history(),
+            drawSelection(),
+            dropCursor(),
+            EditorState.allowMultipleSelections.of(true),
+            
+            // Visual aids
+            lineNumbers(),
+            highlightActiveLine(),
+            
+            // Basic styling
+            EditorView.theme({
+              "&": { height: "100%" },
+              ".cm-scroller": { overflow: "auto" },
+              ".cm-content": { 
+                whiteSpace: "pre-wrap",
+                caretColor: "white" // Make cursor visible
+              },
+              ".cm-cursor": {
+                borderLeftWidth: "2px",
+                borderLeftStyle: "solid",
+                borderLeftColor: "white"
+              },
+              "&.cm-editor.cm-focused": { outline: "none" }
+            }),
+            
+            // Listen for document and selection changes
+            EditorView.updateListener.of((update) => {
+              // Handle document changes
+              if (update.docChanged && onChange) {
+                onChange(update.state.doc.toString());
+              }
+              
+              // Track cursor position
+              if (update.selectionSet) {
+                trackCursorPosition(update.view);
+              }
+            }),
+            
+            // Handle scroll events
+            EditorView.domEventHandlers({
+              scroll: (event, view) => {
+                if (!view || !view.scrollDOM || isScrolling) return;
+                
+                if (onScroll) {
+                  const { scrollDOM } = view;
+                  const { scrollTop, scrollHeight, clientHeight } = scrollDOM;
+                  const maxScroll = scrollHeight - clientHeight;
+                  const scrollPercentage = maxScroll > 0 ? scrollTop / maxScroll : 0;
+                  
+                  onScroll(scrollPercentage);
+                }
+              }
+            })
+          ]
+        }),
+        parent: editorRef.current
       });
-
+      
+      // Store the view reference
       viewRef.current = view;
-      console.log('Editor view created successfully');
-
-      // DIRECT DOM MANIPULATION: Ensure the editor is properly initialized
-      // Get the ContentEditable div within the editor
-      if (view.dom) {
-        const cmContentEditable = view.dom.querySelector('.cm-content');
-        if (cmContentEditable) {
-          console.log('Found content editable element:', cmContentEditable);
-          
-          // Force contentEditable attribute to ensure it can be edited
-          cmContentEditable.setAttribute('contenteditable', 'true');
-          
-          // Remove any pointer-events restrictions
-          cmContentEditable.style.pointerEvents = 'auto';
-          
-          // Only set cursor style, leave color to CodeEditorStyle
-          cmContentEditable.style.cursor = 'text';
-          
-          // Apply critical styles to direct parent
-          view.dom.style.pointerEvents = 'auto';
-          view.dom.style.zIndex = '25'; // Higher than other elements
-          
-          // Add a click event to force focus
-          view.dom.addEventListener('click', () => {
-            cmContentEditable.focus();
-            console.log('Forced focus on content editable');
-          });
-        } else {
-          console.warn('Could not find .cm-content element in editor');
-        }
-      }
-
-      // Focus the editor after creation to ensure it's ready for input
+      
+      // Focus the editor after creation
       setTimeout(() => {
-        if (view && view.dom) {
+        if (view) {
           view.focus();
-          console.log('Editor focused');
         }
-      }, 100);
-
-      // Store initial scroll position
-      if (view.scrollDOM) {
-        view._lastScrollPosition = view.scrollDOM.scrollTop;
-      }
-
+      }, 50);
+      
+      // Cleanup on unmount
       return () => {
-        console.log('Cleaning up editor view');
         view.destroy();
         
         if (scrollTimeoutRef.current) {
@@ -644,32 +513,23 @@ const MarkdownEditor = forwardRef(({
       };
     } catch (error) {
       console.error('Error creating editor:', error);
+      initializedRef.current = false;
     }
-  }, [extensions, content, onChange, handleScrollEvents, trackCursorPosition]);
+  }, []); // Empty dependency array - only run once on mount
 
   // Update content when it changes externally
   useEffect(() => {
-    // Skip if no view or if content change originated from our component
-    if (!viewRef.current || isContentChanged) {
-      // Reset the content changed flag if it was set
-      if (isContentChanged) {
-        setIsContentChanged(false);
-      }
-      return;
-    }
+    // Skip if not initialized
+    if (!viewRef.current) return;
     
     try {
-      console.log('External content change detected, updating editor');
-      
       // Get current content from editor
       const currentDoc = viewRef.current.state.doc.toString();
       
       // Only update if content is different
       if (content !== currentDoc) {
-        console.log('Content different, updating from:', currentDoc.substring(0, 20), 'to:', (content || '').substring(0, 20));
-        
         // Save current cursor position
-        const currentPos = viewRef.current.state.selection.main.head;
+        const selection = viewRef.current.state.selection;
         
         // Create a transaction to update the document
         viewRef.current.dispatch({
@@ -678,201 +538,14 @@ const MarkdownEditor = forwardRef(({
             to: viewRef.current.state.doc.length,
             insert: content || ''
           },
-          // Try to preserve cursor position
-          selection: { anchor: Math.min(currentPos, (content || '').length) }
+          // Preserve cursor position if possible
+          selection
         });
-        
-        console.log('Editor content updated successfully');
       }
     } catch (error) {
       console.error('Error updating editor content:', error);
     }
-  }, [content, isContentChanged]);
-
-  // Add explicit event debugging
-  useEffect(() => {
-    // Skip if no view ref
-    if (!viewRef.current || !viewRef.current.dom) return;
-    
-    console.log("Setting up event debugging for editor");
-    
-    // List of events to monitor
-    const eventTypes = [
-      'click', 'mousedown', 'mouseup', 'mousemove',
-      'keydown', 'keyup', 'keypress', 
-      'focus', 'blur', 'input'
-    ];
-    
-    // Create event listeners
-    const listeners = {};
-    
-    eventTypes.forEach(eventType => {
-      listeners[eventType] = (event) => {
-        console.log(`DEBUG [${eventType}] on editor:`, {
-          target: event.target,
-          currentTarget: event.currentTarget,
-          eventPhase: event.eventPhase,
-          path: event.composedPath ? event.composedPath() : null,
-          bubbles: event.bubbles,
-          cancelable: event.cancelable,
-          defaultPrevented: event.defaultPrevented,
-          key: event.key,
-          code: event.code
-        });
-      };
-      
-      // Add listener to the editor DOM element
-      viewRef.current.dom.addEventListener(eventType, listeners[eventType], true);
-    });
-    
-    // Cleanup
-    return () => {
-      if (viewRef.current && viewRef.current.dom) {
-        eventTypes.forEach(eventType => {
-          viewRef.current.dom.removeEventListener(eventType, listeners[eventType], true);
-        });
-      }
-    };
-  }, [viewRef.current]);
-
-  // Keyboard shortcut for folding
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Check if the editor is focused or if no modal/dialog is active
-      if (!editorRef.current || !viewRef.current || isSearchOpen) return;
-      
-      // Fold/unfold on Alt+[ and Alt+]
-      if (e.altKey && e.key === '[') {
-        e.preventDefault();
-        foldCode(viewRef.current);
-      } else if (e.altKey && e.key === ']') {
-        e.preventDefault();
-        unfoldCode(viewRef.current);
-      }
-      
-      // Fold/unfold all on Ctrl+Alt+[ and Ctrl+Alt+]
-      if (e.ctrlKey && e.altKey && e.key === '[') {
-        e.preventDefault();
-        foldAll(viewRef.current);
-        setIsFolded(true);
-      } else if (e.ctrlKey && e.altKey && e.key === ']') {
-        e.preventDefault();
-        unfoldAll(viewRef.current);
-        setIsFolded(false);
-      }
-    };
-    
-    document.addEventListener('keydown', handleKeyDown);
-    
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isSearchOpen]);
-
-  // Add an effect to maintain the scroll position
-  useEffect(() => {
-    // Restore scroll position on content or editor refresh
-    if (viewRef.current && viewRef.current._lastScrollPosition) {
-      const scrollPosition = viewRef.current._lastScrollPosition;
-      
-      // Verify it's needed (might be a scroll reset)
-      if (scrollPosition > 10) { // Only restore if we were scrolled down
-        // Use setTimeout to allow the editor to render first
-        setTimeout(() => {
-          if (viewRef.current && viewRef.current.scrollDOM) {
-            viewRef.current.scrollDOM.scrollTop = scrollPosition;
-          }
-        }, 50);
-      }
-    }
-  }, [viewRef.current]);
-
-  // Add a MutationObserver to watch for changes that might affect scroll position
-  useEffect(() => {
-    if (!viewRef.current || !editorRef.current) return;
-    
-    // Create a MutationObserver to watch for changes to the editor
-    const observer = new MutationObserver(() => {
-      // Only maintain position during programmatic scrolling, not during user scrolling
-      // AND only when we have a meaningful non-zero position
-      if (inScrollSync && isScrolling && viewRef.current && viewRef.current._lastScrollPosition > 5) {
-        const lastPos = viewRef.current._lastScrollPosition;
-        // Use requestAnimationFrame to ensure this happens after the browser's rendering
-        requestAnimationFrame(() => {
-          if (viewRef.current && viewRef.current.scrollDOM) {
-            viewRef.current.scrollDOM.scrollTop = lastPos;
-          }
-        });
-      }
-    });
-    
-    // Start observing the editor
-    observer.observe(editorRef.current, {
-      childList: true,
-      subtree: true,
-      attributes: true
-    });
-    
-    return () => observer.disconnect();
-  }, [inScrollSync, isScrolling, viewRef.current, editorRef.current]);
-
-  /**
-   * Handle scroll events for the editor
-   * This is crucial for synchronizing scroll positions
-   */
-  const handleScrollEvents = useCallback(() => {
-    // Create a custom extension to handle scroll events
-    return EditorView.domEventHandlers({
-      scroll: (event, view) => {
-        if (!view || !view.scrollDOM) return;
-        
-        const scrollDOM = view.scrollDOM;
-        const currentScrollTop = scrollDOM.scrollTop;
-        
-        // Don't process scroll events if we're in a programmatic scroll
-        if (isScrolling) {
-          // Store the last scroll position (if it's not a reset to 0)
-          if (view._lastScrollPosition !== undefined && currentScrollTop > 5) {
-            const drift = Math.abs(currentScrollTop - view._lastScrollPosition);
-            
-            // If the scroll position has drifted significantly, restore it
-            if (drift > 5) {
-              console.log('Correcting scroll drift:', drift);
-              scrollDOM.scrollTop = view._lastScrollPosition;
-            }
-          }
-          return;
-        }
-        
-        // BUGFIX: Remove the block that's preventing independent scrolling
-        // This was preventing any scrolling when inScrollSync was true
-        // Instead, allow scrolling and just track position
-        
-        // For natural user scrolling, emit scroll events
-        if (onScroll && !isScrolling) {
-          const scrollHeight = scrollDOM.scrollHeight;
-          const clientHeight = scrollDOM.clientHeight;
-          const maxScroll = scrollHeight - clientHeight;
-          const scrollPercentage = maxScroll > 0 ? currentScrollTop / maxScroll : 0;
-            
-          // Only track meaningful scroll positions (not reset to 0)
-          // This prevents the editor from resetting to 0 when there are conflicts
-          if (currentScrollTop > 5 || (scrollPercentage > 0.01 && scrollHeight > 100)) {
-            // Store the last scroll position for reference
-            view._lastScrollPosition = currentScrollTop;
-            
-            // Emit scroll event with all relevant info
-            onScroll({
-              scrollTop: currentScrollTop,
-              scrollHeight,
-              clientHeight,
-              scrollPercentage
-            });
-          }
-        }
-      }
-    });
-  }, [onScroll, isScrolling, inScrollSync, scrollSource]);
+  }, [content]);
 
   // Handle programmatic scroll requests
   useEffect(() => {
@@ -899,68 +572,23 @@ const MarkdownEditor = forwardRef(({
     };
   }, [scrollTo, isScrolling]);
 
-  // Component cleanup
-  useEffect(() => {
-    return () => {
-      // Clean up any remaining timeouts on unmount
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
   return (
-    <div 
-      className={`h-full flex flex-col relative ${className} dark`}
-      onClick={(e) => {
-        if (viewRef.current) {
-          // Force focus when clicking anywhere in the editor container
-          viewRef.current.focus();
-          
-          // Attempt to position cursor at click location if possible
-          try {
-            const editorRect = viewRef.current.dom.getBoundingClientRect();
-            const pos = viewRef.current.posAtCoords({
-              x: e.clientX - editorRect.left,
-              y: e.clientY - editorRect.top
-            });
-            
-            if (pos !== null) {
-              // Set the selection to the clicked position
-              viewRef.current.dispatch({
-                selection: {anchor: pos, head: pos}
-              });
-              console.log("Cursor positioned at:", pos);
-            }
-          } catch (err) {
-            console.error("Error positioning cursor:", err);
-          }
-        }
-      }}
-      onMouseMove={() => {
-        // Focus editor on mouse movement if it's not already focused
-        if (viewRef.current && document.activeElement !== viewRef.current.dom) {
-          viewRef.current.focus();
-        }
-      }}
-    >
-      <CodeEditorStyle isDarkMode={isDarkMode()} />
+    <div className={`h-full flex flex-col relative ${className} dark`}>
+      {/* Add direct styling to fix cursor appearance */}
+      <style>{`
+        .cm-editor { height: 100%; }
+        .cm-content { caret-color: white !important; }
+        .cm-cursor { border-left: 2px solid white !important; }
+      `}</style>
+      
       <div 
         ref={editorRef} 
         className="flex-grow overflow-auto border border-surface-300 dark:border-surface-700 rounded" 
-        style={{ 
-          position: "relative", 
-          zIndex: 15, 
-          pointerEvents: "auto",
-          cursor: "text",
-          // Cursor styling variables
-          "--cursor-width": "2px",
-          "--cursor-color": "#f8f8f2" // Always use light cursor
-        }}
+        style={{ position: "relative", zIndex: 40 }}
       />
       
       {/* Folding controls */}
-      <div className="absolute top-2 left-2 flex space-x-2 z-10">
+      <div className="absolute top-2 left-2 flex space-x-2 z-50">
         <button 
           className="p-1.5 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600"
           onClick={toggleFolding}
@@ -974,13 +602,13 @@ const MarkdownEditor = forwardRef(({
       </div>
       
       {/* Cursor position indicator */}
-      <div className="absolute bottom-2 right-10 bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 px-2 py-1 rounded text-xs flex items-center z-10">
+      <div className="absolute bottom-2 right-10 bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 px-2 py-1 rounded text-xs flex items-center z-50">
         <IconCornerDownRight size={12} className="mr-1" />
         Ln {cursorPosition.line}, Col {cursorPosition.column}
       </div>
       
       <button 
-        className="absolute top-2 right-2 p-1.5 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600"
+        className="absolute top-2 right-2 p-1.5 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 z-50"
         onClick={() => setIsSearchOpen(true)}
         title="Search (Ctrl+F)"
       >
