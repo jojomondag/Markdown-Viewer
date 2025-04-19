@@ -141,42 +141,62 @@ const FileExplorer = ({
   // Flatten the file/folder structure for keyboard navigation
   const getFlattenedItems = () => {
     const items = [];
-    
+    const addedPaths = new Set(); // Prevent adding duplicates if structure is complex
+
     // Helper function to recursively add items with their levels
-    const addItems = (folders, files, level = 0, parentPath = null) => {
-      // Sort folders first based on the sorting criteria
-      const sortedFolders = [...folders].filter(f => parentPath === null ? !folders.some(pf => f.path.startsWith(pf.path) && f.path !== pf.path) : path.dirname(f.path) === parentPath);
-      sortItems(sortedFolders, 'folder');
+    const addItemsRecursive = (currentFolders, currentFiles, level = 0, parentPath = null) => {
       
-      // Add folders first
-      sortedFolders.forEach(folder => {
-        const isExpanded = expandedFolders[folder.path] || false;
-        items.push({ ...folder, type: 'folder', level, parentPath });
-        
-        // If folder is expanded, add its children
-        if (isExpanded) {
-          const childFolders = folders.filter(f => path.dirname(f.path) === folder.path);
-          const childFiles = files.filter(f => path.dirname(f.path) === folder.path);
-          addItems(childFolders, childFiles, level + 1, folder.path);
+      // Filter and sort folders for the current level
+      const foldersForLevel = currentFolders.filter(f => {
+        // Determine the expected parent path based on the current parentPath
+        const folderParentPath = path.dirname(f.path);
+        if (parentPath === null) {
+          // Top level: Parent directory should not be within any *other* listed folder's path
+           return !currentFolders.some(pf => pf.path !== f.path && folderParentPath.startsWith(pf.path));
+        } else {
+          // Nested level: Parent directory must match the parentPath passed in
+          return folderParentPath === parentPath;
         }
       });
-      
-      // Sort and add files
-      const relevantFiles = files.filter(file => !parentPath || path.dirname(file.path) === parentPath);
-      sortItems(relevantFiles, 'file');
-      
-      // Add files
-      relevantFiles.forEach(file => {
+      sortItems(foldersForLevel, 'folder');
+
+      foldersForLevel.forEach(folder => {
+        if (addedPaths.has(folder.path)) return; // Skip if already added
+        
+        const isExpanded = expandedFolders[folder.path] || false;
+        items.push({ ...folder, type: 'folder', level, parentPath });
+        addedPaths.add(folder.path);
+
+        // If folder is expanded, recursively add its children
+        if (isExpanded) {
+          // Pass the *original, complete* lists for filtering at the next level
+          addItemsRecursive(folders, files, level + 1, folder.path); 
+        }
+      });
+
+      // Filter and sort files for the current level
+      const filesForLevel = currentFiles.filter(file => {
+        const fileParentPath = path.dirname(file.path);
+         if (parentPath === null) {
+           // Top level: Parent directory should not be within *any* listed folder's path
+           return !currentFolders.some(f => fileParentPath.startsWith(f.path));
+         } else {
+           // Nested level: Parent directory must match the parentPath passed in
+           return fileParentPath === parentPath;
+         }
+      });
+      sortItems(filesForLevel, 'file');
+
+      filesForLevel.forEach(file => {
+         if (addedPaths.has(file.path)) return; // Skip if already added
         items.push({ ...file, type: 'file', level, parentPath });
+        addedPaths.add(file.path);
       });
     };
-    
-    // Start with top-level items
-    const topLevelFolders = folders.filter(folder => !folders.some(f => folder.path.startsWith(f.path) && folder.path !== f.path));
-    const topLevelFiles = files.filter(file => !folders.some(folder => file.path.startsWith(folder.path)));
-    
-    addItems(topLevelFolders, topLevelFiles);
-    
+
+    // Start the recursion with the full lists at the top level (parentPath = null)
+    addItemsRecursive(folders, files, 0, null);
+
     return items;
   };
   
@@ -536,8 +556,12 @@ const FileExplorer = ({
   ];
 
   // Group files and folders by top-level directory
-  const topLevelFolders = folders.filter(folder => !folders.some(f => folder.path.startsWith(f.path) && folder.path !== f.path));
-  const topLevelFiles = files.filter(file => !folders.some(folder => file.path.startsWith(folder.path)));
+  const topLevelFolders = folders.filter(folder => 
+    !folders.some(f => folder.path !== f.path && folder.path.startsWith(f.path))
+  );
+  const topLevelFiles = files.filter(file => 
+    !folders.some(folder => file.path.startsWith(folder.path))
+  );
 
   // Root level menu items (displayed when right-clicking on empty space)
   const rootMenuItems = [

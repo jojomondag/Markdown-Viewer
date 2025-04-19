@@ -137,28 +137,38 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
     const files = [];
     const folders = [];
     
-    const items = await fs.promises.readdir(folderPath, { withFileTypes: true });
-    
-    for (const item of items) {
-      const itemPath = path.join(folderPath, item.name);
+    // Recursive function to scan directories
+    async function scanRecursively(currentPath, isRootLevel = false) {
+      const items = await fs.promises.readdir(currentPath, { withFileTypes: true });
       
-      if (item.isDirectory()) {
-        folders.push({
-          name: item.name,
-          path: itemPath,
-          type: 'folder'
-        });
-      } else if (item.isFile() && item.name.endsWith('.md')) {
-        const stats = await fs.promises.stat(itemPath);
-        files.push({
-          name: item.name,
-          path: itemPath,
-          type: 'file',
-          size: stats.size,
-          lastModified: stats.mtime
-        });
+      for (const item of items) {
+        const itemPath = path.join(currentPath, item.name);
+        
+        if (item.isDirectory()) {
+          // Add this folder to our list
+          folders.push({
+            name: item.name,
+            path: itemPath,
+            type: 'folder'
+          });
+          
+          // Recursively scan this directory
+          await scanRecursively(itemPath);
+        } else if (item.isFile() && item.name.endsWith('.md')) {
+          const stats = await fs.promises.stat(itemPath);
+          files.push({
+            name: item.name,
+            path: itemPath,
+            type: 'file',
+            size: stats.size,
+            lastModified: stats.mtime
+          });
+        }
       }
     }
+    
+    // Start recursive scan
+    await scanRecursively(folderPath, true);
     
     return { files, folders };
   } catch (error) {
