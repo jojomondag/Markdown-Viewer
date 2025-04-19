@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { IconFileText, IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconMaximize, IconPrinter, IconSort, IconSortAscending, IconSortDescending, IconAbc, IconCalendar, IconFileTypography, IconChevronDown } from '@tabler/icons-react';
+import { IconFileText, IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconMaximize, IconPrinter, IconSort, IconSortAscending, IconSortDescending } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/FileExplorer';
 import FileHistory from './components/FileHistory';
-import MarkdownEditor from './components/MarkdownEditor';
 import TestEditor from './components/TestEditor';
 import MarkdownPreview from './components/MarkdownPreview';
 import SidebarTabs from './components/SidebarTabs';
@@ -18,7 +17,7 @@ import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import useFiles from './hooks/useFiles';
-import { registerGlobalShortcuts, KEYBOARD_SHORTCUTS, formatShortcut } from './utils/keyboardShortcuts';
+import { registerGlobalShortcuts, KEYBOARD_SHORTCUTS } from './utils/keyboardShortcuts';
 import useNotification from './hooks/useNotification';
 import { useSettings } from './context/SettingsContext';
 import EditorTabs from './components/EditorTabs';
@@ -249,7 +248,16 @@ function App() {
     });
     
     return unregister;
-  }, [content, currentFile, saveFile, openAndScanFolder, explorerSortBy, explorerSortDirection, handleExplorerSortChange, showInfo]);
+  }, [
+    content, 
+    currentFile, 
+    saveFile, 
+    openAndScanFolder, 
+    explorerSortBy, 
+    explorerSortDirection, 
+    handleExplorerSortChange, 
+    showInfo
+  ]);
 
   // Update isMobile state when window size changes
   useEffect(() => {
@@ -302,21 +310,26 @@ function App() {
 
   // Update loading states
   useEffect(() => {
-    // Use refs to track previous values to prevent unnecessary rerenders
-    if (prevLoadingRef.current !== loading || prevCurrentFileRef.current !== currentFile) {
-      setLoading('files', loading);
-      setLoading('content', loading && !!currentFile);
-      
-      // Update refs
-      prevLoadingRef.current = loading;
-      prevCurrentFileRef.current = currentFile;
+    // Skip if nothing has changed
+    if (prevLoadingRef.current === loading && prevCurrentFileRef.current === currentFile) {
+      return;
     }
+    
+    // Update app state only when loading or currentFile actually changes
+    setLoading('files', loading);
+    setLoading('content', loading && !!currentFile);
+    
+    // Update refs
+    prevLoadingRef.current = loading;
+    prevCurrentFileRef.current = currentFile;
   }, [loading, currentFile, setLoading]);
   
-  // Track unsaved changes
+  // Track unsaved changes in app state
   useEffect(() => {
-    if (currentFile) {
-      // Compare current content with previous content to determine if there are changes
+    // Skip effect if loading
+    if (loading) return;
+    
+    if (currentFile && content) {
       // Only update state if content has actually changed
       if (content !== previousContentRef.current) {
         setUnsavedChanges(true);
@@ -331,11 +344,12 @@ function App() {
           return () => clearTimeout(timer);
         }
       }
-    } else {
+    } else if (previousContentRef.current !== '') {
+      // Only reset when necessary to avoid unnecessary state updates
       setUnsavedChanges(false);
       previousContentRef.current = '';
     }
-  }, [content, currentFile, setUnsavedChanges, settings.editor.autoSave, settings.editor.autoSaveInterval]);
+  }, [content, currentFile, loading, settings.editor.autoSave, settings.editor.autoSaveInterval, setUnsavedChanges]);
   
   // Update app state with sidebar tab changes
   const handleSidebarTabChange = (tabId) => {
@@ -752,8 +766,8 @@ function App() {
     }, 500);
   }, [showInfo]);
 
-  // Add handler for sort changes
-  const handleExplorerSortChange = (sortBy, direction) => {
+  // Add handler for sort changes - memoize it with useCallback to prevent infinite loop
+  const handleExplorerSortChange = useCallback((sortBy, direction) => {
     setExplorerSortBy(sortBy);
     setExplorerSortDirection(direction);
     
@@ -762,25 +776,7 @@ function App() {
       explorerSortBy: sortBy,
       explorerSortDirection: direction
     });
-  };
-
-  // Add a state for the file menu dropdown
-  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
-  const fileMenuRef = useRef(null);
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (fileMenuRef.current && !fileMenuRef.current.contains(event.target)) {
-        setIsFileMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+  }, [updatePreferences]);
 
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
@@ -819,100 +815,6 @@ function App() {
           </div>
           
           <div className="w-1/3 flex items-center justify-end space-x-1 md:space-x-2">
-            <div className="relative" ref={fileMenuRef}>
-              <button 
-                className="p-1 md:p-2 rounded hover:bg-primary-600 dark:hover:bg-primary-700 flex items-center"
-                onClick={() => setIsFileMenuOpen(!isFileMenuOpen)}
-                title="File Menu"
-              >
-                <span className="mr-1 hidden md:inline">File</span>
-                <IconChevronDown size={isMobile ? 18 : 20} />
-              </button>
-              {isFileMenuOpen && (
-                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-surface-800 rounded shadow-lg z-50 text-surface-900 dark:text-surface-100">
-                  <div className="py-1">
-                    <div className="px-4 py-2 text-xs font-semibold text-surface-500 dark:text-surface-400">
-                      Sort Files
-                    </div>
-                    <button 
-                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700 
-                        ${explorerSortBy === 'name' ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
-                      onClick={() => {
-                        handleExplorerSortChange('name', explorerSortDirection);
-                        setIsFileMenuOpen(false);
-                      }}
-                    >
-                      <IconAbc size={16} className="mr-2" />
-                      <span>By Name</span>
-                      {explorerSortBy === 'name' && (
-                        <span className="ml-auto">
-                          {explorerSortDirection === 'asc' ? 
-                            <IconSortAscending size={16} /> : 
-                            <IconSortDescending size={16} />
-                          }
-                        </span>
-                      )}
-                    </button>
-                    <button 
-                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700 
-                        ${explorerSortBy === 'type' ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
-                      onClick={() => {
-                        handleExplorerSortChange('type', explorerSortDirection);
-                        setIsFileMenuOpen(false);
-                      }}
-                    >
-                      <IconFileTypography size={16} className="mr-2" />
-                      <span>By Type</span>
-                      {explorerSortBy === 'type' && (
-                        <span className="ml-auto">
-                          {explorerSortDirection === 'asc' ? 
-                            <IconSortAscending size={16} /> : 
-                            <IconSortDescending size={16} />
-                          }
-                        </span>
-                      )}
-                    </button>
-                    <button 
-                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700 
-                        ${explorerSortBy === 'date' ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
-                      onClick={() => {
-                        handleExplorerSortChange('date', explorerSortDirection);
-                        setIsFileMenuOpen(false);
-                      }}
-                    >
-                      <IconCalendar size={16} className="mr-2" />
-                      <span>By Date</span>
-                      {explorerSortBy === 'date' && (
-                        <span className="ml-auto">
-                          {explorerSortDirection === 'asc' ? 
-                            <IconSortAscending size={16} /> : 
-                            <IconSortDescending size={16} />
-                          }
-                        </span>
-                      )}
-                    </button>
-                    <div className="border-t border-surface-200 dark:border-surface-700 my-1"></div>
-                    <button 
-                      className="flex items-center px-4 py-2 text-sm w-full text-left hover:bg-surface-100 dark:hover:bg-surface-700"
-                      onClick={() => {
-                        handleExplorerSortChange(explorerSortBy, explorerSortDirection === 'asc' ? 'desc' : 'asc');
-                        setIsFileMenuOpen(false);
-                      }}
-                      title={formatShortcut(KEYBOARD_SHORTCUTS.TOGGLE_SORT_DIRECTION)}
-                    >
-                      {explorerSortDirection === 'asc' ? 
-                        <IconSortAscending size={16} className="mr-2" /> : 
-                        <IconSortDescending size={16} className="mr-2" />
-                      }
-                      <span>Toggle Sort Direction</span>
-                      <span className="ml-auto text-xs text-surface-500 dark:text-surface-400">
-                        {formatShortcut(KEYBOARD_SHORTCUTS.TOGGLE_SORT_DIRECTION)}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
             <ThemeToggle />
             <button 
               className="p-1 md:p-2 rounded hover:bg-primary-600 dark:hover:bg-primary-700"

@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { 
   IconFolder, 
-  IconFile, 
-  IconChevronRight, 
-  IconChevronDown,
+  IconFile,
   IconTrash,
   IconCopy,
   IconEdit,
-  IconDownload,
   IconFolderPlus,
   IconFilePlus,
   IconFolderOpen,
-  IconArrowsMove,
   IconSortAscending,
   IconSortDescending,
   IconAbc,
@@ -22,12 +18,11 @@ import path from 'path-browserify';
 import { ContextMenu } from './ui/context-menu';
 import useNotification from '../hooks/useNotification';
 import { announceToScreenReader } from './AccessibilityHelper';
-import { isElectron } from '../utils/environment';
-import { isValidDrop, createDropDestination } from '../utils/fileOperations';
+import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
 
 // Memoize FileItem to prevent unnecessary re-renders
-const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, showInfo, showError, setSelectedItem, onContextMenu }) => {
+const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextMenu }) => {
   const isActive = currentFilePath === file.path;
   
   return (
@@ -413,7 +408,7 @@ const FileExplorer = ({
         fileExplorerRef.current.removeEventListener('keydown', handleKeyDown);
       }
     };
-  }, [expandedFolders, focusedItem, flattenedItems, folders, onFileSelect, showInfo, showError]);
+  }, [expandedFolders, focusedItem, flattenedItems, folders, onFileSelect, showError]);
 
   const toggleFolder = (folderPath) => {
     setExpandedFolders(prev => ({
@@ -779,9 +774,6 @@ const FileExplorer = ({
                       file={item}
                       currentFilePath={currentFilePath}
                       onFileSelect={onFileSelect}
-                      showInfo={showInfo}
-                      showError={showError}
-                      setSelectedItem={setFocusedItem}
                       onContextMenu={handleContextMenu}
                     />
                   ) : (

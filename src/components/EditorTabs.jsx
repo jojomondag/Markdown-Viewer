@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { IconX, IconPlus, IconDotsVertical } from '@tabler/icons-react';
-import { useAppState } from '../context/AppStateContext';
 import useNotification from '../hooks/useNotification';
 
 const EditorTabs = ({ 
