@@ -920,7 +920,7 @@ function App() {
                   />
                 </div>
                 
-                <div className="toolbar-container mt-2">
+                <div className="toolbar-container">
                   <MarkdownToolbar 
                     onAction={handleToolbarAction} 
                     onUndo={handleUndo}

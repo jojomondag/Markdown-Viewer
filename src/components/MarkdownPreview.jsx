@@ -644,7 +644,6 @@ const MarkdownPreview = forwardRef(({
         .image-container figcaption {
           text-align: center;
           font-style: italic;
-          margin-top: 0.5rem;
         }
         
         .image-container.expanded figcaption {
