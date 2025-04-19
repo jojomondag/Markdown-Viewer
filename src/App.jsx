@@ -324,20 +324,39 @@ function App() {
     }
   }, [currentFile]);
 
+  // Safety timeout to prevent infinite loading
+  useEffect(() => {
+    if (loading) {
+      // If loading takes more than 10 seconds, reset it
+      const safetyTimeout = setTimeout(() => {
+        if (loading) {
+          console.warn('Loading timeout reached - forcing reset');
+          setLoading('files', false);
+          setLoading('content', false);
+          prevLoadingRef.current = false;
+        }
+      }, 10000); // 10 seconds timeout
+      
+      return () => clearTimeout(safetyTimeout);
+    }
+  }, [loading, setLoading]);
+  
   // Update loading states
   useEffect(() => {
-    // Skip if nothing has changed
+    // Skip loading state update if nothing changed
     if (prevLoadingRef.current === loading && prevCurrentFileRef.current === currentFile) {
       return;
     }
     
-    // Update app state only when loading or currentFile actually changes
-    setLoading('files', loading);
-    setLoading('content', loading && !!currentFile);
+    // Always update app state when loading changes from true to false (loading complete)
+    // Only conditionally update when loading starts to prevent losing selection
+    if (!loading || !currentFile || (loading && !prevLoadingRef.current)) {
+      setLoading('files', loading);
+      setLoading('content', loading && !!currentFile);
+    }
     
-    // Update refs
-    prevLoadingRef.current = loading;
     prevCurrentFileRef.current = currentFile;
+    prevLoadingRef.current = loading;
   }, [loading, currentFile, setLoading]);
   
   // Track unsaved changes in app state
@@ -706,8 +725,8 @@ function App() {
     
     const newPath = createDropDestination(sourceItem, targetItem);
     
-    // Simulate moving file
-    setFileOperationStatus({ type: 'moving', source: sourceItem.path, target: newPath });
+    // Don't show loading indicator as it causes UI refresh and selection loss
+    // setFileOperationStatus({ type: 'moving', source: sourceItem.path, target: newPath });
     
     // In a real app, you would perform actual file operations here
     setTimeout(() => {
@@ -777,7 +796,7 @@ function App() {
         });
       }
       
-      setFileOperationStatus(null);
+      // setFileOperationStatus(null);
       showInfo(`Moved ${sourceItem.name} to ${path.basename(newPath)}`, 'success');
     }, 500);
   }, [showInfo]);
@@ -872,7 +891,7 @@ function App() {
             
             <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
               <SidebarTabs.Pane id="files">
-                <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent>
+                <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
                   {error && (
                     <div className="p-4 text-sm text-error-500 bg-error-100 dark:bg-error-900/20 border-l-4 border-error-500 mb-2">
                       Error: {error}
@@ -956,7 +975,7 @@ function App() {
                     zIndex: 30 // Increase z-index to ensure it's above other elements
                   }}
                 >
-                  {state.loading.content && (
+                  {state.loading.content && !forcingScrollRef.current && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm z-50 pointer-events-none">
                       <div className="pointer-events-none">
                         <LoadingSpinner />
@@ -1044,7 +1063,7 @@ function App() {
                   </div>
                 </div>
                 <div className="preview-container flex-grow overflow-hidden">
-                  <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent>
+                  <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
                     <MarkdownPreview 
                       ref={previewRef}
                       content={content}

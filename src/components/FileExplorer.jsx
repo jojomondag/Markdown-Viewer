@@ -159,7 +159,17 @@ const FileExplorer = ({
   sortDirection: externalSortDirection,
   onSortChange
 }) => {
-  const [expandedFolders, setExpandedFolders] = useState({});
+  // Load expanded folders from localStorage
+  const [expandedFolders, setExpandedFolders] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fileExplorer_expandedFolders');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      console.error('Error loading expanded folders from localStorage', e);
+      return {};
+    }
+  });
+  
   const [contextMenu, setContextMenu] = useState({
     show: false,
     x: 0,
@@ -177,6 +187,50 @@ const FileExplorer = ({
   // Use external sort props if provided
   const [sortBy, setSortBy] = useState(externalSortBy || 'name'); 
   const [sortDirection, setSortDirection] = useState(externalSortDirection || 'asc');
+
+  // Save expanded folders to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('fileExplorer_expandedFolders', JSON.stringify(expandedFolders));
+    } catch (e) {
+      console.error('Error saving expanded folders to localStorage', e);
+    }
+  }, [expandedFolders]);
+
+  // Save currentFilePath to localStorage whenever it changes
+  useEffect(() => {
+    if (currentFilePath) {
+      try {
+        localStorage.setItem('fileExplorer_selectedFile', currentFilePath);
+      } catch (e) {
+        console.error('Error saving selected file to localStorage', e);
+      }
+    }
+  }, [currentFilePath]);
+
+  // Restore selected file on component mount
+  useEffect(() => {
+    const savedFilePath = localStorage.getItem('fileExplorer_selectedFile');
+    if (savedFilePath && files.length > 0 && !currentFilePath) {
+      const fileToSelect = files.find(file => file.path === savedFilePath);
+      if (fileToSelect) {
+        // Ensure parent folders are expanded
+        expandParentFolders(savedFilePath);
+        onFileSelect(fileToSelect);
+      }
+    }
+  }, [files, onFileSelect, currentFilePath]);
+
+  // Scroll selected file into view when it changes
+  useEffect(() => {
+    if (currentFilePath) {
+      const refKey = `file-${currentFilePath}`;
+      const element = itemRefs.current[refKey];
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [currentFilePath]);
 
   // Update local state when external props change
   useEffect(() => {
@@ -766,6 +820,40 @@ const FileExplorer = ({
     }
   };
 
+  // Function to expand parent folders of a given path
+  const expandParentFolders = (filePath) => {
+    if (!filePath) return;
+    
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const dirPath = path.dirname(normalizedPath);
+    
+    // Don't expand if it's the root
+    if (dirPath === '.' || dirPath === '/') return;
+    
+    // Create a new expandedFolders object to avoid mutation during the loop
+    const newExpandedFolders = { ...expandedFolders };
+    
+    // Find all parent folders that need to be expanded
+    let currentDir = dirPath;
+    while (currentDir && currentDir !== '.' && currentDir !== '/') {
+      // Check if this folder exists in our folders list
+      const folderExists = folders.some(folder => folder.path === currentDir);
+      if (folderExists) {
+        newExpandedFolders[currentDir] = true;
+      }
+      currentDir = path.dirname(currentDir);
+    }
+    
+    setExpandedFolders(newExpandedFolders);
+  };
+
+  // When currentFilePath changes, ensure parent folders are expanded
+  useEffect(() => {
+    if (currentFilePath) {
+      expandParentFolders(currentFilePath);
+    }
+  }, [currentFilePath, folders]);
+
   return (
     <div 
       ref={fileExplorerRef}
@@ -857,7 +945,7 @@ const FileExplorer = ({
               return (
                 <div 
                   key={item.path}
-                  ref={el => itemRefs.current[refKey] = el}
+                  ref={el => itemRefs.current[`${item.type}-${item.path}`] = el}
                   tabIndex={0}
                   onFocus={() => handleFocus(item)}
                   draggable
@@ -865,7 +953,7 @@ const FileExplorer = ({
                   onDragOver={e => handleDragOver(e, item)}
                   onDragLeave={handleDragLeave}
                   onDrop={e => handleDrop(e, item)}
-                  className={`${dragOverItem && dragOverItem.path === item.path ? 'bg-primary-100 dark:bg-primary-900' : ''}`}
+                  className={`${dragOverItem && dragOverItem.path === item.path ? 'bg-primary-100 dark:bg-primary-900' : ''} ${currentFilePath === item.path ? 'file-selected bg-primary-50 dark:bg-primary-800' : ''} transition-all duration-200`}
                   style={{ position: 'relative', minHeight: '24px' }}
                 >
                   {item.type === 'file' ? (
