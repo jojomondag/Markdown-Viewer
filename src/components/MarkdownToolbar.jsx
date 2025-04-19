@@ -9,11 +9,13 @@ import {
   IconBlockquote,
   IconTable,
   IconHeading,
-  IconPhoto
+  IconPhoto,
+  IconArrowBackUp,
+  IconArrowForwardUp
 } from '@tabler/icons-react';
 import { getShortcutTooltip } from '../utils/keyboardShortcuts';
 
-const MarkdownToolbar = ({ onAction }) => {
+const MarkdownToolbar = ({ onAction, onUndo, onRedo }) => {
   const tools = [
     { 
       id: 'heading', 
@@ -86,6 +88,24 @@ const MarkdownToolbar = ({ onAction }) => {
 
   return (
     <div className="markdown-toolbar flex items-center space-x-1 p-1 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 relative z-5">
+      <button
+        title={`Undo ${getShortcutTooltip('UNDO')}`}
+        onClick={onUndo}
+        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+      >
+        <IconArrowBackUp size={18} />
+      </button>
+
+      <button
+        title={`Redo ${getShortcutTooltip('REDO')}`}
+        onClick={onRedo}
+        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+      >
+        <IconArrowForwardUp size={18} />
+      </button>
+      
+      <div className="h-4 w-px bg-surface-300 dark:bg-surface-700 mx-1"></div>
+
       {tools.map((tool) => (
         <button
           key={tool.id}

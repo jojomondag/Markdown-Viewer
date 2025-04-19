@@ -16,7 +16,8 @@ import {
   defaultKeymap, 
   history, 
   historyKeymap, 
-  indentWithTab
+  indentWithTab,
+  undo, redo
 } from '@codemirror/commands';
 
 // REPLACED: We won't use the actual markdown parser since it's causing errors
@@ -301,6 +302,18 @@ const MarkdownEditor = forwardRef(({
     unfoldCurrent: () => {
       if (viewRef.current) {
         unfoldCode(viewRef.current);
+      }
+    },
+
+    // Expose undo/redo functions
+    undo: () => {
+      if (viewRef.current) {
+        undo(viewRef.current);
+      }
+    },
+    redo: () => {
+      if (viewRef.current) {
+        redo(viewRef.current);
       }
     },
   }));

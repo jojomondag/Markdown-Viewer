@@ -215,6 +215,19 @@ function App() {
     updateContent(newText);
   };
 
+  // Add Undo/Redo handlers
+  const handleUndo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.undo();
+    }
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.redo();
+    }
+  }, []);
+
   // Register keyboard shortcuts
   useEffect(() => {
     const unregister = registerGlobalShortcuts({
@@ -245,6 +258,10 @@ function App() {
         handleExplorerSortChange(explorerSortBy, newDirection);
         showInfo(`Sorting ${newDirection === 'asc' ? 'ascending' : 'descending'}`);
       },
+
+      // Add Undo/Redo shortcuts
+      UNDO: handleUndo,
+      REDO: handleRedo,
     });
     
     return unregister;
@@ -256,7 +273,9 @@ function App() {
     explorerSortBy, 
     explorerSortDirection, 
     handleExplorerSortChange, 
-    showInfo
+    showInfo,
+    handleUndo,
+    handleRedo
   ]);
 
   // Update isMobile state when window size changes
@@ -923,7 +942,11 @@ function App() {
                 </div>
                 
                 <div className="toolbar-container mt-2">
-                  <MarkdownToolbar onAction={handleToolbarAction} />
+                  <MarkdownToolbar 
+                    onAction={handleToolbarAction} 
+                    onUndo={handleUndo}
+                    onRedo={handleRedo}
+                  />
                 </div>
                 
                 {/* EDITOR CONTAINER: Restructured to ensure proper input handling */}
