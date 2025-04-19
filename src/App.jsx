@@ -869,7 +869,8 @@ function App() {
                   {files.length > 0 || folders.length > 0 ? (
                     <FileExplorer 
                       files={files} 
-                      folders={folders} 
+                      folders={folders}
+                      currentFolder={currentFolder}
                       onFileSelect={openFile} 
                       onCreateFile={handleNewTab}
                       onCreateFolder={handleNewTab}

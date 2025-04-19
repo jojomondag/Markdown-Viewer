@@ -84,11 +84,12 @@ const MemoizedFolderItem = memo(({
   onContextMenu,
   isLastChild
 }) => {
+  const isRoot = folder.isRoot === true;
   const isExpanded = expandedFolders[folder.path] || false;
   
   return (
     <div 
-      className={`folder-item ${isExpanded ? 'expanded' : ''}`}
+      className={`folder-item ${isExpanded ? 'expanded' : ''} ${isRoot ? 'root-folder' : ''}`}
       style={{ 
         paddingLeft: `${depth * 16}px`,
         display: 'flex', 
@@ -143,7 +144,8 @@ const MemoizedFolderItem = memo(({
 
 const FileExplorer = ({ 
   files, 
-  folders, 
+  folders,
+  currentFolder,
   onFileSelect, 
   onDeleteFile, 
   onRenameFile, 
@@ -194,6 +196,24 @@ const FileExplorer = ({
       console.error('Error saving expanded folders to localStorage', e);
     }
   }, [expandedFolders]);
+
+  // Add some CSS for the root folder
+  useEffect(() => {
+    const styleEl = document.createElement('style');
+    styleEl.textContent = `
+      .folder-item.root-folder .folder-icon svg {
+        color: var(--color-primary-500);
+      }
+      .folder-item.root-folder {
+        font-weight: 500;
+      }
+    `;
+    document.head.appendChild(styleEl);
+    
+    return () => {
+      document.head.removeChild(styleEl);
+    };
+  }, []);
 
   // Save currentFilePath to localStorage whenever it changes
   useEffect(() => {
@@ -254,6 +274,27 @@ const FileExplorer = ({
     // Get all folder paths in normalized form
     const normalizedFolderPaths = folders.map(f => normalizePath(f.path));
 
+    // Create the root folder if it exists
+    const rootFolderItem = currentFolder ? {
+      name: path.basename(currentFolder),
+      path: currentFolder,
+      type: 'folder',
+      level: 0,
+      parentPath: null,
+      isRoot: true
+    } : null;
+
+    // Add the root folder as the first item if available
+    if (rootFolderItem) {
+      items.push(rootFolderItem);
+      addedPaths.add(normalizePath(rootFolderItem.path));
+    }
+
+    // Skip adding children if root folder is collapsed
+    if (rootFolderItem && !expandedFolders[rootFolderItem.path]) {
+      return items; // Return only the root folder if it's collapsed
+    }
+
     // Helper function to recursively add items with their levels
     const addItemsRecursive = (currentFolders, currentFiles, level = 0, parentPath = null) => {
       const normalizedParentPath = parentPath ? normalizePath(parentPath) : null;
@@ -265,8 +306,15 @@ const FileExplorer = ({
         // Determine the expected parent path based on the current parentPath
         const folderParentPath = path.dirname(normalizedFolderPath);
         
-        if (normalizedParentPath === null) {
-          // Top level: Parent directory should not be within any *other* listed folder's path
+        // If there's a root folder and we're at the top level, folders should have the root as parent
+        if (normalizedParentPath === null && rootFolderItem) {
+          if (normalizedFolderPath === normalizePath(rootFolderItem.path)) {
+            return false; // Skip the root folder itself
+          }
+          // For top level with root folder, check if it's a direct child of the root
+          return folderParentPath === normalizePath(rootFolderItem.path);
+        } else if (normalizedParentPath === null) {
+          // Top level without root: Parent directory should not be within any *other* listed folder's path
           return !currentFolders.some(pf => {
             if (pf.path === f.path) return false; // Skip comparing with self
             const normalizedPfPath = normalizePath(pf.path);
@@ -285,13 +333,18 @@ const FileExplorer = ({
         if (addedPaths.has(normalizedFolderPath)) return; // Skip if already added
         
         const isExpanded = expandedFolders[folder.path] || false;
-        items.push({ ...folder, type: 'folder', level, parentPath });
+        items.push({ 
+          ...folder, 
+          type: 'folder', 
+          level: rootFolderItem ? level + 1 : level, // Adjust level if we have a root folder 
+          parentPath: parentPath || (rootFolderItem ? rootFolderItem.path : null)
+        });
         addedPaths.add(normalizedFolderPath);
 
         // If folder is expanded, recursively add its children
         if (isExpanded) {
           // Pass the *original, complete* lists for filtering at the next level
-          addItemsRecursive(folders, files, level + 1, folder.path); 
+          addItemsRecursive(folders, files, rootFolderItem ? level + 1 : level, folder.path); 
         }
       });
 
@@ -304,8 +357,11 @@ const FileExplorer = ({
           // Get the direct parent directory of the file
           const fileParentDir = path.dirname(normalizedFilePath);
           
-          if (normalizedParentPath === null) {
-            // Root level: Include files that aren't in any folder
+          // If there's a root folder and we're at the top level, files should have the root as parent
+          if (normalizedParentPath === null && rootFolderItem) {
+            return fileParentDir === normalizePath(rootFolderItem.path);
+          } else if (normalizedParentPath === null) {
+            // Root level without root folder: Include files that aren't in any folder
             return !normalizedFolderPaths.some(folderPath => 
               fileParentDir === folderPath || fileParentDir.startsWith(folderPath + '/')
             );
@@ -319,13 +375,18 @@ const FileExplorer = ({
         filesForLevel.forEach(file => {
           const normalizedFilePath = normalizePath(file.path);
           if (addedPaths.has(normalizedFilePath)) return; // Skip if already added
-          items.push({ ...file, type: 'file', level, parentPath });
+          items.push({ 
+            ...file, 
+            type: 'file', 
+            level: rootFolderItem ? level + 1 : level, // Adjust level if we have a root folder
+            parentPath: parentPath || (rootFolderItem ? rootFolderItem.path : null)
+          });
           addedPaths.add(normalizedFilePath);
         });
       }
     };
 
-    // Start the recursion with the full lists at the top level (parentPath = null)
+    // Start the recursion with the full lists at the top level
     addItemsRecursive(folders, files, 0, null);
 
     return items;
@@ -677,6 +738,29 @@ const FileExplorer = ({
     !folders.some(folder => file.path.startsWith(folder.path))
   );
 
+  // Get the root folder path (common parent of all top-level folders)
+  const rootFolderPath = useMemo(() => {
+    if (topLevelFolders.length > 0) {
+      // Extract the parent directory from the first top-level folder
+      const firstPath = topLevelFolders[0].path;
+      return path.dirname(firstPath);
+    }
+    return null;
+  }, [topLevelFolders]);
+
+  // Create a root folder object from the current folder prop
+  const rootFolder = useMemo(() => {
+    if (currentFolder) {
+      return {
+        name: path.basename(currentFolder),
+        path: currentFolder,
+        type: 'folder',
+        isRoot: true
+      };
+    }
+    return null;
+  }, [currentFolder]);
+
   // Root level menu items (displayed when right-clicking on empty space)
   const rootMenuItems = [
     { 
@@ -820,6 +904,17 @@ const FileExplorer = ({
     }
   }, [currentFilePath, folders]);
 
+  // Expand the root folder when currentFolder changes (only when it's first set)
+  useEffect(() => {
+    if (currentFolder && !expandedFolders[currentFolder] && Object.keys(expandedFolders).length === 0) {
+      // Only auto-expand if expandedFolders is empty (first time adding a folder)
+      setExpandedFolders(prev => ({
+        ...prev,
+        [currentFolder]: true
+      }));
+    }
+  }, [currentFolder]);
+
   return (
     <div 
       ref={fileExplorerRef}
@@ -897,7 +992,7 @@ const FileExplorer = ({
       
       {/* File and folder listing */}
       <div className="file-explorer-content p-1" style={{ position: 'relative' }}>
-        {topLevelFolders.length === 0 && topLevelFiles.length === 0 ? (
+        {topLevelFolders.length === 0 && topLevelFiles.length === 0 && !currentFolder ? (
           <div className="p-4 text-surface-500 dark:text-surface-400 text-sm text-center">
             No files or folders to display
           </div>
