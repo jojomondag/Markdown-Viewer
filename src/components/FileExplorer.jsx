@@ -1163,7 +1163,7 @@ const FileExplorer = ({
   return (
     <div 
       ref={fileExplorerRef}
-      className="file-explorer overflow-auto max-h-full relative"
+      className="file-explorer overflow-auto h-full flex flex-col"
       onContextMenu={(e) => {
         // Only show root context menu if clicking on the empty area
         if (e.target === e.currentTarget) {
@@ -1183,7 +1183,7 @@ const FileExplorer = ({
       }}
     >
       {/* Sort controls */}
-      <div className="file-explorer-toolbar bg-surface-200 dark:bg-surface-700 p-2 border-b border-surface-300 dark:border-surface-600 flex items-center justify-between">
+      <div className="file-explorer-toolbar bg-surface-200 dark:bg-surface-700 p-2 border-b border-surface-300 dark:border-surface-600 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-1">
           <span className="text-xs text-surface-600 dark:text-surface-400 mr-1">Sort by:</span>
           <button 
@@ -1236,9 +1236,9 @@ const FileExplorer = ({
       </div>
       
       {/* File and folder listing */}
-      <div className="file-explorer-content p-1" style={{ position: 'relative' }}>
+      <div className="file-explorer-content p-1 w-full flex-grow overflow-auto" style={{ position: 'relative' }}>
         {topLevelFolders.length === 0 && topLevelFiles.length === 0 && (!currentFolders || currentFolders.length === 0) ? (
-          <div className="p-4 text-surface-500 dark:text-surface-400 text-sm text-center">
+          <div className="p-4 text-surface-500 dark:text-surface-400 text-sm text-center h-full flex items-center justify-center">
             No files or folders to display
           </div>
         ) : (
