@@ -600,9 +600,9 @@ const MarkdownEditor = forwardRef(({
       `}</style>
       
       <div 
-        ref={editorRef} 
-        className="flex-grow overflow-auto border border-surface-300 dark:border-surface-700 rounded" 
-        style={{ position: "relative", zIndex: 40 }}
+        className="flex-grow overflow-auto"
+        style={{ position: "relative" }}
+        ref={editorRef}
       />
       
       {/* Cursor position indicator */}

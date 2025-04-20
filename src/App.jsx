@@ -970,7 +970,7 @@ function App() {
                 
                 {/* EDITOR CONTAINER: Restructured to ensure proper input handling */}
                 <div 
-                  className="editor h-full flex-grow overflow-hidden p-4 pt-2" 
+                  className="editor h-full flex-grow overflow-hidden" 
                   style={{ 
                     position: "relative", 
                     isolation: "isolate", // Create a stacking context
