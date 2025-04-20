@@ -589,15 +589,17 @@ const MarkdownPreview = forwardRef(({
     <>
       <div 
         ref={previewRef}
-        className="markdown-preview h-full overflow-auto p-3 prose prose-sm dark:prose-invert max-w-none bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded"
+        className="markdown-preview prose max-w-none w-full h-full flex-grow overflow-auto"
         style={{ 
-          fontSize: `${currentZoom}%`, 
-          lineHeight: 1.6 
+          zoom: currentZoom / 100,
+          paddingBottom: "2rem"
         }}
-        dangerouslySetInnerHTML={{ __html: html }}
         onScroll={handleScroll}
-        tabIndex={0} // Make the preview focusable for keyboard events
-      />
+      >
+        <div 
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
       
       {/* Add custom CSS for media elements */}
       <style dangerouslySetInnerHTML={{

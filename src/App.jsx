@@ -938,7 +938,7 @@ function App() {
           
           <div className="flex-grow flex flex-col" role="region" aria-label="Content area">
             <Split
-              className={`flex overflow-hidden ${isMobile ? 'flex-col' : ''}`}
+              className={`flex overflow-hidden h-full ${isMobile ? 'flex-col' : ''}`}
               sizes={getEditorPreviewSizes()}
               minSize={previewVisible ? (isMobile ? 150 : 200) : 0}
               gutterSize={previewVisible ? 5 : 0}
@@ -948,7 +948,7 @@ function App() {
               direction={isMobile ? "vertical" : "horizontal"}
               cursor={isMobile ? "row-resize" : "col-resize"}
             >
-              <div className="overflow-hidden flex flex-col" role="region" aria-label="Editor">
+              <div className="overflow-hidden flex flex-col h-full" role="region" aria-label="Editor">
                 {/* Add editor tabs */}
                 <div className="editor-tabs-container">
                   <EditorTabs 
@@ -975,7 +975,10 @@ function App() {
                     position: "relative", 
                     isolation: "isolate", // Create a stacking context
                     pointerEvents: "auto", // Ensure it captures pointer events
-                    zIndex: 30 // Increase z-index to ensure it's above other elements
+                    zIndex: 30, // Increase z-index to ensure it's above other elements
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: "0"
                   }}
                 >
                   {state.loading.content && !forcingScrollRef.current && (
@@ -1001,7 +1004,7 @@ function App() {
                 </div>
               </div>
               
-              <div className={`p-4 overflow-hidden flex flex-col ${!previewVisible ? 'hidden' : ''}`} role="region" aria-label="Preview">
+              <div className={`p-4 overflow-hidden flex flex-col h-full ${!previewVisible ? 'hidden' : ''}`} role="region" aria-label="Preview">
                 <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800">
                   <h3 className="text-sm font-medium">Preview</h3>
                   <div className="flex items-center space-x-2">
@@ -1065,7 +1068,7 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <div className="preview-container flex-grow overflow-hidden">
+                <div className="preview-container flex-grow overflow-hidden h-full">
                   <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
                     <MarkdownPreview 
                       ref={previewRef}
