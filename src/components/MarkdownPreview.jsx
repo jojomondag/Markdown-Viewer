@@ -592,7 +592,8 @@ const MarkdownPreview = forwardRef(({
         className="markdown-preview prose max-w-none w-full h-full flex-grow overflow-auto"
         style={{ 
           zoom: currentZoom / 100,
-          paddingBottom: "2rem"
+          paddingBottom: "2rem",
+          paddingLeft: "0.65rem"
         }}
         onScroll={handleScroll}
       >

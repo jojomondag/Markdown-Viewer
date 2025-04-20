@@ -1004,7 +1004,7 @@ function App() {
                 </div>
               </div>
               
-              <div className={`p-4 overflow-hidden flex flex-col h-full ${!previewVisible ? 'hidden' : ''}`} role="region" aria-label="Preview">
+              <div className={`overflow-hidden flex flex-col h-full ${!previewVisible ? 'hidden' : ''}`} role="region" aria-label="Preview">
                 <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800">
                   <h3 className="text-sm font-medium">Preview</h3>
                   <div className="flex items-center space-x-2">
