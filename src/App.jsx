@@ -798,6 +798,200 @@ function App() {
     }, 500);
   }, []);
 
+  // Add handler for file rename operations
+  const handleRenameFile = useCallback((filePath, newName) => {
+    // Determine if this is a file or folder
+    const isFolder = folders.some(folder => folder.path === filePath);
+    
+    if (isFolder) {
+      // Get the directory part of the path
+      const dirPath = path.dirname(filePath);
+      // Create the new path
+      const newPath = path.join(dirPath, newName);
+      
+      // In a real app, you would call an actual file system API here
+      console.log(`Renaming folder from ${filePath} to ${newPath}`);
+      
+      // Update the folder itself
+      setFolders(prevFolders => {
+        const updatedFolders = prevFolders.filter(f => f.path !== filePath);
+        
+        // Add the renamed folder
+        updatedFolders.push({
+          ...prevFolders.find(f => f.path === filePath),
+          path: newPath,
+          name: newName
+        });
+        
+        // Update paths of child items
+        const folderPrefix = filePath + '/';
+        const newPrefix = newPath + '/';
+        
+        prevFolders.forEach(folder => {
+          if (folder.path.startsWith(folderPrefix)) {
+            const relativePath = folder.path.slice(folderPrefix.length);
+            const newFolderPath = newPrefix + relativePath;
+            updatedFolders.push({
+              ...folder,
+              path: newFolderPath,
+              name: path.basename(newFolderPath)
+            });
+          }
+        });
+        
+        return updatedFolders;
+      });
+      
+      // Update paths of any files inside the folder
+      setFiles(prevFiles => {
+        const folderPrefix = filePath + '/';
+        const newPrefix = newPath + '/';
+        const updatedFiles = prevFiles.filter(f => !f.path.startsWith(folderPrefix));
+        
+        // Update all files in the folder
+        prevFiles.forEach(file => {
+          if (file.path.startsWith(folderPrefix)) {
+            const relativePath = file.path.slice(folderPrefix.length);
+            const newFilePath = newPrefix + relativePath;
+            updatedFiles.push({
+              ...file,
+              path: newFilePath,
+              name: path.basename(newFilePath)
+            });
+          }
+        });
+        
+        return updatedFiles;
+      });
+      
+      showSuccess(`Renamed folder to ${newName}`);
+    } else {
+      // This is a file
+      const dirPath = path.dirname(filePath);
+      const newPath = path.join(dirPath, newName);
+      
+      console.log(`Renaming file from ${filePath} to ${newPath}`);
+      
+      // Update file list
+      setFiles(prevFiles => {
+        const updatedFiles = prevFiles.filter(f => f.path !== filePath);
+        
+        // Add the renamed file
+        const oldFile = prevFiles.find(f => f.path === filePath);
+        if (oldFile) {
+          updatedFiles.push({
+            ...oldFile,
+            path: newPath,
+            name: newName
+          });
+        }
+        
+        return updatedFiles;
+      });
+      
+      // Update open files if the file is currently open
+      const isFileOpen = openFiles.some(f => f.path === filePath);
+      if (isFileOpen) {
+        // Update the file in open files
+        updateOpenFile(filePath, { path: newPath, name: newName });
+        
+        // If this is the current file, we need special handling
+        if (currentFile && currentFile.path === filePath) {
+          originalOpenFile({
+            ...currentFile,
+            path: newPath,
+            name: newName
+          });
+        }
+      }
+      
+      showSuccess(`Renamed file to ${newName}`);
+    }
+  }, [folders, files, openFiles, updateOpenFile, currentFile, originalOpenFile, showSuccess]);
+
+  // Add handler for file/folder deletion
+  const handleDeleteFile = useCallback((filePath, isFolder) => {
+    if (isFolder) {
+      console.log(`Deleting folder: ${filePath}`);
+      
+      // Remove folder and all subfolders
+      setFolders(prevFolders => 
+        prevFolders.filter(folder => 
+          folder.path !== filePath && !folder.path.startsWith(filePath + '/')
+        )
+      );
+      
+      // Remove all files in the folder
+      setFiles(prevFiles => 
+        prevFiles.filter(file => 
+          !file.path.startsWith(filePath + '/')
+        )
+      );
+      
+      // Close any open files from that folder
+      openFiles.forEach(file => {
+        if (file.path.startsWith(filePath + '/')) {
+          removeOpenFile(file);
+        }
+      });
+      
+      showSuccess(`Deleted folder ${path.basename(filePath)}`);
+    } else {
+      console.log(`Deleting file: ${filePath}`);
+      
+      // Remove the file
+      setFiles(prevFiles => 
+        prevFiles.filter(file => file.path !== filePath)
+      );
+      
+      // If the file is open, close it
+      const openFile = openFiles.find(file => file.path === filePath);
+      if (openFile) {
+        removeOpenFile(openFile);
+      }
+      
+      // If it's the current file, clear the editor
+      if (currentFile && currentFile.path === filePath) {
+        // In a real app, you might want to switch to another open file
+        // For now, we'll just clear the current file
+        originalOpenFile(null);
+      }
+      
+      showSuccess(`Deleted file ${path.basename(filePath)}`);
+    }
+  }, [openFiles, removeOpenFile, currentFile, originalOpenFile, showSuccess]);
+
+  // Add handler for creating new folders
+  const handleCreateFolder = useCallback((folderData) => {
+    console.log('Creating new folder:', folderData);
+    
+    // Add the new folder to the folders list
+    setFolders(prevFolders => [...prevFolders, {
+      ...folderData,
+      name: path.basename(folderData.path),
+      type: 'folder'
+    }]);
+    
+    showSuccess(`Created folder: ${folderData.name}`);
+  }, [showSuccess]);
+
+  // Add handler for creating new files
+  const handleCreateFile = useCallback((fileData) => {
+    console.log('Created new file:', fileData);
+    
+    // Add the new file to the files list
+    setFiles(prevFiles => [...prevFiles, {
+      ...fileData,
+      name: path.basename(fileData.path),
+      type: 'file'
+    }]);
+    
+    // Open the file after creation
+    openFile(fileData);
+    
+    showSuccess(`Created file: ${fileData.name}`);
+  }, [openFile, showSuccess]);
+
   // Add handler for sort changes - memoize it with useCallback to prevent infinite loop
   const handleExplorerSortChange = useCallback((sortBy, direction) => {
     setExplorerSortBy(sortBy);
@@ -911,8 +1105,10 @@ function App() {
                       folders={folders}
                       currentFolders={currentFolders}
                       onFileSelect={openFile} 
-                      onCreateFile={handleNewTab}
-                      onCreateFolder={handleNewTab}
+                      onRenameFile={handleRenameFile}
+                      onDeleteFile={handleDeleteFile}
+                      onCreateFile={handleCreateFile}
+                      onCreateFolder={handleCreateFolder}
                       onMoveFile={handleMoveFile}
                       fileOperationStatus={fileOperationStatus}
                       sortBy={explorerSortBy}

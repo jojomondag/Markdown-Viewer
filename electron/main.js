@@ -96,6 +96,47 @@ ipcMain.handle('save-file', async (event, filePath, content) => {
   }
 });
 
+ipcMain.handle('create-file', async (event, filePath, content = '') => {
+  console.log('[Main Process] Received create-file request for:', filePath);
+  try {
+    // Normalize file path for Windows if needed
+    const normalizedPath = filePath.replace(/\\\\/g, '\\').replace(/\//g, '\\');
+    console.log('[Main Process] Normalized path:', normalizedPath);
+    
+    // Check if file already exists
+    if (fs.existsSync(normalizedPath)) {
+      console.log('[Main Process] File already exists:', normalizedPath);
+      throw new Error('File already exists');
+    }
+    
+    // Create parent directories if needed
+    const dirPath = path.dirname(normalizedPath);
+    console.log('[Main Process] Ensuring parent directory exists:', dirPath);
+    if (!fs.existsSync(dirPath)) {
+      console.log('[Main Process] Creating parent directory:', dirPath);
+      await fs.promises.mkdir(dirPath, { recursive: true });
+    }
+    
+    // Create the file with initial content
+    console.log('[Main Process] Writing file:', normalizedPath);
+    await fs.promises.writeFile(normalizedPath, content, 'utf8');
+    
+    // Return file info
+    const stats = await fs.promises.stat(normalizedPath);
+    console.log('[Main Process] File created successfully:', normalizedPath);
+    return {
+      name: path.basename(normalizedPath),
+      path: normalizedPath,
+      type: 'file',
+      size: stats.size,
+      lastModified: stats.mtime
+    };
+  } catch (error) {
+    console.error('[Main Process] Error creating file:', error);
+    throw new Error(`Failed to create file: ${error.message}`);
+  }
+});
+
 ipcMain.handle('watch-file', async (event, filePath) => {
   try {
     // Clean up existing watcher if any

@@ -179,7 +179,17 @@ const MarkdownPreview = forwardRef(({
         const href = link.getAttribute('href');
         if (!href) return;
 
-        event.preventDefault(); // Stop default navigation
+        // Check if we're in Electron
+        const isElectron = !!(window.api || window.electronAPI);
+        
+        // For regular web mode, allow default behavior for http(s) links
+        if (!isElectron && (href.startsWith('http') || href.startsWith('https') || href.startsWith('www'))) {
+            // Let the browser handle it naturally
+            return;
+        }
+        
+        // Prevent default for Electron or special links
+        event.preventDefault();
 
         try {
             let urlToOpen = href;
@@ -211,7 +221,7 @@ const MarkdownPreview = forwardRef(({
                 } else {
                     // Fallback to window.open with _blank target
                     console.log("Using fallback method to open URL:", urlToOpen);
-                    const newWindow = window.open(urlToOpen, '_blank');
+                    const newWindow = window.open(urlToOpen, '_blank', 'noopener,noreferrer');
                     if (newWindow) newWindow.opener = null; // Security best practice
                 }
             } 
@@ -230,8 +240,19 @@ const MarkdownPreview = forwardRef(({
                     window.api.openFile(absolutePath);
                 } else if (window.electronAPI && typeof window.electronAPI.openFile === 'function') {
                     window.electronAPI.openFile(absolutePath);
+                } else if (!isElectron) {
+                    // For web mode, either try to navigate to the file or show a message
+                    console.log(`Web mode - navigating to file path: ${href}`);
+                    window.location.href = href;
                 } else {
                     console.warn(`Unable to open file: ${absolutePath} - API not available`);
+                }
+            } else if (href.startsWith('#')) {
+                // Handle anchor links within the document
+                const targetId = href.substring(1);
+                const targetElement = document.getElementById(targetId);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth' });
                 }
             } else {
                 console.warn(`Unhandled link type or missing currentFilePath: ${href}`);
@@ -243,7 +264,7 @@ const MarkdownPreview = forwardRef(({
             try {
                 if (href.startsWith('http') || href.startsWith('www')) {
                     const urlToOpen = href.startsWith('www') ? 'https://' + href : href;
-                    window.open(urlToOpen, '_blank');
+                    window.open(urlToOpen, '_blank', 'noopener,noreferrer');
                 }
             } catch (fallbackError) {
                 console.error('Fallback navigation also failed:', fallbackError);
