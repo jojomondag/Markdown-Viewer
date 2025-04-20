@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { openFolder, scanDirectory, readMarkdownFile, saveMarkdownFile } from '../utils/fileSystem';
 
 const useFiles = () => {
-  const [currentDirectory, setCurrentDirectory] = useState(null);
+  const [directories, setDirectories] = useState([]);
   const [files, setFiles] = useState([]);
   const [folders, setFolders] = useState([]);
   const [currentFile, setCurrentFile] = useState(null);
@@ -16,7 +16,7 @@ const useFiles = () => {
       setLoading(true);
       setError(null);
       
-      // Try to open folder using fileSystem utility
+      // Try to open folder using fileSystem utility with multiSelect enabled
       const selectedFolders = await openFolder();
       
       // Check if folder selection was cancelled or empty
@@ -26,25 +26,46 @@ const useFiles = () => {
         return null;
       }
       
-      // Get the selected directory path
-      const directoryPath = Array.isArray(selectedFolders) ? selectedFolders[0] : selectedFolders;
-      setCurrentDirectory(directoryPath);
+      // Process all selected folders
+      let allFolders = [];
+      let allFiles = [];
+      let addedDirectories = [];
       
-      // Scan the directory for files and folders
-      const result = await scanDirectory(directoryPath);
+      // Loop through each selected folder and scan it
+      for (const folderPath of selectedFolders) {
+        // Check if this folder is already in our list
+        if (directories.includes(folderPath)) {
+          console.log(`Folder already added: ${folderPath}`);
+          continue; // Skip this folder
+        }
+        
+        // Add to our list of added directories
+        addedDirectories.push(folderPath);
+        
+        // Scan the directory for files and folders
+        const result = await scanDirectory(folderPath);
+        
+        // Make sure we have valid folders and files
+        const scannedFolders = result?.folders || [];
+        const markdownFiles = result?.files || [];
+        
+        // Add to our collection
+        allFolders = [...allFolders, ...scannedFolders];
+        allFiles = [...allFiles, ...markdownFiles];
+      }
       
-      // Make sure we have valid folders and files
-      const scannedFolders = result?.folders || [];
-      const markdownFiles = result?.files || [];
+      // Update state with all the new directories, folders and files
+      if (addedDirectories.length > 0) {
+        setDirectories(prev => [...prev, ...addedDirectories]);
+        setFolders(prev => [...prev, ...allFolders]);
+        setFiles(prev => [...prev, ...allFiles]);
+      }
       
-      setFolders(scannedFolders);
-      setFiles(markdownFiles);
-      
-      // Return the folder path to inform the caller
+      // Return info about what was added
       return { 
-        folderPath: directoryPath,
-        folders: scannedFolders,
-        files: markdownFiles
+        folderPaths: addedDirectories,
+        folders: allFolders,
+        files: allFiles
       };
     } catch (err) {
       setError(err.message || 'Failed to open folder');
@@ -53,6 +74,15 @@ const useFiles = () => {
     } finally {
       setLoading(false);
     }
+  }, [directories]);
+
+  // Helper to clear all folders
+  const clearFolders = useCallback(() => {
+    setDirectories([]);
+    setFolders([]);
+    setFiles([]);
+    setCurrentFile(null);
+    setContent('');
   }, []);
 
   // Open a markdown file
@@ -96,7 +126,7 @@ const useFiles = () => {
   }, []);
 
   return {
-    currentDirectory,
+    directories,
     files,
     folders,
     currentFile,
@@ -104,9 +134,12 @@ const useFiles = () => {
     loading,
     error,
     openAndScanFolder,
+    clearFolders,
     openFile,
     saveFile,
-    updateContent
+    updateContent,
+    setFiles,
+    setFolders
   };
 };
 

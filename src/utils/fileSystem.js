@@ -20,18 +20,20 @@ export const openFolder = async () => {
     }
     
     console.log('Using real window.api.openFileDialog'); // Log real API usage
-    const folderPath = await window.api.openFileDialog();
-    console.log('Real openFileDialog result:', folderPath); // Log real API result
+    
+    // Enable multiSelections to allow selecting multiple folders
+    const folderPaths = await window.api.openFileDialog(true); // Add true parameter for multiSelect
+    console.log('Real openFileDialog result:', folderPaths); // Log real API result
     
     // Handle cancellation
-    if (folderPath === null) {
+    if (folderPaths === null) {
       console.log('Folder selection cancelled by user.'); // Log cancellation
       // User cancelled the dialog
       return null; 
     }
     
     // Handle different return types - ensure we always return an array
-    const result = Array.isArray(folderPath) ? folderPath : [folderPath];
+    const result = Array.isArray(folderPaths) ? folderPaths : [folderPaths];
     console.log('Processed folder path:', result); // Log processed result
     return result;
   } catch (error) {

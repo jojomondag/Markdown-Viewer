@@ -136,12 +136,12 @@ ipcMain.handle('unwatch-file', async (event, filePath) => {
   }
 });
 
-ipcMain.handle('open-folder', async () => {
+ipcMain.handle('open-folder', async (event, allowMultiSelect = false) => {
   console.log("[Main Process] Received 'open-folder' request.");
   try {
     console.log("[Main Process] Calling dialog.showOpenDialog...");
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openDirectory']
+      properties: ['openDirectory', allowMultiSelect ? 'multiSelections' : null].filter(Boolean)
     });
     
     console.log(`[Main Process] dialog.showOpenDialog result: canceled=${canceled}, filePaths=${filePaths}`);
@@ -151,8 +151,13 @@ ipcMain.handle('open-folder', async () => {
       return null;
     }
     
-    console.log(`[Main Process] Returning selected path: ${filePaths[0]}`);
-    return filePaths[0];
+    if (allowMultiSelect) {
+      console.log(`[Main Process] Returning multiple selected paths: ${filePaths}`);
+      return filePaths;
+    } else {
+      console.log(`[Main Process] Returning selected path: ${filePaths[0]}`);
+      return filePaths[0];
+    }
   } catch (error) {
     console.error('[Main Process] Error opening folder dialog:', error);
     throw error;

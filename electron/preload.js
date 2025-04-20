@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld(
   'api',
   {
     // File system operations
-    openFileDialog: () => ipcRenderer.invoke('open-folder'),
+    openFileDialog: (multiSelect = false) => ipcRenderer.invoke('open-folder', multiSelect),
     scanDirectory: (directoryPath) => ipcRenderer.invoke('scan-folder', directoryPath),
     readMarkdownFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     writeMarkdownFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld(
     saveFile: (path, content) => ipcRenderer.invoke('save-file', path, content),
     watchFile: (path) => ipcRenderer.invoke('watch-file', path),
     unwatchFile: (path) => ipcRenderer.invoke('unwatch-file', path),
-    openFolder: () => ipcRenderer.invoke('open-folder'),
+    openFolder: (multiSelect = false) => ipcRenderer.invoke('open-folder', multiSelect),
     scanFolder: (path) => ipcRenderer.invoke('scan-folder', path),
     readFile: (path) => ipcRenderer.invoke('read-file', path),
     

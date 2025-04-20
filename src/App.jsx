@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { IconFileText, IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconMaximize, IconPrinter, IconSort, IconSortAscending, IconSortDescending } from '@tabler/icons-react';
+import { IconFileText, IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconMaximize, IconPrinter, IconSort, IconSortAscending, IconSortDescending, IconTrash } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/FileExplorer';
 import FileHistory from './components/FileHistory';
@@ -40,6 +40,7 @@ function App() {
   const {
     files,
     folders,
+    directories,
     currentFile,
     content,
     loading,
@@ -47,6 +48,7 @@ function App() {
     openAndScanFolder: originalOpenAndScanFolder,
     openFile: originalOpenFile,
     saveFile: originalSaveFile,
+    clearFolders: originalClearFolders,
     updateContent,
     setFiles,
     setFolders
@@ -77,7 +79,7 @@ function App() {
   const openFiles = state.openFiles;
   
   // Track the current folder path
-  const [currentFolder, setCurrentFolder] = useState(null);
+  const [currentFolders, setCurrentFolders] = useState([]);
   
   // Add state for file explorer sort settings
   const [explorerSortBy, setExplorerSortBy] = useState(state.ui.preferences.explorerSortBy || 'name');
@@ -142,8 +144,27 @@ function App() {
   const openAndScanFolder = async () => {
     try {
       const result = await originalOpenAndScanFolder();
-      if (result && result.folderPath) {
-        setCurrentFolder(result.folderPath);
+      if (result && result.folderPaths && result.folderPaths.length > 0) {
+        // Add all new folders to the current folders
+        setCurrentFolders(prev => {
+          // Create a new array to avoid mutation
+          const newFolders = [...prev];
+          
+          // Add each folder that's not already in the list
+          result.folderPaths.forEach(folderPath => {
+            // Normalize paths for comparison
+            const normalizedPath = folderPath.replace(/\\/g, '/');
+            const alreadyExists = newFolders.some(
+              existingPath => existingPath.replace(/\\/g, '/') === normalizedPath
+            );
+            
+            if (!alreadyExists) {
+              newFolders.push(folderPath);
+            }
+          });
+          
+          return newFolders;
+        });
       }
     } catch (error) {
       console.error(`Failed to open folder: ${error.message}`);
@@ -789,13 +810,19 @@ function App() {
     });
   }, [updatePreferences]);
 
+  // Add a wrapper for clearFolders
+  const clearAllFolders = () => {
+    originalClearFolders();
+    setCurrentFolders([]);
+  };
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       <AccessibilityHelper />
       
       <header className="bg-primary-700 dark:bg-primary-800 text-white p-2 md:p-4 shadow-md" role="banner">
         <div className="container mx-auto flex items-center justify-between">
-          <div className="w-1/3 flex items-center justify-start">
+          <div className="w-1/3 flex items-center justify-start space-x-2">
             <button 
               className="flex items-center bg-primary-600 dark:bg-primary-700 hover:bg-primary-500 dark:hover:bg-primary-600 px-2 py-1 md:px-3 md:py-1 rounded text-sm md:text-base"
               onClick={openAndScanFolder}
@@ -814,6 +841,18 @@ function App() {
                 </>
               )}
             </button>
+            
+            {currentFolders.length > 0 && (
+              <button 
+                className="flex items-center bg-error-600 hover:bg-error-500 dark:bg-error-700 dark:hover:bg-error-600 px-2 py-1 md:px-3 md:py-1 rounded text-sm md:text-base text-white"
+                onClick={clearAllFolders}
+                title="Clear all folders"
+              >
+                <IconTrash size={isMobile ? 18 : 20} className="mr-1 md:mr-2" />
+                {!isMobile && "Clear All"}
+              </button>
+            )}
+            
             {state.editor.unsavedChanges && (
               <span className="ml-2 text-xs bg-warning-500 px-1.5 py-0.5 rounded">
                 Unsaved
@@ -870,7 +909,7 @@ function App() {
                     <FileExplorer 
                       files={files} 
                       folders={folders}
-                      currentFolder={currentFolder}
+                      currentFolders={currentFolders}
                       onFileSelect={openFile} 
                       onCreateFile={handleNewTab}
                       onCreateFolder={handleNewTab}

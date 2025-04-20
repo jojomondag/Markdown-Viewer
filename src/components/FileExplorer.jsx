@@ -145,7 +145,7 @@ const MemoizedFolderItem = memo(({
 const FileExplorer = ({ 
   files, 
   folders,
-  currentFolder,
+  currentFolders,
   onFileSelect, 
   onDeleteFile, 
   onRenameFile, 
@@ -263,132 +263,203 @@ const FileExplorer = ({
     }
   }, [externalSortDirection]);
   
-  // Flatten the file/folder structure for keyboard navigation
+  // Create root folder objects from currentFolders prop
+  const rootFolders = useMemo(() => {
+    if (!currentFolders || currentFolders.length === 0) return [];
+    
+    return currentFolders.map(folderPath => ({
+      name: path.basename(folderPath),
+      path: folderPath,
+      type: 'folder',
+      isRoot: true
+    }));
+  }, [currentFolders]);
+
+  // Group files and folders by top-level directory (needed for the empty state check)
+  const topLevelFolders = folders.filter(folder => 
+    !folders.some(f => folder.path !== f.path && folder.path.startsWith(f.path))
+  );
+  const topLevelFiles = files.filter(file => 
+    !folders.some(folder => file.path.startsWith(folder.path))
+  );
+
+  // Expand the root folders when currentFolders changes
+  useEffect(() => {
+    if (currentFolders && currentFolders.length > 0) {
+      const newExpandedFolders = { ...expandedFolders };
+      
+      // Auto-expand all root folders
+      currentFolders.forEach(folderPath => {
+        if (!expandedFolders[folderPath]) {
+          newExpandedFolders[folderPath] = true;
+        }
+      });
+      
+      if (Object.keys(newExpandedFolders).length > Object.keys(expandedFolders).length) {
+        setExpandedFolders(newExpandedFolders);
+      }
+    }
+  }, [currentFolders, expandedFolders]);
+
+  // Add rootFolders to the flattened items list
   const getFlattenedItems = () => {
     const items = [];
-    const addedPaths = new Set(); // Prevent adding duplicates if structure is complex
-
-    // Normalize paths to handle both slash types
+    const addedPaths = new Set();
+    
+    // Helper to normalize path separators for consistent comparison
     const normalizePath = (p) => p.replace(/\\/g, '/');
     
-    // Get all folder paths in normalized form
+    // Get all normalized paths for quick checking
     const normalizedFolderPaths = folders.map(f => normalizePath(f.path));
-
-    // Create the root folder if it exists
-    const rootFolderItem = currentFolder ? {
-      name: path.basename(currentFolder),
-      path: currentFolder,
-      type: 'folder',
-      level: 0,
-      parentPath: null,
-      isRoot: true
-    } : null;
-
-    // Add the root folder as the first item if available
-    if (rootFolderItem) {
-      items.push(rootFolderItem);
-      addedPaths.add(normalizePath(rootFolderItem.path));
-    }
-
-    // Skip adding children if root folder is collapsed
-    if (rootFolderItem && !expandedFolders[rootFolderItem.path]) {
-      return items; // Return only the root folder if it's collapsed
-    }
-
-    // Helper function to recursively add items with their levels
-    const addItemsRecursive = (currentFolders, currentFiles, level = 0, parentPath = null) => {
-      const normalizedParentPath = parentPath ? normalizePath(parentPath) : null;
+    const normalizedRootPaths = rootFolders.map(rf => normalizePath(rf.path));
+    
+    // Process a folder tree recursively
+    const processFolder = (folder, level, parentPath) => {
+      const normalizedPath = normalizePath(folder.path);
+      if (addedPaths.has(normalizedPath)) return;
       
-      // Filter and sort folders for the current level
-      const foldersForLevel = currentFolders.filter(f => {
-        // Normalize the folder path
-        const normalizedFolderPath = normalizePath(f.path);
-        // Determine the expected parent path based on the current parentPath
-        const folderParentPath = path.dirname(normalizedFolderPath);
-        
-        // If there's a root folder and we're at the top level, folders should have the root as parent
-        if (normalizedParentPath === null && rootFolderItem) {
-          if (normalizedFolderPath === normalizePath(rootFolderItem.path)) {
-            return false; // Skip the root folder itself
-          }
-          // For top level with root folder, check if it's a direct child of the root
-          return folderParentPath === normalizePath(rootFolderItem.path);
-        } else if (normalizedParentPath === null) {
-          // Top level without root: Parent directory should not be within any *other* listed folder's path
-          return !currentFolders.some(pf => {
-            if (pf.path === f.path) return false; // Skip comparing with self
-            const normalizedPfPath = normalizePath(pf.path);
-            return folderParentPath === normalizedPfPath || 
-                   folderParentPath.startsWith(normalizedPfPath + '/');
-          });
-        } else {
-          // Nested level: Parent directory must match the parentPath passed in
-          return folderParentPath === normalizedParentPath;
-        }
+      // Add the folder itself
+      items.push({
+        ...folder,
+        type: 'folder',
+        level: level,
+        parentPath: parentPath
       });
-      sortItems(foldersForLevel, 'folder');
-
-      foldersForLevel.forEach(folder => {
-        const normalizedFolderPath = normalizePath(folder.path);
-        if (addedPaths.has(normalizedFolderPath)) return; // Skip if already added
-        
-        const isExpanded = expandedFolders[folder.path] || false;
-        items.push({ 
-          ...folder, 
-          type: 'folder', 
-          level: rootFolderItem ? level + 1 : level, // Adjust level if we have a root folder 
-          parentPath: parentPath || (rootFolderItem ? rootFolderItem.path : null)
+      addedPaths.add(normalizedPath);
+      
+      // If folder is expanded, process its children
+      if (expandedFolders[folder.path]) {
+        // Get direct child folders
+        const childFolders = folders.filter(f => {
+          const normalizedFolderPath = normalizePath(f.path);
+          const folderParentPath = path.dirname(normalizedFolderPath);
+          return folderParentPath === normalizedPath && !addedPaths.has(normalizedFolderPath);
         });
-        addedPaths.add(normalizedFolderPath);
-
-        // If folder is expanded, recursively add its children
-        if (isExpanded) {
-          // Pass the *original, complete* lists for filtering at the next level
-          addItemsRecursive(folders, files, rootFolderItem ? level + 1 : level, folder.path); 
-        }
-      });
-
-      // Only process files if we're at the root level or the parent folder is expanded
-      if (parentPath === null || expandedFolders[parentPath]) {
-        // Filter and sort files for the current level
-        const filesForLevel = currentFiles.filter(file => {
-          // Normalize the file path
+        
+        // Get direct child files
+        const childFiles = files.filter(f => {
+          const normalizedFilePath = normalizePath(f.path);
+          const fileParentPath = path.dirname(normalizedFilePath);
+          return fileParentPath === normalizedPath && !addedPaths.has(normalizedFilePath);
+        });
+        
+        // Sort children
+        sortItems(childFolders, 'folder');
+        sortItems(childFiles, 'file');
+        
+        // Process child folders recursively
+        childFolders.forEach(childFolder => {
+          processFolder(childFolder, level + 1, folder.path);
+        });
+        
+        // Add child files
+        childFiles.forEach(file => {
           const normalizedFilePath = normalizePath(file.path);
-          // Get the direct parent directory of the file
-          const fileParentDir = path.dirname(normalizedFilePath);
+          if (addedPaths.has(normalizedFilePath)) return;
           
-          // If there's a root folder and we're at the top level, files should have the root as parent
-          if (normalizedParentPath === null && rootFolderItem) {
-            return fileParentDir === normalizePath(rootFolderItem.path);
-          } else if (normalizedParentPath === null) {
-            // Root level without root folder: Include files that aren't in any folder
-            return !normalizedFolderPaths.some(folderPath => 
-              fileParentDir === folderPath || fileParentDir.startsWith(folderPath + '/')
-            );
-          } else {
-            // Inside folders: Only include files whose direct parent matches this folder
-            return fileParentDir === normalizedParentPath;
-          }
-        });
-        sortItems(filesForLevel, 'file');
-
-        filesForLevel.forEach(file => {
-          const normalizedFilePath = normalizePath(file.path);
-          if (addedPaths.has(normalizedFilePath)) return; // Skip if already added
-          items.push({ 
-            ...file, 
-            type: 'file', 
-            level: rootFolderItem ? level + 1 : level, // Adjust level if we have a root folder
-            parentPath: parentPath || (rootFolderItem ? rootFolderItem.path : null)
+          items.push({
+            ...file,
+            type: 'file',
+            level: level + 1,
+            parentPath: folder.path
           });
           addedPaths.add(normalizedFilePath);
         });
       }
     };
-
-    // Start the recursion with the full lists at the top level
-    addItemsRecursive(folders, files, 0, null);
-
+    
+    // First, add all root folders
+    rootFolders.forEach(rootFolder => {
+      items.push({
+        ...rootFolder,
+        type: 'folder',
+        level: 0,
+        parentPath: null
+      });
+      addedPaths.add(normalizePath(rootFolder.path));
+      
+      // Process each root folder's contents if expanded
+      if (expandedFolders[rootFolder.path]) {
+        const rootPath = normalizePath(rootFolder.path);
+        
+        // Get direct child folders of this root
+        const rootChildFolders = folders.filter(folder => {
+          const folderParentPath = path.dirname(normalizePath(folder.path));
+          return folderParentPath === rootPath;
+        });
+        
+        // Get direct child files of this root
+        const rootChildFiles = files.filter(file => {
+          const fileParentPath = path.dirname(normalizePath(file.path));
+          return fileParentPath === rootPath;
+        });
+        
+        // Sort the children
+        sortItems(rootChildFolders, 'folder');
+        sortItems(rootChildFiles, 'file');
+        
+        // Process child folders recursively
+        rootChildFolders.forEach(folder => {
+          processFolder(folder, 1, rootFolder.path);
+        });
+        
+        // Add child files
+        rootChildFiles.forEach(file => {
+          const normalizedFilePath = normalizePath(file.path);
+          if (addedPaths.has(normalizedFilePath)) return;
+          
+          items.push({
+            ...file,
+            type: 'file',
+            level: 1,
+            parentPath: rootFolder.path
+          });
+          addedPaths.add(normalizedFilePath);
+        });
+      }
+    });
+    
+    // Finally, add orphaned files and folders (those not under any root folder)
+    // First identify orphans
+    const orphanFolders = folders.filter(folder => {
+      const normalizedFolderPath = normalizePath(folder.path);
+      
+      // Skip if already added
+      if (addedPaths.has(normalizedFolderPath)) return false;
+      
+      // Check if this is a top-level folder not inside any root
+      const folderParentPath = path.dirname(normalizedFolderPath);
+      return !normalizedRootPaths.includes(folderParentPath) && 
+             !normalizedFolderPaths.some(p => p !== normalizedFolderPath && normalizedFolderPath.startsWith(p + '/'));
+    });
+    
+    // Add top-level orphan folders first
+    sortItems(orphanFolders, 'folder');
+    orphanFolders.forEach(folder => {
+      processFolder(folder, 0, null);
+    });
+    
+    // Add orphan files
+    const orphanFiles = files.filter(file => {
+      const normalizedFilePath = normalizePath(file.path);
+      if (addedPaths.has(normalizedFilePath)) return false;
+      
+      const fileParentPath = path.dirname(normalizedFilePath);
+      return !normalizedRootPaths.includes(fileParentPath) &&
+             !normalizedFolderPaths.some(p => fileParentPath.startsWith(p));
+    });
+    
+    sortItems(orphanFiles, 'file');
+    orphanFiles.forEach(file => {
+      items.push({
+        ...file,
+        type: 'file',
+        level: 0,
+        parentPath: null
+      });
+      addedPaths.add(normalizePath(file.path));
+    });
+    
     return items;
   };
   
@@ -730,37 +801,6 @@ const FileExplorer = ({
     },
   ];
 
-  // Group files and folders by top-level directory
-  const topLevelFolders = folders.filter(folder => 
-    !folders.some(f => folder.path !== f.path && folder.path.startsWith(f.path))
-  );
-  const topLevelFiles = files.filter(file => 
-    !folders.some(folder => file.path.startsWith(folder.path))
-  );
-
-  // Get the root folder path (common parent of all top-level folders)
-  const rootFolderPath = useMemo(() => {
-    if (topLevelFolders.length > 0) {
-      // Extract the parent directory from the first top-level folder
-      const firstPath = topLevelFolders[0].path;
-      return path.dirname(firstPath);
-    }
-    return null;
-  }, [topLevelFolders]);
-
-  // Create a root folder object from the current folder prop
-  const rootFolder = useMemo(() => {
-    if (currentFolder) {
-      return {
-        name: path.basename(currentFolder),
-        path: currentFolder,
-        type: 'folder',
-        isRoot: true
-      };
-    }
-    return null;
-  }, [currentFolder]);
-
   // Root level menu items (displayed when right-clicking on empty space)
   const rootMenuItems = [
     { 
@@ -883,16 +923,41 @@ const FileExplorer = ({
     // Create a new expandedFolders object to avoid mutation during the loop
     const newExpandedFolders = { ...expandedFolders };
     
-    // Find all parent folders that need to be expanded
+    // Build a list of all parent directories that need to be expanded
+    const parentsToExpand = [];
     let currentDir = dirPath;
+    
+    // First, check if any root folder contains this file
+    const isInRootFolder = rootFolders.some(rootFolder => {
+      const normalizedRootPath = rootFolder.path.replace(/\\/g, '/');
+      if (normalizedPath.startsWith(normalizedRootPath)) {
+        // Add root folder to the expand list
+        parentsToExpand.push(normalizedRootPath);
+        return true;
+      }
+      return false;
+    });
+    
+    // Then collect all parent folders
     while (currentDir && currentDir !== '.' && currentDir !== '/') {
       // Check if this folder exists in our folders list
-      const folderExists = folders.some(folder => folder.path === currentDir);
+      const folderExists = folders.some(folder => {
+        const normalizedFolderPath = folder.path.replace(/\\/g, '/');
+        return normalizedFolderPath === currentDir;
+      });
+      
       if (folderExists) {
-        newExpandedFolders[currentDir] = true;
+        parentsToExpand.push(currentDir);
       }
+      
+      // Move up to parent directory
       currentDir = path.dirname(currentDir);
     }
+    
+    // Set all parent folders to expanded state
+    parentsToExpand.forEach(parentPath => {
+      newExpandedFolders[parentPath] = true;
+    });
     
     setExpandedFolders(newExpandedFolders);
   };
@@ -903,17 +968,6 @@ const FileExplorer = ({
       expandParentFolders(currentFilePath);
     }
   }, [currentFilePath, folders]);
-
-  // Expand the root folder when currentFolder changes (only when it's first set)
-  useEffect(() => {
-    if (currentFolder && !expandedFolders[currentFolder] && Object.keys(expandedFolders).length === 0) {
-      // Only auto-expand if expandedFolders is empty (first time adding a folder)
-      setExpandedFolders(prev => ({
-        ...prev,
-        [currentFolder]: true
-      }));
-    }
-  }, [currentFolder]);
 
   return (
     <div 
@@ -992,7 +1046,7 @@ const FileExplorer = ({
       
       {/* File and folder listing */}
       <div className="file-explorer-content p-1" style={{ position: 'relative' }}>
-        {topLevelFolders.length === 0 && topLevelFiles.length === 0 && !currentFolder ? (
+        {topLevelFolders.length === 0 && topLevelFiles.length === 0 && (!currentFolders || currentFolders.length === 0) ? (
           <div className="p-4 text-surface-500 dark:text-surface-400 text-sm text-center">
             No files or folders to display
           </div>
