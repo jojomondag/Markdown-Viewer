@@ -440,6 +440,15 @@ const MarkdownPreview = forwardRef(({
               padding-bottom: 0.3em;
             }
             
+            /* Dark mode heading styles */
+            .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+              color: white;
+            }
+            
+            .dark h1, .dark h2 {
+              border-bottom-color: #2d3748;
+            }
+            
             hr {
               height: 1px;
               background-color: #ddd;
@@ -707,6 +716,21 @@ const MarkdownPreview = forwardRef(({
           left: 0;
           width: 100%;
           height: 100%;
+        }
+        
+        /* Dark mode heading styles */
+        .dark .markdown-preview h1,
+        .dark .markdown-preview h2,
+        .dark .markdown-preview h3,
+        .dark .markdown-preview h4,
+        .dark .markdown-preview h5,
+        .dark .markdown-preview h6 {
+          color: white !important;
+        }
+        
+        .dark .markdown-preview h1,
+        .dark .markdown-preview h2 {
+          border-bottom-color: #2d3748 !important;
         }
         
         /* Custom CSS applied by user */
