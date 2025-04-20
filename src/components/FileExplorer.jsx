@@ -19,9 +19,57 @@ import { ContextMenu } from './ui/context-menu';
 import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
 
+// Utility function to normalize folder objects
+const normalizeFolderObject = (folder) => {
+  if (!folder) return null;
+  
+  // Ensure path is a string
+  const folderPath = typeof folder.path === 'string' ? folder.path : '';
+  
+  // Create a normalized name (just the basename, no path)
+  let folderName = path.basename(folderPath);
+  
+  const normalizedFolder = {
+    ...folder,
+    name: folderName,
+    path: folderPath
+  };
+  
+  console.log('Normalized folder object:', {
+    before: { name: folder.name, path: folder.path },
+    after: { name: normalizedFolder.name, path: normalizedFolder.path }
+  });
+  
+  return normalizedFolder;
+};
+
+// Add a utility function to extract only basename from objects for display
+const getDisplayName = (item) => {
+  if (!item) return '';
+  
+  // Get the path and handle Windows paths properly
+  let itemPath = '';
+  if (item.path) {
+    itemPath = item.path;
+    
+    // For Windows paths with backslashes, extract the last part directly
+    if (itemPath.includes('\\')) {
+      const parts = itemPath.split('\\');
+      return parts[parts.length - 1] || '';
+    } else {
+      return path.basename(itemPath);
+    }
+  }
+  
+  return item.name || '';
+};
+
 // Memoize FileItem to prevent unnecessary re-renders
 const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextMenu, depth, isLastChild }) => {
   const isActive = currentFilePath === file.path;
+  
+  // Always use just the basename for display
+  const displayName = getDisplayName(file);
   
   return (
     <div 
@@ -68,8 +116,8 @@ const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextM
       <div className="file-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
         <IconFile />
       </div>
-      <div className="file-name" title={file.name} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {file.name}
+      <div className="file-name" title={displayName} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {displayName}
       </div>
     </div>
   );
@@ -86,6 +134,9 @@ const MemoizedFolderItem = memo(({
 }) => {
   const isRoot = folder.isRoot === true;
   const isExpanded = expandedFolders[folder.path] || false;
+  
+  // Always use just the basename for display
+  const displayName = getDisplayName(folder);
   
   return (
     <div 
@@ -135,8 +186,8 @@ const MemoizedFolderItem = memo(({
       <div className="folder-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
         {isExpanded ? <IconFolderOpen /> : <IconFolder />}
       </div>
-      <div className="folder-name" title={folder.name} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {folder.name}
+      <div className="folder-name" title={displayName} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {displayName}
       </div>
     </div>
   );
@@ -267,12 +318,37 @@ const FileExplorer = ({
   const rootFolders = useMemo(() => {
     if (!currentFolders || currentFolders.length === 0) return [];
     
-    return currentFolders.map(folderPath => ({
-      name: path.basename(folderPath),
-      path: folderPath,
-      type: 'folder',
-      isRoot: true
-    }));
+    console.log('Creating root folders from:', currentFolders);
+    
+    const roots = currentFolders.map(folderPath => {
+      // Extract just the last segment of the path regardless of slash type
+      let folderName;
+      if (folderPath && typeof folderPath === 'string') {
+        if (folderPath.includes('\\')) {
+          const parts = folderPath.split('\\');
+          folderName = parts[parts.length - 1] || '';
+        } else {
+          folderName = path.basename(folderPath);
+        }
+      } else {
+        folderName = 'Unknown';
+      }
+      
+      // Create a clean root folder object with a display name that is just the basename
+      const rootFolder = {
+        name: folderName,       // Only store the basename as the name
+        path: folderPath,       // Keep the full path for operations
+        type: 'folder',
+        isRoot: true,
+        displayName: folderName // Explicitly add a displayName property
+      };
+      
+      console.log('Created root folder:', rootFolder);
+      return rootFolder;
+    });
+    
+    console.log('Final root folders:', roots);
+    return roots;
   }, [currentFolders]);
 
   // Group files and folders by top-level directory (needed for the empty state check)
@@ -318,9 +394,20 @@ const FileExplorer = ({
       const normalizedPath = normalizePath(folder.path);
       if (addedPaths.has(normalizedPath)) return;
       
-      // Add the folder itself
+      // Extract the folder name properly handling Windows paths
+      let folderDisplayName;
+      if (folder.path && folder.path.includes('\\')) {
+        const parts = folder.path.split('\\');
+        folderDisplayName = parts[parts.length - 1] || '';
+      } else {
+        folderDisplayName = path.basename(folder.path || '');
+      }
+      
+      // Add the folder itself with clean naming
       items.push({
         ...folder,
+        name: folderDisplayName,          // Override name with basename
+        displayName: folderDisplayName,   // Explicitly add displayName property
         type: 'folder',
         level: level,
         parentPath: parentPath
@@ -357,8 +444,19 @@ const FileExplorer = ({
           const normalizedFilePath = normalizePath(file.path);
           if (addedPaths.has(normalizedFilePath)) return;
           
+          // Extract file name properly handling Windows paths
+          let fileDisplayName;
+          if (file.path && file.path.includes('\\')) {
+            const parts = file.path.split('\\');
+            fileDisplayName = parts[parts.length - 1] || '';
+          } else {
+            fileDisplayName = path.basename(file.path || '');
+          }
+          
           items.push({
             ...file,
+            name: fileDisplayName,         // Override with basename
+            displayName: fileDisplayName,  // Add explicit displayName
             type: 'file',
             level: level + 1,
             parentPath: folder.path
@@ -370,12 +468,17 @@ const FileExplorer = ({
     
     // First, add all root folders
     rootFolders.forEach(rootFolder => {
+      // Ensure root folder name is basename
+      const rootDisplayName = path.basename(rootFolder.path || '');
+      
       items.push({
         ...rootFolder,
+        name: rootDisplayName, // Override with display name
         type: 'folder',
         level: 0,
         parentPath: null
       });
+      
       addedPaths.add(normalizePath(rootFolder.path));
       
       // Process each root folder's contents if expanded
@@ -408,8 +511,19 @@ const FileExplorer = ({
           const normalizedFilePath = normalizePath(file.path);
           if (addedPaths.has(normalizedFilePath)) return;
           
+          // Extract file name properly handling Windows paths
+          let fileDisplayName;
+          if (file.path && file.path.includes('\\')) {
+            const parts = file.path.split('\\');
+            fileDisplayName = parts[parts.length - 1] || '';
+          } else {
+            fileDisplayName = path.basename(file.path || '');
+          }
+          
           items.push({
             ...file,
+            name: fileDisplayName,         // Override with basename
+            displayName: fileDisplayName,  // Add explicit displayName
             type: 'file',
             level: 1,
             parentPath: rootFolder.path
@@ -451,8 +565,19 @@ const FileExplorer = ({
     
     sortItems(orphanFiles, 'file');
     orphanFiles.forEach(file => {
+      // Extract file name properly handling Windows paths
+      let fileDisplayName;
+      if (file.path && file.path.includes('\\')) {
+        const parts = file.path.split('\\');
+        fileDisplayName = parts[parts.length - 1] || '';
+      } else {
+        fileDisplayName = path.basename(file.path || '');
+      }
+      
       items.push({
         ...file,
+        name: fileDisplayName,
+        displayName: fileDisplayName,
         type: 'file',
         level: 0,
         parentPath: null
@@ -735,8 +860,64 @@ const FileExplorer = ({
   };
 
   const handleNewFolder = (parentFolder) => {
-    console.log(`New folder will be created in: ${parentFolder ? parentFolder.name : 'root'}`);
-    // TODO: Implement new folder creation
+    const folderName = prompt('Enter new folder name:');
+    if (!folderName) return;
+    
+    let newFolderPath;
+    
+    if (parentFolder && parentFolder.path) {
+      // If we have a parent folder, join the path
+      newFolderPath = path.join(parentFolder.path, folderName);
+      console.log('Creating folder with parent:', {
+        parentName: parentFolder.name,
+        parentPath: parentFolder.path,
+        newName: folderName,
+        newPath: newFolderPath
+      });
+    } else {
+      // For root folders, ensure we're using a proper path
+      if (currentFolders && currentFolders.length > 0) {
+        newFolderPath = path.join(currentFolders[0], folderName);
+        console.log('Creating root folder in:', {
+          rootFolder: currentFolders[0],
+          newName: folderName,
+          newPath: newFolderPath
+        });
+      } else {
+        // Last resort fallback
+        console.warn('Adding folder without proper context, folder display may be incorrect');
+        newFolderPath = folderName;
+        console.log('Creating standalone folder:', {
+          newName: folderName,
+          newPath: newFolderPath
+        });
+      }
+    }
+    
+    // Create the new folder object
+    // Always use only the basename part for display name
+    const newFolder = {
+      name: path.basename(folderName), // Explicitly use basename of the provided name
+      path: newFolderPath,             // Full path for operations
+      type: 'folder',
+      isRoot: !parentFolder            // Root if no parent
+    };
+    
+    console.log('New folder object created:', newFolder);
+    
+    // Add the folder to state
+    if (typeof onCreateFolder === 'function') {
+      console.log('Calling onCreateFolder with:', newFolder);
+      onCreateFolder(newFolder);
+    } else if (typeof setFolders === 'function') {
+      console.log('Calling setFolders with:', newFolder);
+      setFolders(prev => [...prev, newFolder]);
+    } else if (typeof window !== 'undefined' && window.setFolders) {
+      console.log('Calling window.setFolders with:', newFolder);
+      window.setFolders(prev => [...prev, newFolder]);
+    } else {
+      console.warn('setFolders is not available to add a new folder');
+    }
   };
 
   // Context menu items for files
@@ -969,6 +1150,16 @@ const FileExplorer = ({
     }
   }, [currentFilePath, folders]);
 
+  // Process files directly before rendering to ensure clean names
+  const cleanItemForDisplay = (item) => {
+    if (!item) return item;
+    
+    return {
+      ...item,
+      displayName: path.basename(item.path || '')
+    };
+  };
+
   return (
     <div 
       ref={fileExplorerRef}
@@ -1053,6 +1244,16 @@ const FileExplorer = ({
         ) : (
           <>
             {flattenedItems.map((item, index) => {
+              // Override the display name to ensure it's always just the basename
+              const displayName = getDisplayName(item);
+              
+              // Create a new clean item with explicit display name
+              const cleanedItem = {
+                ...item,
+                name: displayName,
+                displayName: displayName
+              };
+              
               // Assign ref to item for keyboard navigation
               const refKey = `${item.type}-${item.path}`;
               const isLastChild = index === flattenedItems.length - 1 || 
@@ -1075,7 +1276,7 @@ const FileExplorer = ({
                 >
                   {item.type === 'file' ? (
                     <MemoizedFileItem
-                      file={item}
+                      file={cleanedItem}
                       currentFilePath={currentFilePath}
                       onFileSelect={onFileSelect}
                       onContextMenu={handleContextMenu}
@@ -1084,7 +1285,7 @@ const FileExplorer = ({
                     />
                   ) : (
                     <MemoizedFolderItem
-                      folder={item}
+                      folder={cleanedItem}
                       expandedFolders={expandedFolders}
                       toggleFolder={toggleFolder}
                       depth={item.level}
