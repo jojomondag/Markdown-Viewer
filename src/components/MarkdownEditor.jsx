@@ -605,12 +605,7 @@ const MarkdownEditor = forwardRef(({
         ref={editorRef}
       />
       
-      {/* Cursor position indicator */}
-      <div className="absolute bottom-2 right-10 bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 px-2 py-1 rounded text-xs flex items-center z-50">
-        <IconCornerDownRight size={12} className="mr-1" />
-        Ln {cursorPosition.line}, Col {cursorPosition.column}
-      </div>
-      
+      {/* Search button - removed cursor position indicator */}
       <button 
         className="absolute top-2 right-2 p-1.5 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 z-50"
         onClick={() => setIsSearchOpen(true)}
