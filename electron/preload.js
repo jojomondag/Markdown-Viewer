@@ -31,8 +31,8 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.invoke('move-item', sourcePath, targetPath, isDirectory),
     copyItem: (sourcePath, targetPath, isDirectory) => 
       ipcRenderer.invoke('copy-item', sourcePath, targetPath, isDirectory),
-    renameItem: (sourcePath, newName, isDirectory) => 
-      ipcRenderer.invoke('rename-item', sourcePath, newName, isDirectory),
+    renameItem: (oldPath, newName, isDirectory) => 
+      ipcRenderer.invoke('rename-item', oldPath, newName, isDirectory),
     createFile: (filePath, content = '') => {
       console.log('[Preload] Creating file at:', filePath);
       return ipcRenderer.invoke('create-file', filePath, content);

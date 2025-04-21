@@ -800,118 +800,193 @@ function App() {
 
   // Add handler for file rename operations
   const handleRenameFile = useCallback((filePath, newName) => {
+    // Skip if empty
+    if (!newName || !filePath) return;
+
+    // Normalize the input path
+    filePath = path.normalize(filePath);
+
     // Determine if this is a file or folder
-    const isFolder = folders.some(folder => folder.path === filePath);
+    const isDirectory = folders.some(folder => folder.path === filePath);
     
-    if (isFolder) {
-      // Get the directory part of the path
-      const dirPath = path.dirname(filePath);
-      // Create the new path
-      const newPath = path.join(dirPath, newName);
+    // Calculate the new full path
+    const dirPath = path.dirname(filePath);
+    const newPath = path.join(dirPath, newName);
+    
+    // Check if a file with this name already exists (to prevent the API call when we know it will fail)
+    const fileExists = files.some(f => f.path === newPath) || folders.some(f => f.path === newPath);
+    if (fileExists) {
+      console.error('A file or folder with this name already exists');
+      showError('A file or folder with this name already exists');
+      return;
+    }
+    
+    // Flag to track whether the file system operation was successful
+    let fileSystemSuccess = false;
+    
+    const updateUIState = (oldPath, finalNewPath) => {
+      // Use the actual paths returned from the API if available, otherwise use the calculated paths
+      const actualOldPath = oldPath ? path.normalize(oldPath) : filePath;
+      const actualNewPath = finalNewPath ? path.normalize(finalNewPath) : newPath;
       
-      // In a real app, you would call an actual file system API here
-      console.log(`Renaming folder from ${filePath} to ${newPath}`);
+      console.log(`Updating UI after rename: ${actualOldPath} -> ${actualNewPath}`);
       
-      // Update the folder itself
-      setFolders(prevFolders => {
-        const updatedFolders = prevFolders.filter(f => f.path !== filePath);
-        
-        // Add the renamed folder
-        updatedFolders.push({
-          ...prevFolders.find(f => f.path === filePath),
-          path: newPath,
-          name: newName
-        });
-        
-        // Update paths of child items
-        const folderPrefix = filePath + '/';
-        const newPrefix = newPath + '/';
-        
-        prevFolders.forEach(folder => {
-          if (folder.path.startsWith(folderPrefix)) {
-            const relativePath = folder.path.slice(folderPrefix.length);
-            const newFolderPath = newPrefix + relativePath;
-            updatedFolders.push({
-              ...folder,
-              path: newFolderPath,
-              name: path.basename(newFolderPath)
-            });
-          }
-        });
-        
-        return updatedFolders;
-      });
-      
-      // Update paths of any files inside the folder
-      setFiles(prevFiles => {
-        const folderPrefix = filePath + '/';
-        const newPrefix = newPath + '/';
-        const updatedFiles = prevFiles.filter(f => !f.path.startsWith(folderPrefix));
-        
-        // Update all files in the folder
-        prevFiles.forEach(file => {
-          if (file.path.startsWith(folderPrefix)) {
-            const relativePath = file.path.slice(folderPrefix.length);
-            const newFilePath = newPrefix + relativePath;
-            updatedFiles.push({
-              ...file,
-              path: newFilePath,
-              name: path.basename(newFilePath)
-            });
-          }
-        });
-        
-        return updatedFiles;
-      });
-      
-      showSuccess(`Renamed folder to ${newName}`);
-    } else {
-      // This is a file
-      const dirPath = path.dirname(filePath);
-      const newPath = path.join(dirPath, newName);
-      
-      console.log(`Renaming file from ${filePath} to ${newPath}`);
-      
-      // Update file list
-      setFiles(prevFiles => {
-        const updatedFiles = prevFiles.filter(f => f.path !== filePath);
-        
-        // Add the renamed file
-        const oldFile = prevFiles.find(f => f.path === filePath);
-        if (oldFile) {
-          updatedFiles.push({
-            ...oldFile,
-            path: newPath,
-            name: newName
+      if (isDirectory) {
+        // Update the folder itself
+        setFolders(prevFolders => {
+          const updatedFolders = [];
+          
+          // Process all folders, updating paths as needed
+          prevFolders.forEach(folder => {
+            const normalizedFolderPath = path.normalize(folder.path);
+            
+            if (normalizedFolderPath === actualOldPath) {
+              // This is the folder being renamed
+              updatedFolders.push({
+                ...folder,
+                path: actualNewPath,
+                name: path.basename(actualNewPath)
+              });
+            } else if (
+              normalizedFolderPath.startsWith(actualOldPath + path.sep) || 
+              // Handle edge case for different path separators
+              normalizedFolderPath.startsWith(actualOldPath + '/')
+            ) {
+              // This is a subfolder of the renamed folder
+              let relativePath;
+              
+              if (normalizedFolderPath.startsWith(actualOldPath + path.sep)) {
+                relativePath = normalizedFolderPath.substring(actualOldPath.length + path.sep.length);
+              } else {
+                relativePath = normalizedFolderPath.substring(actualOldPath.length + 1); // +1 for the slash
+              }
+              
+              const newFolderPath = path.join(actualNewPath, relativePath);
+              updatedFolders.push({
+                ...folder,
+                path: newFolderPath,
+                name: path.basename(newFolderPath)
+              });
+            } else {
+              // Unaffected folder
+              updatedFolders.push(folder);
+            }
           });
+          
+          return updatedFolders;
+        });
+        
+        // Update paths of any files inside the folder
+        setFiles(prevFiles => {
+          return prevFiles.map(file => {
+            const normalizedFilePath = path.normalize(file.path);
+            
+            if (
+              normalizedFilePath.startsWith(actualOldPath + path.sep) || 
+              // Handle edge case for different path separators
+              normalizedFilePath.startsWith(actualOldPath + '/')
+            ) {
+              // This is a file inside the renamed folder
+              let relativePath;
+              
+              if (normalizedFilePath.startsWith(actualOldPath + path.sep)) {
+                relativePath = normalizedFilePath.substring(actualOldPath.length + path.sep.length);
+              } else {
+                relativePath = normalizedFilePath.substring(actualOldPath.length + 1); // +1 for the slash
+              }
+              
+              const newFilePath = path.join(actualNewPath, relativePath);
+              return {
+                ...file,
+                path: newFilePath,
+                name: path.basename(newFilePath)
+              };
+            } else if (normalizedFilePath === actualOldPath) {
+              // This is the file being renamed (unlikely for a folder, but just in case)
+              return {
+                ...file,
+                path: actualNewPath,
+                name: path.basename(actualNewPath)
+              };
+            }
+            
+            // Unaffected file
+            return file;
+          });
+        });
+        
+        if (fileSystemSuccess) {
+          showSuccess(`Renamed folder to ${newName}`);
+        }
+      } else {
+        // Update file list
+        setFiles(prevFiles => {
+          return prevFiles.map(file => {
+            const normalizedFilePath = path.normalize(file.path);
+            
+            if (normalizedFilePath === actualOldPath) {
+              // This is the file being renamed
+              return {
+                ...file,
+                path: actualNewPath,
+                name: path.basename(actualNewPath)
+              };
+            }
+            return file;
+          });
+        });
+        
+        // Update open files if the file is currently open
+        const openFile = openFiles.find(f => path.normalize(f.path) === actualOldPath);
+        if (openFile) {
+          // Update the file in open files
+          updateOpenFile(openFile.path, { path: actualNewPath, name: path.basename(actualNewPath) });
+          
+          // If this is the current file, we need special handling
+          if (currentFile && path.normalize(currentFile.path) === actualOldPath) {
+            originalOpenFile({
+              ...currentFile,
+              path: actualNewPath,
+              name: path.basename(actualNewPath)
+            });
+          }
         }
         
-        return updatedFiles;
-      });
-      
-      // Update open files if the file is currently open
-      const isFileOpen = openFiles.some(f => f.path === filePath);
-      if (isFileOpen) {
-        // Update the file in open files
-        updateOpenFile(filePath, { path: newPath, name: newName });
-        
-        // If this is the current file, we need special handling
-        if (currentFile && currentFile.path === filePath) {
-          originalOpenFile({
-            ...currentFile,
-            path: newPath,
-            name: newName
-          });
+        if (fileSystemSuccess) {
+          showSuccess(`Renamed file to ${newName}`);
         }
       }
-      
-      showSuccess(`Renamed file to ${newName}`);
+    };
+    
+    // First try to rename the file on disk if we're in Electron
+    if (window.api && window.api.renameItem) {
+      window.api.renameItem(filePath, newName, isDirectory)
+        .then(result => {
+          if (result && result.success) {
+            fileSystemSuccess = true;
+            console.log(`Successfully renamed ${isDirectory ? 'folder' : 'file'} from ${result.oldPath || filePath} to ${result.newPath || newPath}`);
+            // Now update the UI state after the file system operation succeeds
+            updateUIState(result.oldPath, result.newPath);
+          } else {
+            console.error(`Failed to rename ${isDirectory ? 'folder' : 'file'}:`, result ? result.message : 'Unknown error');
+            showError(`Failed to rename ${isDirectory ? 'folder' : 'file'}: ${result ? result.message : 'Unknown error'}`);
+          }
+        })
+        .catch(error => {
+          console.error(`Error renaming ${isDirectory ? 'folder' : 'file'}:`, error);
+          showError(`Failed to rename ${isDirectory ? 'folder' : 'file'}: ${error.message || 'Unknown error'}`);
+        });
+    } else {
+      // In browser mode, just simulate success
+      fileSystemSuccess = true;
+      console.log(`Simulating rename ${isDirectory ? 'folder' : 'file'} from ${filePath} to ${newPath}`);
+      updateUIState();
     }
-  }, [folders, files, openFiles, updateOpenFile, currentFile, originalOpenFile, showSuccess]);
+  }, [folders, files, openFiles, updateOpenFile, currentFile, originalOpenFile, showSuccess, showError]);
 
   // Add handler for file/folder deletion
-  const handleDeleteFile = useCallback((filePath, isFolder) => {
-    if (isFolder) {
+  const handleDeleteFile = useCallback((filePath, isDirectory) => {
+    if (isDirectory) {
       console.log(`Deleting folder: ${filePath}`);
       
       // Remove folder and all subfolders

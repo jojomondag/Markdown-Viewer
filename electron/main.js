@@ -469,31 +469,49 @@ ipcMain.handle('copy-item', async (event, sourcePath, targetPath, isDirectory) =
   }
 });
 
-ipcMain.handle('rename-item', async (event, sourcePath, newName, isDirectory) => {
+ipcMain.handle('rename-item', async (event, oldPath, newName, isDirectory) => {
   try {
-    const sourceDir = path.dirname(sourcePath);
-    const targetPath = path.join(sourceDir, newName);
+    // Normalize path to handle different path separators
+    oldPath = path.normalize(oldPath);
     
-    // Check if the target already exists
-    if (fs.existsSync(targetPath)) {
-      return {
-        success: false,
-        message: `A ${isDirectory ? 'directory' : 'file'} with this name already exists`
+    const dirPath = path.dirname(oldPath);
+    const newPath = path.join(dirPath, newName);
+    
+    // Check if target already exists
+    if (fs.existsSync(newPath)) {
+      return { 
+        success: false, 
+        message: `A file or folder named "${newName}" already exists in this location`,
+        oldPath: oldPath,
+        newPath: null
       };
     }
     
-    // Rename the item
-    await fs.promises.rename(sourcePath, targetPath);
+    // Perform the rename operation
+    await fs.promises.rename(oldPath, newPath);
     
-    return {
-      success: true,
-      message: `Successfully renamed ${isDirectory ? 'directory' : 'file'}`
-    };
+    // Verify the rename was successful
+    if (fs.existsSync(newPath) && !fs.existsSync(oldPath)) {
+      return { 
+        success: true, 
+        oldPath: oldPath,
+        newPath: newPath
+      };
+    } else {
+      return { 
+        success: false, 
+        message: 'Rename operation did not complete as expected',
+        oldPath: oldPath,
+        newPath: null
+      };
+    }
   } catch (error) {
     console.error('Error renaming item:', error);
-    return {
-      success: false,
-      message: `Failed to rename ${isDirectory ? 'directory' : 'file'}: ${error.message}`
+    return { 
+      success: false, 
+      message: `Error renaming: ${error.message}`,
+      oldPath: oldPath,
+      newPath: null
     };
   }
 });

@@ -12,7 +12,9 @@ import {
   IconSortDescending,
   IconAbc,
   IconCalendar,
-  IconFileTypography
+  IconFileTypography,
+  IconCheck,
+  IconX
 } from '@tabler/icons-react';
 import path from 'path-browserify';
 import { ContextMenu } from './ui/context-menu';
@@ -68,16 +70,38 @@ const getDisplayName = (item) => {
 };
 
 // Memoize FileItem to prevent unnecessary re-renders
-const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextMenu, depth, isLastChild }) => {
+const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextMenu, depth, isLastChild, onStartEditing, isEditing, onFinishEditing, onCancelEditing, editValue, onEditValueChange }) => {
   const isActive = currentFilePath === file.path;
+  const inputRef = useRef(null);
   
   // Always use just the basename for display
   const displayName = getDisplayName(file);
+
+  // Focus the input when editing starts
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      
+      // Select name without extension for files
+      const extIndex = displayName.lastIndexOf('.');
+      if (extIndex > 0) {
+        inputRef.current.setSelectionRange(0, extIndex);
+      } else {
+        inputRef.current.select();
+      }
+    }
+  }, [isEditing, displayName]);
   
   return (
     <div 
       className={`file-item ${isActive ? 'active' : ''}`}
-      onClick={() => onFileSelect(file)}
+      onClick={(e) => {
+        // Only trigger file select action on double click
+        const isDoubleClick = e.detail === 2;
+        if (isDoubleClick) {
+          onFileSelect(file);
+        }
+      }}
       onContextMenu={(e) => onContextMenu(e, file)}
       style={{ 
         paddingLeft: `${depth * 16}px`,
@@ -119,9 +143,63 @@ const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextM
       <div className="file-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
         <IconFile />
       </div>
-      <div className="file-name" title={displayName} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {displayName}
-      </div>
+      {isEditing ? (
+        <div className="file-name-editing flex items-center" style={{ flex: 1 }}>
+          <input 
+            ref={inputRef}
+            type="text"
+            className="px-1 py-0 border border-primary-400 bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 w-full"
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onFinishEditing();
+                e.preventDefault();
+              } else if (e.key === 'Escape') {
+                onCancelEditing();
+                e.preventDefault();
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="ml-1 flex">
+            <button 
+              className="p-0.5 text-success-500 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFinishEditing();
+              }}
+              title="Save"
+            >
+              <IconCheck size={14} />
+            </button>
+            <button 
+              className="p-0.5 text-error-500 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelEditing();
+              }}
+              title="Cancel"
+            >
+              <IconX size={14} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div 
+          className="file-name cursor-text" 
+          title={displayName} 
+          style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isEditing) {
+              onStartEditing(file);
+            }
+          }}
+        >
+          {displayName}
+        </div>
+      )}
     </div>
   );
 });
@@ -133,13 +211,28 @@ const MemoizedFolderItem = memo(({
   toggleFolder,
   depth,
   onContextMenu,
-  isLastChild
+  isLastChild,
+  onStartEditing,
+  isEditing,
+  onFinishEditing,
+  onCancelEditing,
+  editValue,
+  onEditValueChange
 }) => {
   const isRoot = folder.isRoot === true;
   const isExpanded = expandedFolders[folder.path] || false;
+  const inputRef = useRef(null);
   
   // Always use just the basename for display
   const displayName = getDisplayName(folder);
+  
+  // Focus the input when editing starts
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
   
   return (
     <div 
@@ -154,7 +247,11 @@ const MemoizedFolderItem = memo(({
       }}
       onClick={(e) => {
         e.stopPropagation();
-        toggleFolder(folder.path);
+        // Folder row click toggles folder
+        const isDoubleClick = e.detail === 2;
+        if (isDoubleClick) {
+          toggleFolder(folder.path);
+        }
       }}
       onContextMenu={(e) => onContextMenu(e, folder)}
     >
@@ -186,12 +283,73 @@ const MemoizedFolderItem = memo(({
           />
         </>
       )}
-      <div className="folder-icon" style={{ marginRight: '8px', flexShrink: 0 }}>
+      <div 
+        className="folder-icon" 
+        style={{ marginRight: '8px', flexShrink: 0 }}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleFolder(folder.path);
+        }}
+      >
         {isExpanded ? <IconFolderOpen /> : <IconFolder />}
       </div>
-      <div className="folder-name" title={displayName} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {displayName}
-      </div>
+      {isEditing ? (
+        <div className="folder-name-editing flex items-center" style={{ flex: 1 }}>
+          <input 
+            ref={inputRef}
+            type="text"
+            className="px-1 py-0 border border-primary-400 bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 w-full"
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onFinishEditing();
+                e.preventDefault();
+              } else if (e.key === 'Escape') {
+                onCancelEditing();
+                e.preventDefault();
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="ml-1 flex">
+            <button 
+              className="p-0.5 text-success-500 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFinishEditing();
+              }}
+              title="Save"
+            >
+              <IconCheck size={14} />
+            </button>
+            <button 
+              className="p-0.5 text-error-500 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelEditing();
+              }}
+              title="Cancel"
+            >
+              <IconX size={14} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div 
+          className="folder-name cursor-text" 
+          title={displayName} 
+          style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isEditing && !isRoot) {
+              onStartEditing(folder);
+            }
+          }}
+        >
+          {displayName}
+        </div>
+      )}
     </div>
   );
 });
@@ -253,6 +411,10 @@ const FileExplorer = ({
   // Use external sort props if provided
   const [sortBy, setSortBy] = useState(externalSortBy || 'name'); 
   const [sortDirection, setSortDirection] = useState(externalSortDirection || 'asc');
+
+  // New state for inline editing
+  const [editingItem, setEditingItem] = useState(null);
+  const [editValue, setEditValue] = useState('');
 
   // Save expanded folders to localStorage whenever they change
   useEffect(() => {
@@ -995,9 +1157,15 @@ const FileExplorer = ({
   };
 
   // Create new function to handle rename from dialog
-  const renameItem = (path, newName) => {
+  const renameItem = (filePath, newName) => {
     if (onRenameFile && newName) {
-      onRenameFile(path, newName);
+      // Calculate the full new path to maintain folder structure
+      const dirPath = path.dirname(filePath);
+      const newPath = path.join(dirPath, newName);
+      
+      // Call the rename handler with the old path and new name
+      // This ensures proper path calculation in the parent component
+      onRenameFile(filePath, newName);
     }
   };
 
@@ -1241,6 +1409,104 @@ const FileExplorer = ({
     };
   };
 
+  // New function to handle starting inline editing
+  const handleStartEditing = (item) => {
+    if (!item) return;
+    
+    // Don't allow editing the root folder
+    if (item.isRoot) return;
+    
+    setEditingItem(item);
+    setEditValue(getDisplayName(item));
+  };
+  
+  // Function to finish editing and save changes
+  const handleFinishEditing = () => {
+    if (!editingItem || !editValue.trim()) {
+      setEditingItem(null);
+      return;
+    }
+    
+    // Check for invalid characters
+    if (/[<>:"/\\|?*]/.test(editValue)) {
+      alert('Name contains invalid characters');
+      return;
+    }
+    
+    // Make sure the extension is preserved for files
+    let newName = editValue;
+    if (editingItem.type === 'file') {
+      const oldName = getDisplayName(editingItem);
+      const oldExtIndex = oldName.lastIndexOf('.');
+      if (oldExtIndex > 0) {
+        const oldExt = oldName.substring(oldExtIndex);
+        // If the new name doesn't already have this extension, add it
+        if (!newName.endsWith(oldExt)) {
+          newName = newName + oldExt;
+        }
+      }
+    }
+    
+    // Check if the name has actually changed
+    if (newName === getDisplayName(editingItem)) {
+      // No change, just exit edit mode
+      setEditingItem(null);
+      setEditValue('');
+      return;
+    }
+    
+    const isFolder = editingItem.type === 'folder';
+    
+    // Calculate new path while maintaining folder structure
+    const dirPath = path.dirname(editingItem.path);
+    const newPath = path.join(dirPath, newName);
+    
+    // Check if a file with this name already exists in the same directory
+    const fileExists = files.some(f => 
+      path.dirname(f.path) === dirPath && 
+      path.basename(f.path) === newName
+    ) || folders.some(f => 
+      path.dirname(f.path) === dirPath && 
+      path.basename(f.path) === newName
+    );
+    
+    if (fileExists) {
+      alert(`A ${isFolder ? 'folder' : 'file'} with this name already exists in this location`);
+      setEditingItem(null);
+      setEditValue('');
+      return;
+    }
+    
+    // Call the rename handler with the new name - the UI will be updated through
+    // the standard data flow from the parent component
+    renameItem(editingItem.path, newName);
+    
+    // Reset the editing state - don't wait for the operation to complete
+    // as the state refresh will happen anyway
+    setEditingItem(null);
+    setEditValue('');
+  };
+  
+  // Function to cancel editing without saving
+  const handleCancelEditing = () => {
+    setEditingItem(null);
+    setEditValue('');
+  };
+
+  // Add a click handler to the document to close the inline editor when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (editingItem && fileExplorerRef.current && !fileExplorerRef.current.contains(event.target)) {
+        handleCancelEditing();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [editingItem]);
+
   return (
     <div 
       ref={fileExplorerRef}
@@ -1341,14 +1607,17 @@ const FileExplorer = ({
                                   (flattenedItems[index + 1] && 
                                    (flattenedItems[index + 1].level <= item.level));
               
+              // Check if this item is being edited
+              const isEditing = editingItem && editingItem.path === item.path;
+              
               return (
                 <div 
                   key={item.path}
                   ref={el => itemRefs.current[`${item.type}-${item.path}`] = el}
                   tabIndex={0}
                   onFocus={() => handleFocus(item)}
-                  draggable
-                  onDragStart={e => handleDragStart(e, item)}
+                  draggable={!isEditing}
+                  onDragStart={e => !isEditing && handleDragStart(e, item)}
                   onDragOver={e => handleDragOver(e, item)}
                   onDragLeave={handleDragLeave}
                   onDrop={e => handleDrop(e, item)}
@@ -1363,6 +1632,12 @@ const FileExplorer = ({
                       onContextMenu={handleContextMenu}
                       depth={item.level}
                       isLastChild={isLastChild}
+                      onStartEditing={handleStartEditing}
+                      isEditing={isEditing}
+                      onFinishEditing={handleFinishEditing}
+                      onCancelEditing={handleCancelEditing}
+                      editValue={editValue}
+                      onEditValueChange={setEditValue}
                     />
                   ) : (
                     <MemoizedFolderItem
@@ -1372,6 +1647,12 @@ const FileExplorer = ({
                       depth={item.level}
                       onContextMenu={handleContextMenu}
                       isLastChild={isLastChild}
+                      onStartEditing={handleStartEditing}
+                      isEditing={isEditing}
+                      onFinishEditing={handleFinishEditing}
+                      onCancelEditing={handleCancelEditing}
+                      editValue={editValue}
+                      onEditValueChange={setEditValue}
                     />
                   )}
                 </div>
