@@ -1079,13 +1079,25 @@ const FileExplorer = ({
         if (typeof onCreateFile === 'function') {
           console.log('Calling onCreateFile with:', fileData);
           onCreateFile(fileData);
+          
+          // Immediately put the new file in rename mode
+          setTimeout(() => {
+            // Make sure the parent folder is expanded first
+            if (parentFolder) {
+              // Only expand the folder if it's not already expanded
+              if (!expandedFolders[parentFolder.path]) {
+                toggleFolder(parentFolder.path);
+              }
+            }
+            
+            // Start editing the newly created file
+            handleStartEditing({
+              ...fileData,
+              type: 'file'
+            });
+          }, 100); // Small delay to ensure the file is in the DOM
         } else {
           console.error('onCreateFile is not a function:', onCreateFile);
-        }
-        
-        // Make sure the parent folder is expanded
-        if (parentFolder) {
-          toggleFolder(parentFolder.path);
         }
       })
       .catch(error => {
