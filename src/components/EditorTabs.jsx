@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { IconX, IconPlus, IconDotsVertical } from '@tabler/icons-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { IconX, IconPlus } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
 
 const EditorTabs = ({ 
@@ -9,13 +9,13 @@ const EditorTabs = ({
   onTabClose, 
   onNewTab 
 }) => {
-  const [activeMenu, setActiveMenu] = useState(null);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, file: null });
   const { showInfo } = useNotification();
   
-  // Close tab menu when clicking outside
+  // Close context menu when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
-      setActiveMenu(null);
+      setContextMenu({ visible: false, x: 0, y: 0, file: null });
     };
     
     document.addEventListener('click', handleClickOutside);
@@ -24,10 +24,18 @@ const EditorTabs = ({
     };
   }, []);
   
-  // Handle tab menu click
-  const handleTabMenuClick = (e, fileId) => {
+  // Handle context menu (right click)
+  const handleContextMenu = (e, file) => {
+    e.preventDefault();
     e.stopPropagation();
-    setActiveMenu(activeMenu === fileId ? null : fileId);
+    
+    // Position the menu at the mouse position
+    setContextMenu({ 
+      visible: true, 
+      x: e.clientX,
+      y: e.clientY, 
+      file
+    });
   };
   
   // Handle tab close click
@@ -47,7 +55,7 @@ const EditorTabs = ({
       
       showInfo('Closed other tabs');
     }
-    setActiveMenu(null);
+    setContextMenu({ visible: false, x: 0, y: 0, file: null });
   };
   
   const handleCloseAll = () => {
@@ -55,7 +63,7 @@ const EditorTabs = ({
       openFiles.forEach(f => onTabClose(f));
       showInfo('Closed all tabs');
     }
-    setActiveMenu(null);
+    setContextMenu({ visible: false, x: 0, y: 0, file: null });
   };
   
   const handleCloseRight = (file) => {
@@ -69,7 +77,7 @@ const EditorTabs = ({
         showInfo('Closed tabs to the right');
       }
     }
-    setActiveMenu(null);
+    setContextMenu({ visible: false, x: 0, y: 0, file: null });
   };
   
   return (
@@ -82,75 +90,73 @@ const EditorTabs = ({
           <div 
             key={file.path} 
             className={`
-              flex items-center min-w-[120px] max-w-[200px] h-10 px-3 py-1 cursor-pointer relative
+              flex items-center min-w-[90px] max-w-[150px] h-8 px-2 py-0.5 cursor-pointer relative
               border-r border-surface-300 dark:border-surface-700
               ${isActive 
                 ? 'bg-white dark:bg-surface-900 text-primary-600 dark:text-primary-400' 
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}
             `}
             onClick={() => onTabChange(file)}
+            onContextMenu={(e) => handleContextMenu(e, file)}
           >
-            <span className="truncate flex-grow text-sm">{file.name}</span>
+            <span className="truncate flex-grow text-xs">{file.name}</span>
             
             {isDirty && (
-              <span className="ml-1 w-2 h-2 rounded-full bg-warning-500 flex-shrink-0" />
+              <span className="ml-1 w-1.5 h-1.5 rounded-full bg-warning-500 flex-shrink-0" />
             )}
-            
-            <button
-              className="ml-2 p-0.5 rounded-full hover:bg-surface-300 dark:hover:bg-surface-600 text-surface-500 dark:text-surface-400 flex-shrink-0"
-              onClick={(e) => handleCloseClick(e, file)}
-              title="Close tab"
-            >
-              <IconX size={14} />
-            </button>
             
             <button
               className="ml-1 p-0.5 rounded-full hover:bg-surface-300 dark:hover:bg-surface-600 text-surface-500 dark:text-surface-400 flex-shrink-0"
-              onClick={(e) => handleTabMenuClick(e, file.path)}
-              title="Tab options"
+              onClick={(e) => handleCloseClick(e, file)}
+              title="Close tab"
             >
-              <IconDotsVertical size={14} />
+              <IconX size={12} />
             </button>
-            
-            {/* Tab menu */}
-            {activeMenu === file.path && (
-              <div 
-                className="absolute top-full left-0 z-50 mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-surface-800 ring-1 ring-black ring-opacity-5 focus:outline-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="py-1">
-                  <button 
-                    className="block w-full text-left px-4 py-2 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700"
-                    onClick={() => handleCloseOthers(file)}
-                  >
-                    Close other tabs
-                  </button>
-                  <button 
-                    className="block w-full text-left px-4 py-2 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700"
-                    onClick={() => handleCloseRight(file)}
-                  >
-                    Close tabs to the right
-                  </button>
-                  <button 
-                    className="block w-full text-left px-4 py-2 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700"
-                    onClick={handleCloseAll}
-                  >
-                    Close all tabs
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         );
       })}
       
+      {/* Context menu */}
+      {contextMenu.visible && contextMenu.file && (
+        <div 
+          className="fixed z-50 rounded-md shadow-lg bg-white dark:bg-surface-800 ring-1 ring-black ring-opacity-5 focus:outline-none"
+          style={{ 
+            left: `${contextMenu.x}px`, 
+            top: `${contextMenu.y}px`,
+            transform: 'translate(-50%, -100%)' // Position above cursor
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="py-1 px-1 flex flex-row space-x-2">
+            <button 
+              className="px-3 py-1 text-xs text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded"
+              onClick={() => handleCloseOthers(contextMenu.file)}
+            >
+              Close other
+            </button>
+            <button 
+              className="px-3 py-1 text-xs text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded"
+              onClick={() => handleCloseRight(contextMenu.file)}
+            >
+              Close right
+            </button>
+            <button 
+              className="px-3 py-1 text-xs text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded"
+              onClick={handleCloseAll}
+            >
+              Close all
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* New tab button */}
       <button
-        className="h-10 px-3 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center"
+        className="h-8 px-2 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center"
         onClick={onNewTab}
         title="New tab"
       >
-        <IconPlus size={16} />
+        <IconPlus size={14} />
       </button>
     </div>
   );
