@@ -94,6 +94,12 @@ export function applyLezerFixes() {
         if (relativePath.startsWith('/')) return relativePath;
         // Simple path resolution for relative paths
         return basePath + (basePath.endsWith('/') ? '' : '/') + relativePath;
+      },
+      // Add openInExplorer function
+      openInExplorer: (path) => {
+        console.warn('Mock openInExplorer called. Electron API not available:', path);
+        // In a real app, this would open the folder in the system file explorer
+        return Promise.resolve({ success: true });
       }
     };
   }

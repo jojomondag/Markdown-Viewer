@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld(
     },
     openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
 
+    // Open a folder in the system file explorer
+    openInExplorer: (folderPath) => {
+      console.log('[Preload] Opening folder in system explorer:', folderPath);
+      return ipcRenderer.invoke('open-in-explorer', folderPath);
+    },
+
     // *** NEW: Expose path functions via IPC ***
     pathDirname: (filePath) => ipcRenderer.invoke('path-dirname', filePath),
     pathResolve: (...paths) => ipcRenderer.invoke('path-resolve', ...paths)

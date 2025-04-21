@@ -1212,6 +1212,10 @@ const FileExplorer = ({
       label: expandedFolders[folder.path] ? 'Collapse' : 'Expand', 
       onClick: () => toggleFolder(folder.path)
     },
+    {
+      label: 'Open in File Explorer',
+      onClick: () => window.api.openInExplorer(folder.path)
+    },
     { divider: true },
     { 
       label: 'New File', 

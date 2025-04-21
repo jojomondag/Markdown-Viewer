@@ -260,6 +260,27 @@ ipcMain.handle('read-file', async (event, filePath) => {
   }
 });
 
+// Add IPC handler to open a folder in the system file explorer
+ipcMain.handle('open-in-explorer', async (event, folderPath) => {
+  console.log(`[Main Process] Opening folder in system explorer: ${folderPath}`);
+  try {
+    // Use shell.openPath to open the folder in system file explorer
+    const result = await shell.openPath(folderPath);
+    
+    // If result is empty string, it was successful
+    if (result === '') {
+      console.log(`[Main Process] Successfully opened folder: ${folderPath}`);
+      return { success: true };
+    } else {
+      console.error(`[Main Process] Failed to open folder: ${result}`);
+      return { success: false, error: result };
+    }
+  } catch (error) {
+    console.error('[Main Process] Error opening folder in explorer:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // File permission testing handlers
 ipcMain.handle('test-file-read', async (event, filePath) => {
   try {
