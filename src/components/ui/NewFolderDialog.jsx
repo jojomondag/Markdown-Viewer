@@ -32,20 +32,35 @@ const NewFolderDialog = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // Validate folder name
-    if (!folderName.trim()) {
+    // First clean the name - remove any path components
+    let cleanFolderName = folderName;
+    
+    // Remove any path-like segments (everything before the last slash or backslash)
+    if (folderName.includes('/') || folderName.includes('\\')) {
+      const lastSlashIndex = Math.max(
+        folderName.lastIndexOf('/'), 
+        folderName.lastIndexOf('\\')
+      );
+      
+      if (lastSlashIndex !== -1) {
+        cleanFolderName = folderName.substring(lastSlashIndex + 1);
+      }
+    }
+    
+    // Validate the cleaned folder name
+    if (!cleanFolderName.trim()) {
       setError('Folder name cannot be empty');
       return;
     }
     
-    // Check for invalid characters
-    if (/[<>:"/\\|?*]/.test(folderName)) {
+    // Check for invalid characters in the cleaned name
+    if (/[<>:"/\\|?*]/.test(cleanFolderName)) {
       setError('Folder name contains invalid characters');
       return;
     }
     
-    // Call the create folder handler
-    onCreateFolder(folderName);
+    // Call the create folder handler with the clean name
+    onCreateFolder(cleanFolderName);
     onClose();
   };
   
@@ -97,8 +112,33 @@ const NewFolderDialog = ({
               placeholder="Enter folder name"
               value={folderName}
               onChange={(e) => {
-                setFolderName(e.target.value);
-                if (error) setError('');
+                // Clean the input value as the user types to prevent slash characters
+                let newValue = e.target.value;
+                
+                // If input contains slashes or backslashes, strip everything before the last slash/backslash
+                if (newValue.includes('/') || newValue.includes('\\')) {
+                  const lastSlashIndex = Math.max(
+                    newValue.lastIndexOf('/'), 
+                    newValue.lastIndexOf('\\')
+                  );
+                  
+                  if (lastSlashIndex !== -1) {
+                    newValue = newValue.substring(lastSlashIndex + 1);
+                    // After cleaning, re-check for invalid characters
+                    if (/[<>:"/\\|?*]/.test(newValue)) {
+                      setError('Folder name contains invalid characters');
+                    } else {
+                      setError('');
+                    }
+                  }
+                } else if (/[<>:"/\\|?*]/.test(newValue)) {
+                  setError('Folder name contains invalid characters');
+                } else {
+                  setError('');
+                }
+                
+                // Update state with clean name
+                setFolderName(newValue);
               }}
             />
           </div>

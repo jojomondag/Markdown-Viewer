@@ -1040,14 +1040,21 @@ function App() {
   const handleCreateFolder = useCallback((folderData) => {
     console.log('Creating new folder:', folderData);
     
+    // Extract just the basename for the folder name
+    const folderBasename = path.basename(folderData.path);
+    console.log('Using basename for folder display:', folderBasename);
+    
     // Add the new folder to the folders list
     setFolders(prevFolders => [...prevFolders, {
       ...folderData,
-      name: path.basename(folderData.path),
+      // Ensure we use only the basename without any path components
+      name: folderBasename,
+      displayName: folderBasename, // Explicitly add displayName
       type: 'folder'
     }]);
     
-    showSuccess(`Created folder: ${folderData.name}`);
+    // Use the basename of the folder name for the success message
+    showSuccess(`Created folder: ${folderBasename}`);
   }, [showSuccess]);
 
   // Add handler for creating new files

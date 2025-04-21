@@ -137,6 +137,38 @@ ipcMain.handle('create-file', async (event, filePath, content = '') => {
   }
 });
 
+ipcMain.handle('create-folder', async (event, folderPath) => {
+  console.log('[Main Process] Received create-folder request for:', folderPath);
+  try {
+    // Normalize folder path for Windows if needed
+    const normalizedPath = folderPath.replace(/\\\\/g, '\\').replace(/\//g, '\\');
+    console.log('[Main Process] Normalized path:', normalizedPath);
+    
+    // Check if folder already exists
+    if (fs.existsSync(normalizedPath)) {
+      console.log('[Main Process] Folder already exists:', normalizedPath);
+      throw new Error('Folder already exists');
+    }
+    
+    // Create the folder and any parent directories needed
+    console.log('[Main Process] Creating folder:', normalizedPath);
+    await fs.promises.mkdir(normalizedPath, { recursive: true });
+    
+    // Return folder info
+    const stats = await fs.promises.stat(normalizedPath);
+    console.log('[Main Process] Folder created successfully:', normalizedPath);
+    return {
+      name: path.basename(normalizedPath),
+      path: normalizedPath,
+      type: 'folder',
+      lastModified: stats.mtime
+    };
+  } catch (error) {
+    console.error('[Main Process] Error creating folder:', error);
+    throw new Error(`Failed to create folder: ${error.message}`);
+  }
+});
+
 ipcMain.handle('watch-file', async (event, filePath) => {
   try {
     // Clean up existing watcher if any

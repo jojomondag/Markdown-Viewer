@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld(
       console.log('[Preload] Creating file at:', filePath);
       return ipcRenderer.invoke('create-file', filePath, content);
     },
+    createFolder: (folderPath) => {
+      console.log('[Preload] Creating folder at:', folderPath);
+      return ipcRenderer.invoke('create-folder', folderPath);
+    },
     
     // Event listeners
     onFileChange: (callback) => {
