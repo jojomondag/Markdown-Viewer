@@ -1105,23 +1105,23 @@ function App() {
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       <AccessibilityHelper />
       
-      <header className="bg-primary-700 dark:bg-primary-800 text-white p-2 md:p-4 shadow-md" role="banner">
+      <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
         <div className="container mx-auto flex items-center justify-between">
-          <div className="w-1/3 flex items-center justify-start space-x-2">
+          <div className="flex items-center justify-start space-x-2">
             <button 
-              className="flex items-center bg-primary-600 dark:bg-primary-700 hover:bg-primary-500 dark:hover:bg-primary-600 px-2 py-1 md:px-3 md:py-1 rounded text-sm md:text-base"
+              className="flex items-center bg-primary-600 hover:bg-primary-500 dark:bg-primary-700 dark:hover:bg-primary-600 px-2 py-1 rounded text-white text-sm"
               onClick={openAndScanFolder}
               title={`Add Folder ${KEYBOARD_SHORTCUTS.OPEN_FILE}`}
               disabled={loading}
             >
               {loading ? (
                 <>
-                  <LoadingSpinner size="sm" color="white" className="mr-1 md:mr-2" />
+                  <LoadingSpinner size="sm" color="white" className="mr-1" />
                   {!isMobile && "Adding..."}
                 </>
               ) : (
                 <>
-                  <IconFolderOpen size={isMobile ? 18 : 20} className="mr-1 md:mr-2" />
+                  <IconFolderOpen size={isMobile ? 16 : 18} className="mr-1" />
                   {isMobile ? "Add" : "Add Folder"}
                 </>
               )}
@@ -1129,11 +1129,11 @@ function App() {
             
             {currentFolders.length > 0 && (
               <button 
-                className="flex items-center bg-error-600 hover:bg-error-500 dark:bg-error-700 dark:hover:bg-error-600 px-2 py-1 md:px-3 md:py-1 rounded text-sm md:text-base text-white"
+                className="flex items-center bg-error-600 hover:bg-error-500 dark:bg-error-700 dark:hover:bg-error-600 px-2 py-1 rounded text-sm text-white"
                 onClick={clearAllFolders}
                 title="Clear all folders"
               >
-                <IconTrash size={isMobile ? 18 : 20} className="mr-1 md:mr-2" />
+                <IconTrash size={isMobile ? 16 : 18} className="mr-1" />
                 {!isMobile && "Clear All"}
               </button>
             )}
@@ -1145,18 +1145,18 @@ function App() {
             )}
           </div>
           
-          <div className="w-1/3 flex justify-center">
-            {/* Intentionally left empty for spacing */}
+          <div className="flex justify-center">
+            {/* App title or logo could go here */}
           </div>
           
-          <div className="w-1/3 flex items-center justify-end space-x-1 md:space-x-2">
+          <div className="flex items-center justify-end space-x-2">
             <ThemeToggle />
             <button 
-              className="p-1 md:p-2 rounded hover:bg-primary-600 dark:hover:bg-primary-700"
+              className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
               onClick={() => setIsSettingsOpen(true)}
               title="Settings"
             >
-              <IconSettings size={isMobile ? 18 : 20} />
+              <IconSettings size={isMobile ? 16 : 18} />
             </button>
           </div>
         </div>
@@ -1310,7 +1310,16 @@ function App() {
                 }}
               >
                 <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800">
-                  <h3 className="text-sm font-medium">Preview</h3>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                      onClick={togglePreviewEye}
+                      title={isEditorContainerVisible ? "Hide Editor" : "Show Editor"}
+                    >
+                      {isEditorContainerVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                    </button>
+                    <h3 className="text-sm font-medium">Preview</h3>
+                  </div>
                   <div className="flex items-center space-x-2">
                     {/* Zoom Controls */}
                     <div className="flex items-center space-x-1 mr-2">
@@ -1360,15 +1369,6 @@ function App() {
                       title={`${scrollSyncEnabled ? 'Disable' : 'Enable'} Scroll Sync`}
                     >
                       {scrollSyncEnabled ? <IconLink size={16} /> : <IconUnlink size={16} />}
-                    </button>
-                    
-                    {/* Toggle Editor Visibility */}
-                    <button
-                      className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
-                      onClick={togglePreviewEye}
-                      title={isEditorContainerVisible ? "Hide Editor" : "Show Editor"}
-                    >
-                      {isEditorContainerVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
                     </button>
                   </div>
                 </div>
