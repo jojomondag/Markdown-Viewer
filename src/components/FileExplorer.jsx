@@ -541,7 +541,12 @@ const FileExplorer = ({
     const addedPaths = new Set();
     
     // Helper to normalize path separators for consistent comparison
-    const normalizePath = (p) => p.replace(/\\/g, '/');
+    const normalizePath = (p) => {
+      if (!p) return '';
+      // Use Node's path.normalize for platform-specific normalization
+      // then ensure forward slashes for consistent comparison
+      return path.normalize(p).replace(/\\/g, '/');
+    };
     
     // Get all normalized paths for quick checking
     const normalizedFolderPaths = folders.map(f => normalizePath(f.path));

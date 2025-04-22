@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld(
     scanFolder: (path) => ipcRenderer.invoke('scan-folder', path),
     readFile: (path) => ipcRenderer.invoke('read-file', path),
     
+    // Register imported folders to prevent duplicate file creation
+    registerImportedFolder: (path) => ipcRenderer.invoke('register-imported-folder', path),
+    
     // File permission testing operations
     testFileReadAccess: (path) => ipcRenderer.invoke('test-file-read', path),
     testFileWriteAccess: (path) => ipcRenderer.invoke('test-file-write', path),

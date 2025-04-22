@@ -17,6 +17,9 @@ try {
   console.error('Failed to set up user data directory:', error);
 }
 
+// Keep track of imported folder paths to prevent duplicate file creation
+const importedFolderPaths = [];
+
 // Create main window
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -99,8 +102,8 @@ ipcMain.handle('save-file', async (event, filePath, content) => {
 ipcMain.handle('create-file', async (event, filePath, content = '') => {
   console.log('[Main Process] Received create-file request for:', filePath);
   try {
-    // Normalize file path for Windows if needed
-    const normalizedPath = filePath.replace(/\\\\/g, '\\').replace(/\//g, '\\');
+    // Normalize file path in a platform-aware way (don't force Windows style)
+    const normalizedPath = path.normalize(filePath);
     console.log('[Main Process] Normalized path:', normalizedPath);
     
     // Check if file already exists
@@ -108,6 +111,20 @@ ipcMain.handle('create-file', async (event, filePath, content = '') => {
       console.log('[Main Process] File already exists:', normalizedPath);
       throw new Error('File already exists');
     }
+    
+    // Check if the file is being created in an imported folder
+    // Use startsWith with platform-specific path comparisons
+    console.log('[Main Process] Current imported folders:', importedFolderPaths);
+    
+    const isInImportedFolder = importedFolderPaths.some(folderPath => {
+      // Normalize the folder path in the same way for consistent comparison
+      const normalizedFolderPath = path.normalize(folderPath);
+      // Log comparison for debugging
+      console.log(`[Main Process] Comparing: ${normalizedPath} with imported folder: ${normalizedFolderPath}`);
+      return normalizedPath.startsWith(normalizedFolderPath);
+    });
+    
+    console.log('[Main Process] Is file in imported folder?', isInImportedFolder);
     
     // Create parent directories if needed
     const dirPath = path.dirname(normalizedPath);
@@ -137,11 +154,19 @@ ipcMain.handle('create-file', async (event, filePath, content = '') => {
   }
 });
 
+// Track imported folders
+ipcMain.handle('register-imported-folder', (event, folderPath) => {
+  if (!importedFolderPaths.includes(folderPath)) {
+    importedFolderPaths.push(folderPath);
+  }
+  return true;
+});
+
 ipcMain.handle('create-folder', async (event, folderPath) => {
   console.log('[Main Process] Received create-folder request for:', folderPath);
   try {
-    // Normalize folder path for Windows if needed
-    const normalizedPath = folderPath.replace(/\\\\/g, '\\').replace(/\//g, '\\');
+    // Normalize folder path in a platform-aware way
+    const normalizedPath = path.normalize(folderPath);
     console.log('[Main Process] Normalized path:', normalizedPath);
     
     // Check if folder already exists
@@ -223,6 +248,13 @@ ipcMain.handle('open-folder', async (event, allowMultiSelect = false) => {
       console.log("[Main Process] Dialog was cancelled by user.");
       return null;
     }
+    
+    // Register imported folders
+    filePaths.forEach(folderPath => {
+      if (!importedFolderPaths.includes(folderPath)) {
+        importedFolderPaths.push(folderPath);
+      }
+    });
     
     if (allowMultiSelect) {
       console.log(`[Main Process] Returning multiple selected paths: ${filePaths}`);

@@ -39,6 +39,11 @@ const useFiles = () => {
           continue; // Skip this folder
         }
         
+        // Register this folder as imported to prevent duplicate file creation
+        if (window.api && window.api.registerImportedFolder) {
+          window.api.registerImportedFolder(folderPath);
+        }
+        
         // Add to our list of added directories
         addedDirectories.push(folderPath);
         
