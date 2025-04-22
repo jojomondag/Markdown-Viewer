@@ -124,9 +124,14 @@ function appStateReducer(state, action) {
     case ActionTypes.UPDATE_OPEN_FILE:
       return {
         ...state,
-        openFiles: state.openFiles.map(file => 
-          file.path === action.payload.path ? { ...file, ...action.payload } : file
-        ),
+        openFiles: state.openFiles.map(file => {
+          if (file.path === action.payload.path) {
+            // Remove path from payload to avoid duplication
+            const { path, ...updates } = action.payload;
+            return { ...file, ...updates };
+          }
+          return file;
+        }),
       };
       
     case ActionTypes.SET_FILE_DIRTY:
@@ -317,10 +322,34 @@ export const AppStateProvider = ({ children }) => {
     payload: file
   });
   
-  const updateOpenFile = (file) => dispatch({
-    type: ActionTypes.UPDATE_OPEN_FILE,
-    payload: file
-  });
+  const updateOpenFile = (oldPath, updates) => {
+    // If the updates contain a new path, we need to properly update the open file
+    if (updates.path && updates.path !== oldPath) {
+      // First, get a copy of the current file with the old path
+      const file = state.openFiles.find(f => f.path === oldPath);
+      if (file) {
+        // Then dispatch an action to remove the file with the old path
+        dispatch({
+          type: ActionTypes.REMOVE_OPEN_FILE,
+          payload: { path: oldPath }
+        });
+        
+        // Finally, add the file with the new path and updates
+        dispatch({
+          type: ActionTypes.ADD_OPEN_FILE,
+          payload: { ...file, ...updates }
+        });
+        
+        return;
+      }
+    }
+    
+    // Otherwise, do a regular update
+    dispatch({
+      type: ActionTypes.UPDATE_OPEN_FILE,
+      payload: { path: oldPath, ...updates }
+    });
+  };
   
   const setFileDirty = (file, isDirty) => dispatch({
     type: ActionTypes.SET_FILE_DIRTY,

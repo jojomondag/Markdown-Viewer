@@ -24,6 +24,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
 
+
 // Export the set to make it accessible to other components
 export const newFilesInProgress = new Set();
 

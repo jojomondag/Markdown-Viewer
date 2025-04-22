@@ -160,7 +160,8 @@ const useFiles = () => {
     saveFile,
     updateContent,
     setFiles,
-    setFolders
+    setFolders,
+    setCurrentFile
   };
 };
 

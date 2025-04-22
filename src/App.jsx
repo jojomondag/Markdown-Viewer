@@ -51,7 +51,8 @@ function App() {
     clearFolders: originalClearFolders,
     updateContent,
     setFiles,
-    setFolders
+    setFolders,
+    setCurrentFile
   } = useFiles();
   
   // Get the notification functions
@@ -895,12 +896,18 @@ function App() {
         // Update open files if the file is currently open
         const openFile = openFiles.find(f => path.normalize(f.path) === actualOldPath);
         if (openFile) {
-          // Update the file in open files
-          updateOpenFile(openFile.path, { path: actualNewPath, name: path.basename(actualNewPath) });
+          // Update the file in open files with the new path and name
+          console.log(`Updating open file from ${actualOldPath} to ${actualNewPath}`);
+          updateOpenFile(actualOldPath, { 
+            path: actualNewPath, 
+            name: path.basename(actualNewPath) 
+          });
           
           // If this is the current file, we need special handling
           if (currentFile && path.normalize(currentFile.path) === actualOldPath) {
-            originalOpenFile({
+            console.log(`Updating current file to ${actualNewPath}`);
+            // Don't open a new tab, just update the current file
+            setCurrentFile({
               ...currentFile,
               path: actualNewPath,
               name: path.basename(actualNewPath)
