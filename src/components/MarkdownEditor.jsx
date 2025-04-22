@@ -19,7 +19,7 @@ import {
   indentWithTab
 } from '@codemirror/commands';
 
-// Import commands from the new module
+// Import commands from the editor menu utility
 import {
   undoCommand,
   redoCommand,
@@ -36,57 +36,14 @@ import {
   applyTable
 } from '../utils/editorMenu';
 
-// REPLACED: We won't use the actual markdown parser since it's causing errors
-// import { markdown as originalMarkdown } from '@codemirror/lang-markdown';
-
-// Create a complete mock implementation of the markdown extension
-// This avoids the "Cannot read properties of undefined (reading 'parser')" error
-const createMockMarkdownExtension = () => {
-  // Create a simple token for highlighting markdown syntax
-  const createToken = (name) => ({
-    id: name,
-    name: name,
-    props: [],
-    children: [],
-    parser: {
-      parse: () => ({ type: name })
-    }
-  });
-
-  // Simple basic language support with no actual parser
-  return {
-    // Mock language data
-    language: {
-      name: "markdown",
-      load: () => Promise.resolve({}),
-      grammar: {},
-      topNode: "document",
-      parser: {
-        parse: () => ({ type: "document" }),
-        configure: () => ({ parse: () => ({ type: "document" }) })
-      },
-      languageData: {
-        commentTokens: { line: "#" }
-      }
-    },
-    // Extension factory function
-    extension: [],
-    // Simple syntax highlighting rules - fallback to basic styles
-    tokenTable: {
-      "heading": createToken("heading"),
-      "strong": createToken("strong"),
-      "emphasis": createToken("emphasis"),
-      "link": createToken("link"),
-      "code": createToken("code"),
-      "codeBlock": createToken("codeBlock")
-    },
-    // Mock config method
-    configure: () => createMockMarkdownExtension()
-  };
-};
-
-// A safe function that won't try to use the real markdown parser at all
-const safeMarkdown = () => createMockMarkdownExtension();
+// Simple mock implementation to avoid parser errors
+const safeMarkdown = () => ({
+  extension: [],
+  language: {
+    name: "markdown",
+    parser: { parse: () => ({ type: "document" }) }
+  }
+});
 
 import { 
   search, 
@@ -116,37 +73,19 @@ import {
   defaultHighlightStyle
 } from './highlightFix';
 import SearchReplaceDialog from './SearchReplaceDialog';
-import { IconSearch, IconCornerDownRight } from '@tabler/icons-react';
+import { IconSearch } from '@tabler/icons-react';
 import { useAppState } from '../context/AppStateContext';
-import CodeEditorStyle from './CodeEditorStyle';
 
-// Helper function to determine if a line is a heading
-const isHeadingLine = (line) => {
-  return /^#{1,6}\s.+$/.test(line);
-};
+// Helper functions for folding
+const isHeadingLine = (line) => /^#{1,6}\s.+$/.test(line);
+const isCodeBlockStart = (line) => /^```\w*$/.test(line);
 
-// Helper function to determine if a line starts a code block
-const isCodeBlockStart = (line) => {
-  return /^```\w*$/.test(line);
-};
-
-// Simple custom fold extension that doesn't rely on the markdown parser
+// Simple custom fold extension
 const simpleMarkdownFolding = () => {
   try {
-    // Create a very basic folding extension that uses regex patterns instead of the syntax tree
     return codeFolding({
-      // Override the language's fold service
       foldNodeProp: {
-        // For markdown, we want to fold heading sections and code blocks
-        marker: (node) => {
-          try {
-            // Simple fallback with minimal reliance on node structure
-            return "...";
-          } catch (error) {
-            console.warn('Error in fold marker:', error);
-            return null;
-          }
-        }
+        marker: () => "..."
       }
     });
   } catch (error) {
@@ -277,69 +216,31 @@ const MarkdownEditor = forwardRef(({
     // Get editor content
     getContent: () => viewRef.current ? viewRef.current.state.doc.toString() : content,
     
-    // Fold a specific heading or code block at the current cursor position
+    // Fold/unfold functions
     foldCurrent: () => {
-      if (viewRef.current) {
-        foldCode(viewRef.current);
-      }
+      if (viewRef.current) foldCode(viewRef.current);
     },
-    
-    // Unfold a specific heading or code block at the current cursor position
     unfoldCurrent: () => {
-      if (viewRef.current) {
-        unfoldCode(viewRef.current);
-      }
+      if (viewRef.current) unfoldCode(viewRef.current);
     },
 
-    // Expose undo/redo functions (calling imported commands)
-    undo: () => {
-      undoCommand(viewRef.current);
-    },
-    redo: () => {
-      redoCommand(viewRef.current);
-    },
+    // Undo/redo functions
+    undo: () => undoCommand(viewRef.current),
+    redo: () => redoCommand(viewRef.current),
 
-    // --- Formatting Actions (calling imported commands) ---
-    applyBold: () => {
-      applyBold(viewRef.current);
-    },
-    applyItalic: () => {
-      applyItalic(viewRef.current);
-    },
-    applyHeading: (level = 2) => { 
-       applyHeading(viewRef.current, level);
-     },
-    applyUnorderedList: () => {
-      applyUnorderedList(viewRef.current);
-    },
-    applyOrderedList: () => {
-      applyOrderedList(viewRef.current);
-    },
-    applyLink: () => {
-      applyLink(viewRef.current);
-    },
-    applyImage: () => {
-      applyImage(viewRef.current);
-    },
-    applyCodeBlock: () => {
-      applyCodeBlock(viewRef.current);
-    },
-    applyBlockquote: () => {
-      applyBlockquote(viewRef.current);
-    },
-    applyTable: () => {
-      applyTable(viewRef.current);
-    },
-    applyCode: () => {
-       applyCode(viewRef.current);
-    },
-
+    // Formatting actions
+    applyBold: () => applyBold(viewRef.current),
+    applyItalic: () => applyItalic(viewRef.current),
+    applyHeading: (level = 2) => applyHeading(viewRef.current, level),
+    applyUnorderedList: () => applyUnorderedList(viewRef.current),
+    applyOrderedList: () => applyOrderedList(viewRef.current),
+    applyLink: () => applyLink(viewRef.current),
+    applyImage: () => applyImage(viewRef.current),
+    applyCodeBlock: () => applyCodeBlock(viewRef.current),
+    applyBlockquote: () => applyBlockquote(viewRef.current),
+    applyTable: () => applyTable(viewRef.current),
+    applyCode: () => applyCode(viewRef.current),
   }));
-  
-  // Check if dark mode is enabled
-  const isDarkMode = () => {
-    return true; // Always return true since we're forcing dark mode with the 'dark' class
-  };
 
   // Handle search and replace actions
   const handleSearch = (searchTerm, options) => {
@@ -442,12 +343,12 @@ const MarkdownEditor = forwardRef(({
         editorRef.current.removeChild(editorRef.current.firstChild);
       }
       
-      // Create the editor with ONLY essential extensions
+      // Create the editor with essential extensions
       const view = new EditorView({
         state: EditorState.create({
           doc: content || '',
           extensions: [
-            // Critical keyboard handling (this is key for cursor movement)
+            // Critical keyboard handling
             keymap.of(defaultKeymap),
             keymap.of(historyKeymap),
             keymap.of([indentWithTab]),
@@ -546,19 +447,51 @@ const MarkdownEditor = forwardRef(({
       
       // Only update if content is different
       if (content !== currentDoc) {
-        // Save current cursor position
-        const selection = viewRef.current.state.selection;
+        // Check if the document state is valid before attempting to update
+        if (!viewRef.current.state || !viewRef.current.state.doc) {
+          console.warn('Editor state or document is undefined, skipping update');
+          return;
+        }
+
+        const docLength = viewRef.current.state.doc.length;
         
         // Create a transaction to update the document
-        viewRef.current.dispatch({
+        const transaction = {
           changes: {
             from: 0,
-            to: viewRef.current.state.doc.length,
+            to: docLength || 0,
             insert: content || ''
-          },
-          // Preserve cursor position if possible
-          selection
-        });
+          }
+        };
+        
+        // Create a fresh selection at the start to avoid "Selection points outside of document" errors
+        transaction.selection = EditorSelection.single(0);
+        
+        try {
+          // Apply the transaction
+          viewRef.current.dispatch(viewRef.current.state.update(transaction));
+          
+          // After updating, re-focus the editor to prevent it from getting "stuck"
+          setTimeout(() => {
+            if (viewRef.current) {
+              viewRef.current.focus();
+            }
+          }, 10);
+        } catch (transactionError) {
+          console.error('Error applying transaction:', transactionError);
+          
+          // If transaction fails, try to recreate the editor state
+          try {
+            const newState = EditorState.create({
+              doc: content || '',
+              selection: EditorSelection.single(0)
+            });
+            
+            viewRef.current.setState(newState);
+          } catch (stateError) {
+            console.error('Failed to recreate editor state:', stateError);
+          }
+        }
       }
     } catch (error) {
       console.error('Error updating editor content:', error);
@@ -605,7 +538,7 @@ const MarkdownEditor = forwardRef(({
         ref={editorRef}
       />
       
-      {/* Search button - removed cursor position indicator */}
+      {/* Search button */}
       <button 
         className="absolute top-2 right-2 p-1.5 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 z-50"
         onClick={() => setIsSearchOpen(true)}
@@ -628,4 +561,4 @@ const MarkdownEditor = forwardRef(({
 
 MarkdownEditor.displayName = 'MarkdownEditor';
 
-export default MarkdownEditor; 
+export default MarkdownEditor;

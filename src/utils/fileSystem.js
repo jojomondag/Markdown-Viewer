@@ -9,35 +9,25 @@ const isApiAvailable = () => {
 
 // Open a file dialog to select a folder
 export const openFolder = async () => {
-  console.log('Attempting to open folder...'); // Log entry
   try {
     if (!isApiAvailable()) {
-      console.warn('Warning: window.api is not available. Using mock implementation.'); // Log mock usage
       // Instead of throwing an error, use the mock API that's set up in polyfills.js
-      const mockResult = await (window.api?.openFileDialog() || Promise.resolve([]));
-      console.log('Mock openFileDialog result:', mockResult); // Log mock result
-      return mockResult;
+      return window.api?.openFileDialog() || Promise.resolve([]);
     }
-    
-    console.log('Using real window.api.openFileDialog'); // Log real API usage
     
     // Enable multiSelections to allow selecting multiple folders
     const folderPaths = await window.api.openFileDialog(true); // Add true parameter for multiSelect
-    console.log('Real openFileDialog result:', folderPaths); // Log real API result
     
     // Handle cancellation
     if (folderPaths === null) {
-      console.log('Folder selection cancelled by user.'); // Log cancellation
       // User cancelled the dialog
       return null; 
     }
     
     // Handle different return types - ensure we always return an array
-    const result = Array.isArray(folderPaths) ? folderPaths : [folderPaths];
-    console.log('Processed folder path:', result); // Log processed result
-    return result;
+    return Array.isArray(folderPaths) ? folderPaths : [folderPaths];
   } catch (error) {
-    console.error('Error in openFolder function:', error); // Log errors
+    console.error('Error in openFolder function:', error);
     // Return an empty array instead of throwing to prevent UI blocking
     return [];
   }
@@ -70,6 +60,13 @@ export const readMarkdownFile = async (filePath) => {
     }
     
     const content = await window.api.readMarkdownFile(filePath);
+    
+    // Add validation to handle null/undefined content
+    if (content === null || content === undefined) {
+      console.warn(`Read null or undefined content from file: ${filePath}`);
+      return ''; // Return empty string instead of null/undefined
+    }
+    
     return content;
   } catch (error) {
     console.error('Error reading markdown file:', error);
@@ -91,4 +88,4 @@ export const saveMarkdownFile = async (filePath, content) => {
     console.error('Error saving markdown file:', error);
     throw error;
   }
-}; 
+};

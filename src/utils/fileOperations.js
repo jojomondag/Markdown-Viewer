@@ -1,6 +1,4 @@
-/**
- * Utility functions for file operations such as moving, copying, and renaming files and folders
- */
+import path from 'path-browserify';
 
 /**
  * Move a file or folder to a new location
@@ -16,7 +14,6 @@ export const moveItem = async (sourcePath, targetPath, isDirectory) => {
       return await window.electron.moveItem(sourcePath, targetPath, isDirectory);
     } else {
       // For browser-based usage, we can't directly move files
-      // But we can simulate this in memory
       console.warn('File operations in browser mode are simulated and do not affect actual files');
       return true;
     }
@@ -39,7 +36,6 @@ export const copyItem = async (sourcePath, targetPath, isDirectory) => {
       // Use Electron's IPC for file operations
       return await window.electron.copyItem(sourcePath, targetPath, isDirectory);
     } else {
-      // For browser-based usage
       console.warn('File operations in browser mode are simulated and do not affect actual files');
       return true;
     }
@@ -62,7 +58,6 @@ export const renameItem = async (sourcePath, newName, isDirectory) => {
       // Use Electron's IPC for file operations
       return await window.electron.renameItem(sourcePath, newName, isDirectory);
     } else {
-      // For browser-based usage
       console.warn('File operations in browser mode are simulated and do not affect actual files');
       return true;
     }
@@ -71,12 +66,6 @@ export const renameItem = async (sourcePath, newName, isDirectory) => {
     throw error;
   }
 };
-
-/**
- * Utility functions for file operations, especially for drag and drop functionality
- */
-
-import path from 'path-browserify';
 
 /**
  * Checks if a drag and drop operation is valid
@@ -146,4 +135,4 @@ export default {
   createDropDestination,
   getParentDir,
   getNameFromPath
-}; 
+};

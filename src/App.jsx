@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { IconFileText, IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconMaximize, IconPrinter, IconSort, IconSortAscending, IconSortDescending, IconTrash } from '@tabler/icons-react';
+import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/FileExplorer';
 import FileHistory from './components/FileHistory';
@@ -462,9 +462,8 @@ function App() {
   };
 
   // Handle scroll synchronization
-  const handleEditorScroll = (scrollInfo) => {
+  const handleEditorScroll = (scrollPercentage) => {
     // Skip tiny scroll amounts or resets to 0
-    const scrollPercentage = scrollInfo.scrollPercentage;
     if (scrollPercentage < 0.01 && lastEditorScrollRef.current > 0) {
       return; // Skip syncing when we detect reset to near-zero
     }
@@ -484,36 +483,10 @@ function App() {
         clearTimeout(scrollSyncTimeoutRef.current);
       }
       
-      // Also clear any long timeout
-      if (window._longScrollTimeout) {
-        clearTimeout(window._longScrollTimeout);
-      }
-      
       scrollSyncTimeoutRef.current = setTimeout(() => {
-        // Double-check the scroll position before clearing source
-        if (previewRef.current) {
-          const info = previewRef.current.getScrollInfo();
-          if (info && Math.abs(info.scrollPercentage - scrollPercentage) > 0.05) {
-            // Try one more time if the positions are very different
-            previewRef.current.scrollToPosition(scrollPercentage);
-          }
-        }
-        
-        // Keep forcing scroll flag active for a shorter time to avoid lockups
-        setTimeout(() => {
-          forcingScrollRef.current = false;
-        }, 500);
-        
-        // Clear the scroll source after a shorter delay
-        const longTimeoutId = setTimeout(() => {
-          // Only clear if not actively forcing
-          if (!forcingScrollRef.current) {
-            setScrollSource(null);
-          }
-        }, 500); // Shorter delay to allow scroll source to change
-        
-        // Store this timeout so we can clear it if user scrolls again
-        window._longScrollTimeout = longTimeoutId;
+        // Clear the scroll source after a delay
+        setScrollSource(null);
+        forcingScrollRef.current = false;
       }, 250);
     }
   };
@@ -539,36 +512,10 @@ function App() {
         clearTimeout(scrollSyncTimeoutRef.current);
       }
       
-      // Also clear any long timeout
-      if (window._longScrollTimeout) {
-        clearTimeout(window._longScrollTimeout);
-      }
-      
       scrollSyncTimeoutRef.current = setTimeout(() => {
-        // Double-check the scroll position before clearing source
-        if (editorRef.current) {
-          const info = editorRef.current.getScrollInfo();
-          if (info && Math.abs(info.scrollPercentage - scrollPercentage) > 0.05) {
-            // Try one more time if the positions are very different
-            editorRef.current.scrollToPosition(scrollPercentage);
-          }
-        }
-        
-        // Keep forcing scroll flag active for a shorter time to avoid lockups
-        setTimeout(() => {
-          forcingScrollRef.current = false;
-        }, 500);
-        
-        // Clear the scroll source after a shorter delay
-        const longTimeoutId = setTimeout(() => {
-          // Only clear if not actively forcing
-          if (!forcingScrollRef.current) {
-            setScrollSource(null);
-          }
-        }, 500); // Shorter delay to allow scroll source to change
-        
-        // Store this timeout so we can clear it if user scrolls again
-        window._longScrollTimeout = longTimeoutId;
+        // Clear the scroll source after a delay
+        setScrollSource(null);
+        forcingScrollRef.current = false;
       }, 250);
     }
   };
@@ -718,7 +665,8 @@ function App() {
   const [fileOperationStatus, setFileOperationStatus] = useState(null);
 
   // Add new file operation handlers
-  const handleMoveFile = useCallback((sourceItem, targetItem) => {
+  const handleMoveFile = (sourceItem, targetItem) => {
+    // Check if this is a valid drop
     if (!isValidDrop(sourceItem, targetItem)) {
       console.log('Cannot move to this location');
       return;
@@ -727,76 +675,73 @@ function App() {
     const newPath = createDropDestination(sourceItem, targetItem);
     
     // In a real app, you would perform actual file operations here
-    setTimeout(() => {
-      // Update file list based on the drag operation
-      if (sourceItem.type === 'file') {
-        setFiles(prevFiles => {
-          // Remove the file from its old location
-          const updatedFiles = prevFiles.filter(f => f.path !== sourceItem.path);
-          // Add it to its new location
-          updatedFiles.push({
-            ...sourceItem,
-            path: newPath,
-            name: path.basename(newPath)
-          });
-          return updatedFiles;
+    if (sourceItem.type === 'file') {
+      setFiles(prevFiles => {
+        // Remove the file from its old location
+        const updatedFiles = prevFiles.filter(f => f.path !== sourceItem.path);
+        // Add it to its new location
+        updatedFiles.push({
+          ...sourceItem,
+          path: newPath,
+          name: path.basename(newPath)
         });
-      } else {
-        // For folders, update all files and subfolders within that folder
-        const folderPrefix = sourceItem.path + '/';
-        const newPrefix = newPath + '/';
-        
-        // Update folders
-        setFolders(prevFolders => {
-          const updatedFolders = prevFolders.filter(f => f.path !== sourceItem.path);
-          
-          // Move the folder itself
-          updatedFolders.push({
-            ...sourceItem,
-            path: newPath,
-            name: path.basename(newPath)
-          });
-          
-          // Move all subfolders
-          prevFolders.forEach(folder => {
-            if (folder.path.startsWith(folderPrefix)) {
-              const relativePath = folder.path.slice(folderPrefix.length);
-              const newFolderPath = newPrefix + relativePath;
-              updatedFolders.push({
-                ...folder,
-                path: newFolderPath,
-                name: path.basename(newFolderPath)
-              });
-            }
-          });
-          
-          return updatedFolders;
-        });
-        
-        // Update files
-        setFiles(prevFiles => {
-          const updatedFiles = prevFiles.filter(f => !f.path.startsWith(folderPrefix));
-          
-          // Move all files in the folder
-          prevFiles.forEach(file => {
-            if (file.path.startsWith(folderPrefix)) {
-              const relativePath = file.path.slice(folderPrefix.length);
-              const newFilePath = newPrefix + relativePath;
-              updatedFiles.push({
-                ...file,
-                path: newFilePath,
-                name: path.basename(newFilePath)
-              });
-            }
-          });
-          
-          return updatedFiles;
-        });
-      }
+        return updatedFiles;
+      });
+    } else {
+      // For folders, update all files and subfolders within that folder
+      const folderPrefix = sourceItem.path + '/';
+      const newPrefix = newPath + '/';
       
-      console.log(`Moved ${sourceItem.name} to ${path.basename(newPath)}`);
-    }, 500);
-  }, []);
+      // Update folders
+      setFolders(prevFolders => {
+        const updatedFolders = prevFolders.filter(f => f.path !== sourceItem.path);
+        
+        // Move the folder itself
+        updatedFolders.push({
+          ...sourceItem,
+          path: newPath,
+          name: path.basename(newPath)
+        });
+        
+        // Move all subfolders
+        prevFolders.forEach(folder => {
+          if (folder.path !== sourceItem.path && folder.path.startsWith(folderPrefix)) {
+            const relativePath = folder.path.substring(folderPrefix.length);
+            const updatedPath = newPrefix + relativePath;
+            updatedFolders.push({
+              ...folder,
+              path: updatedPath,
+              name: path.basename(updatedPath)
+            });
+          }
+        });
+        
+        return updatedFolders;
+      });
+      
+      // Update files
+      setFiles(prevFiles => {
+        const updatedFiles = [...prevFiles];
+        
+        // Move all files within the folder
+        prevFiles.forEach((file, index) => {
+          if (file.path.startsWith(folderPrefix)) {
+            const relativePath = file.path.substring(folderPrefix.length);
+            const updatedPath = newPrefix + relativePath;
+            
+            // Replace the file with updated path
+            updatedFiles[index] = {
+              ...file,
+              path: updatedPath,
+              name: path.basename(updatedPath)
+            };
+          }
+        });
+        
+        return updatedFiles;
+      });
+    }
+  };
 
   // Add handler for file rename operations
   const handleRenameFile = useCallback((filePath, newName) => {

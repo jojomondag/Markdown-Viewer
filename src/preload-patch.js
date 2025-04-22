@@ -3,7 +3,7 @@
  * to fix the "Cannot read properties of undefined (reading 'deserialize')" error
  */
 
-// Create fake modules with proper deserialize methods
+// Create minimal fake module with proper deserialize method
 const fakeLrModule = {
   LRParser: class LRParser {
     constructor(config = {}) {
@@ -16,7 +16,6 @@ const fakeLrModule = {
   },
   setProp: function(obj, prop, value) {
     if (prop === 'deserialize' && value === undefined) {
-      // If trying to set an undefined deserialize property, use our safe version
       obj[prop] = function(data) { return data || {}; };
       return obj;
     }
@@ -73,4 +72,4 @@ if (typeof window !== 'undefined') {
       }
     }
   }
-} 
+}

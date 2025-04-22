@@ -91,12 +91,24 @@ const useFiles = () => {
       setLoading(true);
       setError(null);
       
+      // Validate file object
+      if (!file || !file.path) {
+        console.error('Invalid file object provided to openFile');
+        setError('Invalid file object');
+        setLoading(false);
+        return;
+      }
+      
       const fileContent = await readMarkdownFile(file.path);
-      setContent(fileContent);
+      
+      // Ensure content is set to empty string if undefined/null
+      setContent(fileContent || '');
       setCurrentFile(file);
     } catch (err) {
       setError(err.message || 'Failed to open file');
       console.error('Error opening file:', err);
+      // Set empty content on error to avoid undefined issues
+      setContent('');
     } finally {
       setLoading(false);
     }
@@ -110,8 +122,11 @@ const useFiles = () => {
       setLoading(true);
       setError(null);
       
-      await saveMarkdownFile(currentFile.path, newContent);
-      setContent(newContent);
+      // Ensure content is never undefined
+      const contentToSave = newContent || '';
+      
+      await saveMarkdownFile(currentFile.path, contentToSave);
+      setContent(contentToSave);
     } catch (err) {
       setError(err.message || 'Failed to save file');
       console.error('Error saving file:', err);
@@ -122,7 +137,8 @@ const useFiles = () => {
 
   // Update content without saving
   const updateContent = useCallback((newContent) => {
-    setContent(newContent);
+    // Ensure content is never undefined
+    setContent(newContent || '');
   }, []);
 
   return {

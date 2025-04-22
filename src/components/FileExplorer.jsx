@@ -24,30 +24,6 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
 
-// Utility function to normalize folder objects
-const normalizeFolderObject = (folder) => {
-  if (!folder) return null;
-  
-  // Ensure path is a string
-  const folderPath = typeof folder.path === 'string' ? folder.path : '';
-  
-  // Create a normalized name (just the basename, no path)
-  let folderName = path.basename(folderPath);
-  
-  const normalizedFolder = {
-    ...folder,
-    name: folderName,
-    path: folderPath
-  };
-  
-  console.log('Normalized folder object:', {
-    before: { name: folder.name, path: folder.path },
-    after: { name: normalizedFolder.name, path: normalizedFolder.path }
-  });
-  
-  return normalizedFolder;
-};
-
 // Add a utility function to extract only basename from objects for display
 const getDisplayName = (item) => {
   if (!item) return '';
@@ -400,7 +376,6 @@ const FileExplorer = ({
   const [dragOverItem, setDragOverItem] = useState(null);
   const fileExplorerRef = useRef(null);
   const itemRefs = useRef({});
-  const contextMenuRef = useRef(null);
 
   // Add state for the new folder dialog
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
@@ -1272,6 +1247,12 @@ const FileExplorer = ({
           if (parentFolder && !expandedFolders[parentFolder.path]) {
             toggleFolder(parentFolder.path);
           }
+          
+          // Auto-expand the newly created folder
+          setExpandedFolders(prev => ({
+            ...prev,
+            [newFolderPath]: true
+          }));
         } else {
           console.warn('onCreateFolder is not available to add a new folder');
         }
