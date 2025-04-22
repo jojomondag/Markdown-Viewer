@@ -88,7 +88,7 @@ const EditorTabs = ({
   };
   
   return (
-    <div className="editor-tabs flex items-center overflow-x-auto bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto">
+    <div className="editor-tabs flex items-center overflow-x-auto bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto p-2">
       {filteredOpenFiles.map((file) => {
         const isActive = currentFile && file.path === currentFile.path;
         const isDirty = file.isDirty;
@@ -97,7 +97,7 @@ const EditorTabs = ({
           <div 
             key={file.path} 
             className={`
-              flex items-center min-w-[90px] max-w-[150px] h-8 px-2 py-0.5 cursor-pointer relative
+              flex items-center min-w-[90px] max-w-[150px] px-2 py-1 cursor-pointer relative
               border-r border-surface-300 dark:border-surface-700
               ${isActive 
                 ? 'bg-white dark:bg-surface-900 text-primary-600 dark:text-primary-400' 
@@ -159,7 +159,7 @@ const EditorTabs = ({
       
       {/* New tab button */}
       <button
-        className="h-8 px-2 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center"
+        className="px-2 py-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center"
         onClick={onNewTab}
         title="New tab"
       >
