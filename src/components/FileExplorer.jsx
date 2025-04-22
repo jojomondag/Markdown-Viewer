@@ -1251,6 +1251,12 @@ const FileExplorer = ({
           // Expand parent folder if needed
           if (parentFolder && !expandedFolders[parentFolder.path]) {
             toggleFolder(parentFolder.path);
+          } else if (!parentFolder && currentFolders && currentFolders.length > 0) {
+            // If this is a root-level folder, make sure the root is expanded
+            const rootPath = currentFolders[0];
+            if (!expandedFolders[rootPath]) {
+              toggleFolder(rootPath);
+            }
           }
           
           // Auto-expand the newly created folder
@@ -1258,6 +1264,12 @@ const FileExplorer = ({
             ...prev,
             [newFolderPath]: true
           }));
+          
+          // Force a re-render to ensure the new folder appears in the UI
+          setTimeout(() => {
+            // This will trigger a re-render of the processed items
+            setExpandedFolders(prev => ({...prev}));
+          }, 100);
         } else {
           console.warn('onCreateFolder is not available to add a new folder');
         }

@@ -47,10 +47,11 @@ const NewFolderDialog = ({
       }
     }
     
-    // Validate the cleaned folder name
+    // If folder name is empty, use a default name
     if (!cleanFolderName.trim()) {
-      setError('Folder name cannot be empty');
-      return;
+      // Generate a timestamped name to avoid conflicts
+      const timestamp = new Date().getTime();
+      cleanFolderName = `New Folder ${timestamp}`;
     }
     
     // Check for invalid characters in the cleaned name
@@ -109,7 +110,7 @@ const NewFolderDialog = ({
               type="text"
               id="folder-name"
               className={`w-full pl-10 pr-3 py-2 border ${error ? 'border-error-500' : 'border-surface-300 dark:border-surface-600'} rounded-md bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500`}
-              placeholder="Enter folder name"
+              placeholder="Enter folder name (optional)"
               value={folderName}
               onChange={(e) => {
                 // Clean the input value as the user types to prevent slash characters

@@ -278,17 +278,19 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
     async function scanRecursively(currentPath, isRootLevel = false) {
       const items = await fs.promises.readdir(currentPath, { withFileTypes: true });
       
+      // Add this folder to our list even if it's empty
+      if (!isRootLevel) {
+        folders.push({
+          name: path.basename(currentPath),
+          path: currentPath,
+          type: 'folder'
+        });
+      }
+      
       for (const item of items) {
         const itemPath = path.join(currentPath, item.name);
         
         if (item.isDirectory()) {
-          // Add this folder to our list
-          folders.push({
-            name: item.name,
-            path: itemPath,
-            type: 'folder'
-          });
-          
           // Recursively scan this directory
           await scanRecursively(itemPath);
         } else if (item.isFile() && item.name.endsWith('.md')) {
@@ -306,6 +308,23 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
     
     // Start recursive scan
     await scanRecursively(folderPath, true);
+    
+    // Check if any subfolders were discovered
+    // If the directory is empty (no subfolders), add it manually so it still appears
+    const hasSubfolders = folders.length > 0;
+    
+    // If the folder is empty or only contains non-markdown files, we need to manually add the root folder
+    const rootItemStats = await fs.promises.stat(folderPath);
+    const rootItems = await fs.promises.readdir(folderPath, { withFileTypes: true });
+    const hasEmptySubfolders = rootItems.some(item => item.isDirectory());
+    
+    if (!hasSubfolders && (rootItems.length === 0 || hasEmptySubfolders)) {
+      folders.push({
+        name: path.basename(folderPath),
+        path: folderPath,
+        type: 'folder'
+      });
+    }
     
     return { files, folders };
   } catch (error) {
