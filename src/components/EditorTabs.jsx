@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { IconX, IconPlus } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
+import { newFilesInProgress } from './FileExplorer';
 
 const EditorTabs = ({ 
   currentFile, 
@@ -11,6 +12,12 @@ const EditorTabs = ({
 }) => {
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, file: null });
   const { showInfo } = useNotification();
+  
+  // Filter out any temporary files that are being created/renamed
+  const filteredOpenFiles = openFiles.filter(file => {
+    // Only show files that are not in the newFilesInProgress set
+    return !newFilesInProgress.has(file.path);
+  });
   
   // Close context menu when clicking outside
   useEffect(() => {
@@ -49,7 +56,7 @@ const EditorTabs = ({
   // Handle context menu options
   const handleCloseOthers = (file) => {
     if (onTabClose) {
-      openFiles
+      filteredOpenFiles
         .filter(f => f.path !== file.path)
         .forEach(f => onTabClose(f));
       
@@ -60,7 +67,7 @@ const EditorTabs = ({
   
   const handleCloseAll = () => {
     if (onTabClose) {
-      openFiles.forEach(f => onTabClose(f));
+      filteredOpenFiles.forEach(f => onTabClose(f));
       showInfo('Closed all tabs');
     }
     setContextMenu({ visible: false, x: 0, y: 0, file: null });
@@ -68,9 +75,9 @@ const EditorTabs = ({
   
   const handleCloseRight = (file) => {
     if (onTabClose) {
-      const currentIndex = openFiles.findIndex(f => f.path === file.path);
+      const currentIndex = filteredOpenFiles.findIndex(f => f.path === file.path);
       if (currentIndex >= 0) {
-        openFiles
+        filteredOpenFiles
           .slice(currentIndex + 1)
           .forEach(f => onTabClose(f));
         
@@ -82,7 +89,7 @@ const EditorTabs = ({
   
   return (
     <div className="editor-tabs flex items-center overflow-x-auto bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto">
-      {openFiles.map((file) => {
+      {filteredOpenFiles.map((file) => {
         const isActive = currentFile && file.path === currentFile.path;
         const isDirty = file.isDirty;
         
@@ -162,4 +169,4 @@ const EditorTabs = ({
   );
 };
 
-export default EditorTabs; 
+export default EditorTabs;

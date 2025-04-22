@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import { newFilesInProgress } from '../components/FileExplorer';
 
 // Define initial state
 const initialState = {
@@ -298,10 +299,18 @@ export const AppStateProvider = ({ children }) => {
   });
   
   // Open files actions
-  const addOpenFile = (file) => dispatch({
-    type: ActionTypes.ADD_OPEN_FILE,
-    payload: file
-  });
+  const addOpenFile = (file) => {
+    // Check if this is a temporary file being created/renamed
+    if (file && file.path && newFilesInProgress.has(file.path)) {
+      console.log(`Not adding temporary file to open tabs: ${file.path}`);
+      return; // Don't dispatch the action for temporary files
+    }
+    
+    dispatch({
+      type: ActionTypes.ADD_OPEN_FILE,
+      payload: file
+    });
+  };
   
   const removeOpenFile = (file) => dispatch({
     type: ActionTypes.REMOVE_OPEN_FILE,
@@ -427,4 +436,4 @@ export const useAppState = () => {
   return context;
 };
 
-export default AppStateContext; 
+export default AppStateContext;

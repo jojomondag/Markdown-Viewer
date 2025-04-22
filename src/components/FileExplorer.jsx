@@ -24,6 +24,9 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
 
+// Export the set to make it accessible to other components
+export const newFilesInProgress = new Set();
+
 // Add a utility function to extract only basename from objects for display
 const getDisplayName = (item) => {
   if (!item) return '';
@@ -397,6 +400,9 @@ const FileExplorer = ({
   const [editingItem, setEditingItem] = useState(null);
   const [editValue, setEditValue] = useState('');
 
+  // Add a utility to track newly created files that shouldn't be automatically opened
+  const newFilesInProgress = new Set();
+
   // Save expanded folders to localStorage whenever they change
   useEffect(() => {
     try {
@@ -737,7 +743,7 @@ const FileExplorer = ({
             level: 1,
             parentPath: rootFolder.path
           });
-          addedPaths.add(normalizedFilePath);
+          addedPaths.add(normalizePath(file.path));
         });
       }
     });
@@ -1130,6 +1136,10 @@ const FileExplorer = ({
       return;
     }
     
+    // Add the path to our tracking set before creating the file
+    // This will prevent the file from being automatically opened in a tab
+    newFilesInProgress.add(newFilePath);
+    
     console.log('Attempting to create file at:', newFilePath);
     
     // Create the file with empty content
@@ -1163,6 +1173,8 @@ const FileExplorer = ({
         }
       })
       .catch(error => {
+        // Remove from tracking if there was an error
+        newFilesInProgress.delete(newFilePath);
         console.error('Failed to create file:', error);
         alert(`Error creating file: ${error.message}`);
       });
@@ -1605,9 +1617,38 @@ const FileExplorer = ({
       return;
     }
     
+    // IMPORTANT: First remove the original path from the newFilesInProgress set
+    // before renaming so we can keep track of what files are temporary
+    if (editingItem.path && newFilesInProgress.has(editingItem.path)) {
+      console.log(`Removing ${editingItem.path} from newFilesInProgress before rename`);
+      newFilesInProgress.delete(editingItem.path);
+    }
+    
     // Call the rename handler with the new name - the UI will be updated through
     // the standard data flow from the parent component
     renameItem(editingItem.path, newName);
+    
+    // If this is a newly created file (we just finished naming it),
+    // open it now - we can detect this by checking if the name
+    // starts with "new_" and contains a timestamp
+    const isNewFile = !isFolder && 
+      editingItem.name && 
+      editingItem.name.startsWith('new_') && 
+      /new_\d+/.test(editingItem.name);
+    
+    if (isNewFile && onFileSelect) {
+      // This creates a modified file object with the new name to open
+      const fileToOpen = {
+        ...editingItem,
+        name: newName,
+        path: newPath
+      };
+      
+      // Open the file after a short delay to ensure the rename has been processed
+      setTimeout(() => {
+        onFileSelect(fileToOpen);
+      }, 100);
+    }
     
     // Reset the editing state - don't wait for the operation to complete
     // as the state refresh will happen anyway

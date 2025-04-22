@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash } from '@tabler/icons-react';
 import Split from 'react-split';
-import FileExplorer from './components/FileExplorer';
+import FileExplorer, { newFilesInProgress } from './components/FileExplorer';
 import FileHistory from './components/FileHistory';
 import MarkdownEditor from './components/MarkdownEditor';
 import MarkdownPreview from './components/MarkdownPreview';
@@ -115,6 +115,17 @@ function App() {
   // Wrap the openFile function to handle tabs
   const openFile = (file) => {
     try {
+      // IMPORTANT: First check if this is a temporary file with a name pattern like "new_1234567890.md"
+      // This provides a second layer of protection in case the newFilesInProgress set doesn't catch it
+      const isTemporaryNewFile = file && file.path && 
+        (newFilesInProgress.has(file.path) || 
+         (typeof file.name === 'string' && /^new_\d+\.md$/.test(file.name)));
+      
+      if (isTemporaryNewFile) {
+        console.log(`Blocking temporary file from being opened in a tab: ${file.path}`);
+        return; // Don't open a tab for temporary files
+      }
+
       // Check if file is already open
       const isAlreadyOpen = openFiles.some(f => f.path === file.path);
       
@@ -1013,11 +1024,11 @@ function App() {
       type: 'file'
     }]);
     
-    // Open the file after creation
-    openFile(fileData);
+    // Don't open the file after creation - it will be opened after renaming
+    // openFile(fileData); - removing this line
     
     showSuccess(`Created file: ${fileData.name}`);
-  }, [openFile, showSuccess]);
+  }, [showSuccess]);
 
   // Add handler for sort changes - memoize it with useCallback to prevent infinite loop
   const handleExplorerSortChange = useCallback((sortBy, direction) => {
