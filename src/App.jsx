@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash } from '@tabler/icons-react';
+import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash, IconEyeOff } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer, { newFilesInProgress } from './components/FileExplorer';
 import FileHistory from './components/FileHistory';
@@ -37,6 +37,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [customCSS, setCustomCSS] = useState('');
+  const [isEditorContainerVisible, setIsEditorContainerVisible] = useState(true);
   const {
     files,
     folders,
@@ -333,6 +334,7 @@ function App() {
   
   const getEditorPreviewSizes = () => {
     if (!previewVisible) return [100, 0];
+    if (!isEditorContainerVisible) return [0, 100]; // When editor is hidden, preview takes 100%
     
     // On mobile, stack editor and preview when both are visible
     if (isMobile) {
@@ -1055,6 +1057,50 @@ function App() {
     setCurrentFolders([]);
   };
 
+  // Add a new state for editor visibility
+  const [isEditorVisible, setIsEditorVisible] = useState(true);
+
+  // Add handler for search and replace
+  const handleSearch = (searchTerm, options) => {
+    if (editorRef.current) {
+      editorRef.current.handleSearch?.(searchTerm, options);
+    }
+  };
+
+  const handleReplace = (searchTerm, replaceTerm, options) => {
+    if (editorRef.current) {
+      editorRef.current.handleReplace?.(searchTerm, replaceTerm, options);
+    }
+  };
+
+  const handleReplaceAll = (searchTerm, replaceTerm, options) => {
+    if (editorRef.current) {
+      editorRef.current.handleReplaceAll?.(searchTerm, replaceTerm, options);
+    }
+  };
+
+  // Update toggle functions to match user expectations
+  const toggleEditorEye = () => {
+    // The editor's eye controls the preview panel
+    setPreviewVisible(!previewVisible);
+  };
+
+  const togglePreviewEye = () => {
+    // The preview's eye should control the entire editor container
+    setIsEditorContainerVisible(!isEditorContainerVisible);
+  };
+
+  // Add effect to recalculate split sizes when visibility changes
+  useEffect(() => {
+    // Force a window resize event to make the Split component recalculate
+    // Add a small delay to ensure the DOM has updated first
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 10);
+    
+    return () => clearTimeout(timer);
+  }, [isEditorContainerVisible, previewVisible]);
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       <AccessibilityHelper />
@@ -1179,17 +1225,19 @@ function App() {
           
           <div className="flex-grow flex flex-col" role="region" aria-label="Content area">
             <Split
+              key={`split-${isEditorContainerVisible ? 'editor' : 'no-editor'}-${previewVisible ? 'preview' : 'no-preview'}`}
               className={`flex overflow-hidden h-full ${isMobile ? 'flex-col' : ''}`}
               sizes={getEditorPreviewSizes()}
               minSize={previewVisible ? (isMobile ? 150 : 200) : 0}
-              gutterSize={previewVisible ? 5 : 0}
+              maxSize={!isEditorContainerVisible ? 0 : Infinity}
+              gutterSize={(previewVisible && isEditorContainerVisible) ? 5 : 0}
               gutterAlign="center"
               snapOffset={30}
               dragInterval={1}
               direction={isMobile ? "vertical" : "horizontal"}
               cursor={isMobile ? "row-resize" : "col-resize"}
             >
-              <div className="overflow-hidden flex flex-col h-full" role="region" aria-label="Editor">
+              <div className={`overflow-hidden flex flex-col h-full ${!isEditorContainerVisible ? 'hidden' : ''}`} role="region" aria-label="Editor">
                 {/* Add editor tabs */}
                 <div className="editor-tabs-container">
                   <EditorTabs 
@@ -1206,18 +1254,25 @@ function App() {
                     onAction={handleToolbarAction} 
                     onUndo={handleUndo}
                     onRedo={handleRedo}
+                    onToggleEditorVisibility={toggleEditorEye}
+                    isEditorVisible={isEditorVisible}
+                    onTogglePreviewVisibility={togglePreviewEye}
+                    isPreviewVisible={previewVisible}
+                    onSearch={handleSearch}
+                    onReplace={handleReplace}
+                    onReplaceAll={handleReplaceAll}
                   />
                 </div>
                 
                 {/* EDITOR CONTAINER: Restructured to ensure proper input handling */}
                 <div 
-                  className="editor h-full flex-grow overflow-hidden" 
+                  className={`editor h-full flex-grow overflow-hidden ${!isEditorVisible ? 'hidden' : ''}`} 
                   style={{ 
                     position: "relative", 
                     isolation: "isolate", // Create a stacking context
                     pointerEvents: "auto", // Ensure it captures pointer events
                     zIndex: 30, // Increase z-index to ensure it's above other elements
-                    display: "flex",
+                    display: isEditorVisible ? "flex" : "none",
                     flexDirection: "column",
                     minHeight: "0"
                   }}
@@ -1245,7 +1300,15 @@ function App() {
                 </div>
               </div>
               
-              <div className={`overflow-hidden flex flex-col h-full ${!previewVisible ? 'hidden' : ''}`} role="region" aria-label="Preview">
+              <div 
+                className={`overflow-hidden flex flex-col h-full ${!previewVisible ? 'hidden' : ''}`} 
+                role="region" 
+                aria-label="Preview"
+                style={{
+                  flexGrow: !isEditorContainerVisible ? 1 : 'unset',
+                  width: !isEditorContainerVisible ? '100%' : 'unset'
+                }}
+              >
                 <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800">
                   <h3 className="text-sm font-medium">Preview</h3>
                   <div className="flex items-center space-x-2">
@@ -1299,13 +1362,13 @@ function App() {
                       {scrollSyncEnabled ? <IconLink size={16} /> : <IconUnlink size={16} />}
                     </button>
                     
-                    {/* Close Button */}
+                    {/* Toggle Editor Visibility */}
                     <button
                       className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
-                      onClick={() => setPreviewVisible(false)}
-                      title="Close Preview"
+                      onClick={togglePreviewEye}
+                      title={isEditorContainerVisible ? "Hide Editor" : "Show Editor"}
                     >
-                      <IconX size={16} />
+                      {isEditorContainerVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
                     </button>
                   </div>
                 </div>

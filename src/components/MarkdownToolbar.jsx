@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   IconBold, 
   IconItalic, 
@@ -11,11 +11,28 @@ import {
   IconHeading,
   IconPhoto,
   IconArrowBackUp,
-  IconArrowForwardUp
+  IconArrowForwardUp,
+  IconEye,
+  IconEyeOff,
+  IconSearch
 } from '@tabler/icons-react';
 import { getShortcutTooltip } from '../utils/keyboardShortcuts';
+import SearchReplaceDialog from './SearchReplaceDialog';
 
-const MarkdownToolbar = ({ onAction, onUndo, onRedo }) => {
+const MarkdownToolbar = ({ 
+  onAction, 
+  onUndo, 
+  onRedo, 
+  onToggleEditorVisibility, 
+  isEditorVisible = true,
+  onTogglePreviewVisibility,
+  isPreviewVisible = true, 
+  onSearch, 
+  onReplace, 
+  onReplaceAll 
+}) => {
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
   const tools = [
     { 
       id: 'heading', 
@@ -116,6 +133,37 @@ const MarkdownToolbar = ({ onAction, onUndo, onRedo }) => {
           <tool.icon size={18} />
         </button>
       ))}
+      
+      <div className="h-4 w-px bg-surface-300 dark:bg-surface-700 mx-1"></div>
+      
+      {/* Search button */}
+      <button
+        title="Search in Text (Ctrl+F)"
+        onClick={() => setIsSearchOpen(true)}
+        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+      >
+        <IconSearch size={18} />
+      </button>
+      
+      {/* Toggle Preview Visibility */}
+      <button
+        title={isPreviewVisible ? "Hide Preview" : "Show Preview"}
+        onClick={onToggleEditorVisibility}
+        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+      >
+        {isPreviewVisible ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+      </button>
+      
+      {/* Search dialog */}
+      {isSearchOpen && (
+        <SearchReplaceDialog
+          isOpen={isSearchOpen}
+          onClose={() => setIsSearchOpen(false)}
+          onSearch={onSearch}
+          onReplace={onReplace}
+          onReplaceAll={onReplaceAll}
+        />
+      )}
     </div>
   );
 };

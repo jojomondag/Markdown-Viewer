@@ -162,6 +162,11 @@ const MarkdownEditor = forwardRef(({
   
   // Expose methods for parent components
   useImperativeHandle(ref, () => ({
+    // Cursor position info
+    getCurrentCursorPosition: () => {
+      return cursorPosition;
+    },
+    
     // Scroll to a specific percentage of the content
     scrollToPosition: (scrollPercentage) => {
       if (!viewRef.current || !viewRef.current.scrollDOM) return;
@@ -187,21 +192,19 @@ const MarkdownEditor = forwardRef(({
       }
     },
     
-    // Get current scroll information
+    // Scroll info
     getScrollInfo: () => {
-      if (!viewRef.current || !viewRef.current.scrollDOM) return null;
-      
-      try {
-        const { scrollDOM } = viewRef.current;
-        const { scrollTop, scrollHeight, clientHeight } = scrollDOM;
-        const maxScrollTop = scrollHeight - clientHeight;
-        const scrollPercentage = maxScrollTop > 0 ? scrollTop / maxScrollTop : 0;
-        
-        return { scrollTop, scrollHeight, clientHeight, scrollPercentage };
-      } catch (error) {
-        console.error('Error getting scroll info:', error);
-        return null;
+      if (viewRef.current) {
+        const scrollDOM = viewRef.current.scrollDOM;
+        const scrollPercentage = scrollDOM.scrollTop / (scrollDOM.scrollHeight - scrollDOM.clientHeight);
+        return {
+          scrollPercentage: isNaN(scrollPercentage) ? 0 : scrollPercentage,
+          scrollTop: scrollDOM.scrollTop,
+          scrollHeight: scrollDOM.scrollHeight,
+          clientHeight: scrollDOM.clientHeight
+        };
       }
+      return { scrollPercentage: 0, scrollTop: 0, scrollHeight: 0, clientHeight: 0 };
     },
     
     // Check if editor is currently in scroll sync mode
@@ -210,13 +213,16 @@ const MarkdownEditor = forwardRef(({
     // Get editor DOM element
     getElement: () => viewRef.current ? viewRef.current.scrollDOM : null,
     
-    // Get current editor view
+    // Get editor view
     getView: () => viewRef.current,
     
-    // Get editor content
-    getContent: () => viewRef.current ? viewRef.current.state.doc.toString() : content,
+    // Text operations
+    getText: () => content,
+    setText: (text) => {
+      if (onChange) onChange(text);
+    },
     
-    // Fold/unfold functions
+    // Folding operations
     foldCurrent: () => {
       if (viewRef.current) foldCode(viewRef.current);
     },
@@ -240,92 +246,92 @@ const MarkdownEditor = forwardRef(({
     applyBlockquote: () => applyBlockquote(viewRef.current),
     applyTable: () => applyTable(viewRef.current),
     applyCode: () => applyCode(viewRef.current),
-  }));
-
-  // Handle search and replace actions
-  const handleSearch = (searchTerm, options) => {
-    if (!viewRef.current) return;
     
-    try {
-      const view = viewRef.current;
-      const { direction, matchCase, useRegex } = options;
+    // Search and replace functions
+    handleSearch: (searchTerm, options) => {
+      if (!viewRef.current) return;
       
-      // Create search query
-      const query = new SearchQuery({
-        search: searchTerm,
-        caseSensitive: matchCase,
-        regexp: useRegex
-      });
-      
-      // Set the search query in the editor
-      view.dispatch({
-        effects: setSearchQuery.of(query)
-      });
-      
-      // Find next/previous match
-      if (direction === 'next') {
-        findNext(view);
-      } else {
-        findPrevious(view);
+      try {
+        const view = viewRef.current;
+        const { direction, matchCase, useRegex } = options;
+        
+        // Create search query
+        const query = new SearchQuery({
+          search: searchTerm,
+          caseSensitive: matchCase,
+          regexp: useRegex
+        });
+        
+        // Set the search query in the editor
+        view.dispatch({
+          effects: setSearchQuery.of(query)
+        });
+        
+        // Find next/previous match
+        if (direction === 'next') {
+          findNext(view);
+        } else {
+          findPrevious(view);
+        }
+      } catch (error) {
+        console.error('Error during search:', error);
       }
-    } catch (error) {
-      console.error('Error during search:', error);
-    }
-  };
-  
-  const handleReplace = (searchTerm, replaceTerm, options) => {
-    if (!viewRef.current) return;
+    },
     
-    try {
-      const view = viewRef.current;
-      const { matchCase, useRegex } = options;
+    handleReplace: (searchTerm, replaceTerm, options) => {
+      if (!viewRef.current) return;
       
-      // Create search query
-      const query = new SearchQuery({
-        search: searchTerm,
-        replace: replaceTerm,
-        caseSensitive: matchCase,
-        regexp: useRegex
-      });
-      
-      // Set the search query in the editor
-      view.dispatch({
-        effects: setSearchQuery.of(query)
-      });
-      
-      // Replace the current match
-      replaceNext(view);
-    } catch (error) {
-      console.error('Error during replace:', error);
-    }
-  };
-  
-  const handleReplaceAll = (searchTerm, replaceTerm, options) => {
-    if (!viewRef.current) return;
+      try {
+        const view = viewRef.current;
+        const { matchCase, useRegex } = options;
+        
+        // Create search query
+        const query = new SearchQuery({
+          search: searchTerm,
+          replace: replaceTerm,
+          caseSensitive: matchCase,
+          regexp: useRegex
+        });
+        
+        // Set the search query in the editor
+        view.dispatch({
+          effects: setSearchQuery.of(query)
+        });
+        
+        // Replace the current match
+        replaceNext(view);
+      } catch (error) {
+        console.error('Error during replace:', error);
+      }
+    },
     
-    try {
-      const view = viewRef.current;
-      const { matchCase, useRegex } = options;
+    handleReplaceAll: (searchTerm, replaceTerm, options) => {
+      if (!viewRef.current) return;
       
-      // Create search query
-      const query = new SearchQuery({
-        search: searchTerm,
-        replace: replaceTerm,
-        caseSensitive: matchCase,
-        regexp: useRegex
-      });
-      
-      // Set the search query in the editor
-      view.dispatch({
-        effects: setSearchQuery.of(query)
-      });
-      
-      // Replace all matches
-      replaceAll(view);
-    } catch (error) {
-      console.error('Error during replace all:', error);
+      try {
+        const view = viewRef.current;
+        const { matchCase, useRegex } = options;
+        
+        // Create search query
+        const query = new SearchQuery({
+          search: searchTerm,
+          replace: replaceTerm,
+          caseSensitive: matchCase,
+          regexp: useRegex
+        });
+        
+        // Set the search query in the editor
+        view.dispatch({
+          effects: setSearchQuery.of(query)
+        });
+        
+        // Replace all matches
+        replaceAll(view);
+      } catch (error) {
+        console.error('Error during replace all:', error);
+      }
     }
-  };
+  }));
 
   // Create editor only once when component mounts
   useEffect(() => {
@@ -537,24 +543,6 @@ const MarkdownEditor = forwardRef(({
         style={{ position: "relative" }}
         ref={editorRef}
       />
-      
-      {/* Search button */}
-      <button 
-        className="absolute top-2 right-2 p-1.5 rounded-full bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 z-50"
-        onClick={() => setIsSearchOpen(true)}
-        title="Search (Ctrl+F)"
-      >
-        <IconSearch size={16} className="text-surface-700 dark:text-surface-300" />
-      </button>
-
-      {isSearchOpen && (
-        <SearchReplaceDialog
-          onClose={() => setIsSearchOpen(false)}
-          onSearch={handleSearch}
-          onReplace={handleReplace}
-          onReplaceAll={handleReplaceAll}
-        />
-      )}
     </div>
   );
 });
