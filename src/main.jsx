@@ -1,10 +1,3 @@
-// Import patch first to ensure it loads before any CodeMirror modules
-import './preload-patch';
-import { applyLezerFixes } from './polyfills';
-
-// Apply fixes before importing React and other modules
-applyLezerFixes();
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

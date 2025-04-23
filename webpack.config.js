@@ -3,7 +3,7 @@ const path = require('path');
 module.exports = {
   mode: 'development',
   entry: {
-    main: ['./src/preload-patch.js', './src/main.jsx']
+    main: './src/main.jsx'
   },
   output: {
     filename: 'bundle.js',
