@@ -1,4 +1,5 @@
-import path from 'path-browserify';
+import path from 'path-browserify'; // retained for fallback in browser environment
+import { joinPaths, getDirname, getBasename } from './pathUtils';
 
 /**
  * Move a file or folder to a new location
@@ -99,12 +100,12 @@ export const isValidDrop = (sourceItem, targetItem) => {
 export const createDropDestination = (sourceItem, targetItem) => {
   // If dropping onto a folder, the new path is inside that folder
   if (targetItem.type === 'folder') {
-    return path.join(targetItem.path, sourceItem.name);
+    return joinPaths(targetItem.path, sourceItem.name);
   }
   
   // If dropping onto a file, the new path is in the same directory as that file
-  const targetDir = path.dirname(targetItem.path);
-  return path.join(targetDir, sourceItem.name);
+  const targetDir = getDirname(targetItem.path);
+  return joinPaths(targetDir, sourceItem.name);
 };
 
 /**
@@ -114,7 +115,7 @@ export const createDropDestination = (sourceItem, targetItem) => {
  * @returns {string} - The parent directory path
  */
 export const getParentDir = (itemPath) => {
-  return path.dirname(itemPath);
+  return getDirname(itemPath);
 };
 
 /**
@@ -124,7 +125,7 @@ export const getParentDir = (itemPath) => {
  * @returns {string} - The name of the file or folder
  */
 export const getNameFromPath = (itemPath) => {
-  return path.basename(itemPath);
+  return getBasename(itemPath);
 };
 
 export default {

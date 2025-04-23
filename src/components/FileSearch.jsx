@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { IconSearch, IconX, IconFilter, IconFileText, IconFolder, IconLoader2 } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
+import { getDirname } from '../utils/pathUtils';
 
 const FileSearch = ({ files, folders, onFileSelect }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -230,7 +231,7 @@ const FileSearch = ({ files, folders, onFileSelect }) => {
                   {result.name}
                 </span>
                 <span className="text-xs text-surface-500 dark:text-surface-400 ml-2 truncate">
-                  {result.path.replace(result.name, '')}
+                  {getDirname(result.path)}
                 </span>
               </li>
             ))}
@@ -241,4 +242,4 @@ const FileSearch = ({ files, folders, onFileSelect }) => {
   );
 };
 
-export default FileSearch; 
+export default FileSearch;

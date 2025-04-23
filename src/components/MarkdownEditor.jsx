@@ -36,15 +36,6 @@ import {
   applyTable
 } from '../utils/editorMenu';
 
-// Simple mock implementation to avoid parser errors
-const safeMarkdown = () => ({
-  extension: [],
-  language: {
-    name: "markdown",
-    parser: { parse: () => ({ type: "document" }) }
-  }
-});
-
 import { 
   search, 
   SearchQuery, 
@@ -68,10 +59,6 @@ import {
   syntaxTree,
   bracketMatching
 } from '@codemirror/language';
-import { 
-  syntaxHighlighting, 
-  defaultHighlightStyle
-} from './highlightFix';
 import SearchReplaceDialog from './SearchReplaceDialog';
 import { IconSearch } from '@tabler/icons-react';
 import { useAppState } from '../context/AppStateContext';

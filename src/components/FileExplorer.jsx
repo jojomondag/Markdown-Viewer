@@ -23,37 +23,12 @@ import { RenameDialog } from './ui/RenameDialog';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { isValidDrop } from '../utils/fileOperations';
 import { formatShortcut, KEYBOARD_SHORTCUTS } from '../utils/keyboardShortcuts';
+import { getDisplayName, normalizePath, getBasename, getDirname, joinPaths } from '../utils/pathUtils';
 
 
 // Export the set to make it accessible to other components
 export const newFilesInProgress = new Set();
 
-// Add a utility function to extract only basename from objects for display
-const getDisplayName = (item) => {
-  if (!item) return '';
-  
-  // If there's an explicit displayName, use that
-  if (item.displayName) {
-    return item.displayName;
-  }
-  
-  // Get the path and handle Windows paths properly
-  let itemPath = '';
-  if (item.path) {
-    itemPath = item.path;
-    
-    // For Windows paths with backslashes, extract the last part directly
-    if (itemPath.includes('\\')) {
-      const parts = itemPath.split('\\');
-      return parts[parts.length - 1] || '';
-    } else {
-      return path.basename(itemPath);
-    }
-  }
-  
-  // As a fallback, use name but ensure it's just the basename
-  return item.name ? path.basename(item.name) : '';
-};
 
 // Memoize FileItem to prevent unnecessary re-renders
 const MemoizedFileItem = memo(({ file, currentFilePath, onFileSelect, onContextMenu, depth, isLastChild, onStartEditing, isEditing, onFinishEditing, onCancelEditing, editValue, onEditValueChange }) => {
@@ -486,29 +461,17 @@ const FileExplorer = ({
     console.log('Creating root folders from:', currentFolders);
     
     const roots = currentFolders.map(folderPath => {
-      // Extract just the last segment of the path regardless of slash type
-      let folderName;
-      if (folderPath && typeof folderPath === 'string') {
-        if (folderPath.includes('\\')) {
-          const parts = folderPath.split('\\');
-          folderName = parts[parts.length - 1] || '';
-        } else {
-          folderName = path.basename(folderPath);
-        }
-      } else {
-        folderName = 'Unknown';
-      }
-      
-      // Create a clean root folder object with a display name that is just the basename
+      // Always get the basename using normalizePath + getBasename
+      const folderName = getBasename(normalizePath(folderPath)) || 'Unknown';
+
       const rootFolder = {
-        name: folderName,       // Only store the basename as the name
-        path: folderPath,       // Keep the full path for operations
+        name: folderName,
+        path: folderPath,
         type: 'folder',
         isRoot: true,
-        displayName: folderName // Explicitly add a displayName property
+        displayName: folderName
       };
-      
-      console.log('Created root folder:', rootFolder);
+
       return rootFolder;
     });
     
@@ -547,14 +510,6 @@ const FileExplorer = ({
     const items = [];
     const addedPaths = new Set();
     
-    // Helper to normalize path separators for consistent comparison
-    const normalizePath = (p) => {
-      if (!p) return '';
-      // Use Node's path.normalize for platform-specific normalization
-      // then ensure forward slashes for consistent comparison
-      return path.normalize(p).replace(/\\/g, '/');
-    };
-    
     // Get all normalized paths for quick checking
     const normalizedFolderPaths = folders.map(f => normalizePath(f.path));
     const normalizedRootPaths = rootFolders.map(rf => normalizePath(rf.path));
@@ -575,7 +530,7 @@ const FileExplorer = ({
       }
       
       // Ensure we're only using the actual basename, not any path components that might be in folder.name
-      const cleanName = path.basename(folderDisplayName);
+      const cleanName = getBasename(folderDisplayName);
       
       // Add the folder itself with clean naming
       items.push({
@@ -593,14 +548,14 @@ const FileExplorer = ({
         // Get direct child folders
         const childFolders = folders.filter(f => {
           const normalizedFolderPath = normalizePath(f.path);
-          const folderParentPath = path.dirname(normalizedFolderPath);
+          const folderParentPath = getDirname(normalizedFolderPath);
           return folderParentPath === normalizedPath && !addedPaths.has(normalizedFolderPath);
         });
         
         // Get direct child files
         const childFiles = files.filter(f => {
           const normalizedFilePath = normalizePath(f.path);
-          const fileParentPath = path.dirname(normalizedFilePath);
+          const fileParentPath = getDirname(normalizedFilePath);
           return fileParentPath === normalizedPath && !addedPaths.has(normalizedFilePath);
         });
         
@@ -683,13 +638,13 @@ const FileExplorer = ({
         
         // Get direct child folders of this root
         const rootChildFolders = folders.filter(folder => {
-          const folderParentPath = path.dirname(normalizePath(folder.path));
+          const folderParentPath = getDirname(normalizePath(folder.path));
           return folderParentPath === rootPath;
         });
         
         // Get direct child files of this root
         const rootChildFiles = files.filter(file => {
-          const fileParentPath = path.dirname(normalizePath(file.path));
+          const fileParentPath = getDirname(normalizePath(file.path));
           return fileParentPath === rootPath;
         });
         
@@ -758,7 +713,7 @@ const FileExplorer = ({
       if (addedPaths.has(normalizedFolderPath)) return false;
       
       // Check if this is a top-level folder not inside any root
-      const folderParentPath = path.dirname(normalizedFolderPath);
+      const folderParentPath = getDirname(normalizedFolderPath);
       return !normalizedRootPaths.includes(folderParentPath) && 
              !normalizedFolderPaths.some(p => p !== normalizedFolderPath && normalizedFolderPath.startsWith(p + '/'));
     });
@@ -791,7 +746,7 @@ const FileExplorer = ({
       const normalizedFilePath = normalizePath(file.path);
       if (addedPaths.has(normalizedFilePath)) return false;
       
-      const fileParentPath = path.dirname(normalizedFilePath);
+      const fileParentPath = getDirname(normalizedFilePath);
       return !normalizedRootPaths.includes(fileParentPath) &&
              !normalizedFolderPaths.some(p => fileParentPath.startsWith(p));
     });
@@ -1297,7 +1252,7 @@ const FileExplorer = ({
   const renameItem = (filePath, newName) => {
     if (onRenameFile && newName) {
       // Calculate the full new path to maintain folder structure
-      const dirPath = path.dirname(filePath);
+      const dirPath = getDirname(filePath);
       const newPath = path.join(dirPath, newName);
       
       // Call the rename handler with the old path and new name
@@ -1486,7 +1441,7 @@ const FileExplorer = ({
     if (!filePath) return;
     
     const normalizedPath = filePath.replace(/\\/g, '/');
-    const dirPath = path.dirname(normalizedPath);
+    const dirPath = getDirname(normalizedPath);
     
     // Don't expand if it's the root
     if (dirPath === '.' || dirPath === '/') return;
@@ -1522,7 +1477,7 @@ const FileExplorer = ({
       }
       
       // Move up to parent directory
-      currentDir = path.dirname(currentDir);
+      currentDir = getDirname(currentDir);
     }
     
     // Set all parent folders to expanded state
@@ -1599,15 +1554,15 @@ const FileExplorer = ({
     const isFolder = editingItem.type === 'folder';
     
     // Calculate new path while maintaining folder structure
-    const dirPath = path.dirname(editingItem.path);
+    const dirPath = getDirname(editingItem.path);
     const newPath = path.join(dirPath, newName);
     
     // Check if a file with this name already exists in the same directory
     const fileExists = files.some(f => 
-      path.dirname(f.path) === dirPath && 
+      getDirname(f.path) === dirPath && 
       path.basename(f.path) === newName
     ) || folders.some(f => 
-      path.dirname(f.path) === dirPath && 
+      getDirname(f.path) === dirPath && 
       path.basename(f.path) === newName
     );
     
