@@ -614,6 +614,34 @@ const MarkdownPreview = forwardRef(({
           border-bottom-color: #2d3748 !important;
         }
         
+        /* Custom scrollbar styling for preview */
+        .markdown-preview::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        
+        .markdown-preview::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        
+        .markdown-preview::-webkit-scrollbar-thumb {
+          background-color: rgba(156, 163, 175, 0.3);
+          border-radius: 3px;
+        }
+        
+        .markdown-preview::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(156, 163, 175, 0.5);
+        }
+        
+        /* Dark mode scrollbars */
+        .dark .markdown-preview::-webkit-scrollbar-thumb {
+          background-color: rgba(75, 85, 99, 0.3);
+        }
+        
+        .dark .markdown-preview::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(75, 85, 99, 0.5);
+        }
+        
         /* Custom CSS applied by user */
         ${customCSS}
       `}} />

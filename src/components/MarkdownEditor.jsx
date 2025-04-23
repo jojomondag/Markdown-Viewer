@@ -542,6 +542,34 @@ const MarkdownEditor = forwardRef(({
         .cm-editor { height: 100%; }
         .cm-content { caret-color: white !important; }
         .cm-cursor { border-left: 2px solid white !important; }
+        
+        /* Custom scrollbar styling for CodeMirror */
+        .cm-scroller::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        
+        .cm-scroller::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        
+        .cm-scroller::-webkit-scrollbar-thumb {
+          background-color: rgba(156, 163, 175, 0.3);
+          border-radius: 3px;
+        }
+        
+        .cm-scroller::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(156, 163, 175, 0.5);
+        }
+        
+        /* Dark mode scrollbars */
+        .dark .cm-scroller::-webkit-scrollbar-thumb {
+          background-color: rgba(75, 85, 99, 0.3);
+        }
+        
+        .dark .cm-scroller::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(75, 85, 99, 0.5);
+        }
       `}</style>
       
       <div 

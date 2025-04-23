@@ -79,6 +79,39 @@
   position: relative;
 }
 
+/* Enhanced scrollbar styling specifically for editor and preview */
+.editor::-webkit-scrollbar,
+.markdown-preview::-webkit-scrollbar,
+.cm-scroller::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.editor::-webkit-scrollbar-thumb,
+.markdown-preview::-webkit-scrollbar-thumb,
+.cm-scroller::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
+}
+
+.editor::-webkit-scrollbar-thumb:hover,
+.markdown-preview::-webkit-scrollbar-thumb:hover,
+.cm-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.5);
+}
+
+.dark .editor::-webkit-scrollbar-thumb,
+.dark .markdown-preview::-webkit-scrollbar-thumb,
+.dark .cm-scroller::-webkit-scrollbar-thumb {
+  background-color: rgba(75, 85, 99, 0.3);
+}
+
+.dark .editor::-webkit-scrollbar-thumb:hover,
+.dark .markdown-preview::-webkit-scrollbar-thumb:hover,
+.dark .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(75, 85, 99, 0.5);
+}
+
 /* Add specific styling for mobile view */
 @media (max-width: 768px) {
   .split.vertical > div {
