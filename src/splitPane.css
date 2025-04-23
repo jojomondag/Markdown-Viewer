@@ -3,6 +3,7 @@
   background-color: #eee;
   background-repeat: no-repeat;
   background-position: 50%;
+  flex-shrink: 0; /* Prevent gutter from shrinking */
 }
 
 .dark .gutter {
@@ -20,35 +21,41 @@
 .gutter.gutter-horizontal {
   background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==');
   cursor: col-resize;
+  width: 5px !important; /* Enforce consistent width */
 }
 
 .gutter.gutter-vertical {
   background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAFAQMAAABo7865AAAABlBMVEVHcEzMzMzyAv2sAAAAAXRSTlMAQObYZgAAABBJREFUeF5jOAMEEAIEEFwAn3kMwcB6I2AAAAAASUVORK5CYII=');
   cursor: row-resize;
+  height: 5px !important; /* Enforce consistent height */
 }
 
 /* Make sure the split container takes full height */
 .split {
   display: flex;
-  flex-direction: row;
   height: 100%;
-  min-height: 100%;
+  min-height: 0; /* Changed from 100% to 0 to prevent overflow */
+  width: 100%;
+  overflow: hidden; /* Prevent overflow issues */
 }
 
 .split.vertical {
   flex-direction: column;
 }
 
-/* Fix for split panes in flex containers */
+/* Remove float which can cause layout issues */
 .split, .gutter.gutter-horizontal {
-  float: left;
+  float: none; /* Changed from left to none */
 }
 
-/* Ensure child containers fill the available height */
+/* Ensure child containers behave properly */
 .split > div {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0; /* Allow shrinking below content size */
+  min-width: 0; /* Allow shrinking below content size */
   display: flex;
   flex-direction: column;
+  overflow: hidden; /* Prevent content from overflowing */
 }
 
 /* Ensure the preview container fills its parent height */
@@ -56,12 +63,29 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  min-height: 0; /* Changed from 100% to 0 to prevent overflow */
+  overflow: hidden; /* Prevent content from overflowing */
+  position: relative; /* For proper child positioning */
 }
 
 /* Force editor and preview to use full available height */
 .editor, .markdown-preview {
   flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
+  min-height: 0; /* Allow shrinking */
+  min-width: 0; /* Allow shrinking */
+  height: auto; /* Auto height based on container */
+  width: 100%;
+  overflow: auto; /* Allow scrolling inside components */
+  position: relative;
+}
+
+/* Add specific styling for mobile view */
+@media (max-width: 768px) {
+  .split.vertical > div {
+    min-height: 150px; /* Minimum height for panels in mobile view */
+  }
+  
+  .editor, .markdown-preview {
+    min-height: 150px;
+  }
 } 

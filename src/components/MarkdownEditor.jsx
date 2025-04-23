@@ -197,6 +197,25 @@ const MarkdownEditor = forwardRef(({
     // Check if editor is currently in scroll sync mode
     isInScrollSync: () => inScrollSync,
     
+    // Force editor to recalculate its layout
+    refreshLayout: () => {
+      if (viewRef.current) {
+        try {
+          // Request a measurement update from CodeMirror
+          viewRef.current.requestMeasure();
+          
+          // Force a DOM measurement and layout update
+          setTimeout(() => {
+            if (viewRef.current) {
+              viewRef.current.dispatch({type: "layout"});
+            }
+          }, 10);
+        } catch (error) {
+          console.error('Error refreshing editor layout:', error);
+        }
+      }
+    },
+    
     // Get editor DOM element
     getElement: () => viewRef.current ? viewRef.current.scrollDOM : null,
     

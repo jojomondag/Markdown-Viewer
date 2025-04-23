@@ -285,247 +285,107 @@ const MarkdownPreview = forwardRef(({
   
   // Expose methods to parent components
   useImperativeHandle(ref, () => ({
-    // Method to scroll to a specific percentage of the content
+    // Scroll to a specific position
     scrollToPosition: (scrollPercentage) => {
-      if (previewRef.current) {
-        const { scrollHeight, clientHeight } = previewRef.current;
-        const maxScrollTop = scrollHeight - clientHeight;
-        const targetScrollTop = maxScrollTop * scrollPercentage;
+      if (!previewRef.current) return;
+      
+      try {
+        const container = previewRef.current;
+        const totalHeight = container.scrollHeight - container.clientHeight;
+        const targetPosition = Math.max(0, Math.min(totalHeight, totalHeight * scrollPercentage));
         
-        // Scroll to the calculated position
-        previewRef.current.scrollTop = targetScrollTop;
+        // Set scrolling flag to prevent feedback loops
+        isScrollingRef.current = true;
         
-        // Store the position for future restorations
-        previewRef.current._lastScrollPosition = targetScrollTop;
+        // Scroll to position
+        container.scrollTop = targetPosition;
         
-        // Set up an interval to ensure scroll position is maintained
-        const checkScrollInterval = setInterval(() => {
-          if (previewRef.current && Math.abs(previewRef.current.scrollTop - targetScrollTop) > 5) {
-            // If position changed significantly, reset it
-            previewRef.current.scrollTop = targetScrollTop;
-          }
-        }, 50);
-        
-        // Clear the interval after a reasonable time
+        // After a delay, release the scrolling lock
         setTimeout(() => {
-          clearInterval(checkScrollInterval);
-          
-          // Final check before giving up
-          if (previewRef.current && Math.abs(previewRef.current.scrollTop - targetScrollTop) > 5) {
-            previewRef.current.scrollTop = targetScrollTop;
-          }
-        }, 250);
+          isScrollingRef.current = false;
+        }, 100);
+      } catch (error) {
+        console.error('Error scrolling preview:', error);
+        isScrollingRef.current = false;
       }
     },
     
-    // Get current scroll information
+    // Get scroll information
     getScrollInfo: () => {
       if (previewRef.current) {
-        const { scrollTop, scrollHeight, clientHeight } = previewRef.current;
-        const maxScrollTop = scrollHeight - clientHeight;
-        const scrollPercentage = maxScrollTop > 0 ? scrollTop / maxScrollTop : 0;
-        
+        const container = previewRef.current;
+        const scrollPercentage = container.scrollTop / (container.scrollHeight - container.clientHeight);
         return {
-          scrollTop,
-          scrollHeight,
-          clientHeight,
-          scrollPercentage
+          scrollPercentage: isNaN(scrollPercentage) ? 0 : scrollPercentage,
+          scrollTop: container.scrollTop,
+          scrollHeight: container.scrollHeight,
+          clientHeight: container.clientHeight
         };
       }
-      return null;
+      return { scrollPercentage: 0, scrollTop: 0, scrollHeight: 0, clientHeight: 0 };
     },
     
-    // Get the DOM element
-    getElement: () => previewRef.current,
+    // Get preview container element
+    getContainer: () => previewRef.current,
     
-    // Zoom methods
+    // Get current zoom level
+    getZoom: () => currentZoom,
+    
+    // Set zoom level by index
+    setZoomByIndex: (index) => {
+      const newIndex = Math.max(MIN_ZOOM_INDEX, Math.min(MAX_ZOOM_INDEX, index));
+      setZoomIndex(newIndex);
+      return ZOOM_LEVELS[newIndex];
+    },
+    
+    // Increase zoom level
     zoomIn: () => {
-      setZoomIndex(prevIndex => 
-        prevIndex < MAX_ZOOM_INDEX ? prevIndex + 1 : prevIndex
-      );
-      return ZOOM_LEVELS[zoomIndex < MAX_ZOOM_INDEX ? zoomIndex + 1 : zoomIndex];
+      if (zoomIndex < MAX_ZOOM_INDEX) {
+        setZoomIndex(zoomIndex + 1);
+        return ZOOM_LEVELS[zoomIndex + 1];
+      }
+      return currentZoom;
     },
     
+    // Decrease zoom level
     zoomOut: () => {
-      setZoomIndex(prevIndex => 
-        prevIndex > MIN_ZOOM_INDEX ? prevIndex - 1 : prevIndex
-      );
-      return ZOOM_LEVELS[zoomIndex > MIN_ZOOM_INDEX ? zoomIndex - 1 : zoomIndex];
+      if (zoomIndex > MIN_ZOOM_INDEX) {
+        setZoomIndex(zoomIndex - 1);
+        return ZOOM_LEVELS[zoomIndex - 1];
+      }
+      return currentZoom;
     },
     
+    // Reset zoom to default
     resetZoom: () => {
       setZoomIndex(DEFAULT_ZOOM_INDEX);
       return ZOOM_LEVELS[DEFAULT_ZOOM_INDEX];
     },
     
-    setZoomLevel: (zoomPercent) => {
-      const nearestIndex = ZOOM_LEVELS.findIndex(level => level >= zoomPercent);
-      const newIndex = nearestIndex === -1 ? MAX_ZOOM_INDEX : nearestIndex;
-      setZoomIndex(newIndex);
-      return ZOOM_LEVELS[newIndex];
-    },
-    
-    getZoomLevel: () => ZOOM_LEVELS[zoomIndex],
-    
-    // Print the preview content
-    print: () => {
-      const printWindow = window.open('', '_blank');
-      
-      // Get the current content HTML
-      const content = previewRef.current.innerHTML;
-      
-      // Create a styled HTML document for printing
-      const printContent = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Markdown Print</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
+    // Force layout recalculation
+    refreshLayout: () => {
+      if (previewRef.current) {
+        try {
+          // Force a reflow by accessing offsetHeight
+          const height = previewRef.current.offsetHeight;
+          
+          // Re-apply the zoom transformations to trigger a recalculation
+          const currentStyle = previewRef.current.style.transform;
+          previewRef.current.style.transform = 'none';
+          
+          // Force reflow again
+          previewRef.current.offsetHeight;
+          
+          // Restore the transform
+          setTimeout(() => {
+            if (previewRef.current) {
+              previewRef.current.style.transform = currentStyle;
             }
-            
-            pre {
-              background-color: #f5f5f5;
-              padding: 16px;
-              overflow: auto;
-              border-radius: 4px;
-            }
-            
-            code {
-              font-family: monospace;
-              background-color: rgba(0, 0, 0, 0.05);
-              padding: 0.2em 0.4em;
-              border-radius: 3px;
-            }
-            
-            blockquote {
-              border-left: 4px solid #ddd;
-              padding-left: 16px;
-              color: #666;
-              margin-left: 0;
-            }
-            
-            img {
-              max-width: 100%;
-              height: auto;
-            }
-            
-            table {
-              border-collapse: collapse;
-              width: 100%;
-              margin-bottom: 16px;
-            }
-            
-            table, th, td {
-              border: 1px solid #ddd;
-            }
-            
-            th, td {
-              padding: 12px;
-              text-align: left;
-            }
-            
-            th {
-              background-color: #f2f2f2;
-            }
-            
-            a {
-              color: #0366d6;
-              text-decoration: none;
-            }
-            
-            h1, h2, h3, h4, h5, h6 {
-              margin-top: 24px;
-              margin-bottom: 16px;
-              font-weight: 600;
-              line-height: 1.25;
-            }
-            
-            h1 {
-              font-size: 2em;
-              border-bottom: 1px solid #eaecef;
-              padding-bottom: 0.3em;
-            }
-            
-            h2 {
-              font-size: 1.5em;
-              border-bottom: 1px solid #eaecef;
-              padding-bottom: 0.3em;
-            }
-            
-            /* Dark mode heading styles */
-            .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
-              color: white;
-            }
-            
-            .dark h1, .dark h2 {
-              border-bottom-color: #2d3748;
-            }
-            
-            hr {
-              height: 1px;
-              background-color: #ddd;
-              border: none;
-              margin: 24px 0;
-            }
-            
-            /* Custom styles for print */
-            @media print {
-              body {
-                font-size: 12pt;
-              }
-              
-              pre, code {
-                font-size: 11pt;
-              }
-              
-              a {
-                text-decoration: underline;
-                color: #000;
-              }
-              
-              h1 {
-                font-size: 22pt;
-              }
-              
-              h2 {
-                font-size: 18pt;
-              }
-              
-              h3 {
-                font-size: 15pt;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="markdown-print">
-            ${content}
-          </div>
-          <script>
-            // Auto-print when the page is loaded
-            window.onload = function() {
-              window.print();
-              // Close the window after printing (some browsers may not do this automatically)
-              setTimeout(function() {
-                window.close();
-              }, 500);
-            };
-          </script>
-        </body>
-        </html>
-      `;
-      
-      printWindow.document.write(printContent);
-      printWindow.document.close();
+          }, 10);
+        } catch (error) {
+          console.error('Error refreshing preview layout:', error);
+        }
+      }
     }
   }));
   

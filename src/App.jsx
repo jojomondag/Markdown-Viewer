@@ -305,6 +305,21 @@ function App() {
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
+      
+      // Force re-render of split panes when window resizes
+      if (editorRef.current && previewRef.current) {
+        // Small delay to ensure DOM has updated
+        setTimeout(() => {
+          // If elements are mounted, refresh their layouts
+          if (editorRef.current && typeof editorRef.current.refreshLayout === 'function') {
+            editorRef.current.refreshLayout();
+          }
+          
+          if (previewRef.current && typeof previewRef.current.refreshLayout === 'function') {
+            previewRef.current.refreshLayout();
+          }
+        }, 50);
+      }
     };
     
     window.addEventListener('resize', handleResize);
@@ -1167,13 +1182,19 @@ function App() {
           className="flex-grow flex overflow-hidden"
           sizes={getSplitSizes()}
           minSize={sidebarVisible ? (isMobile ? 250 : 150) : 0}
-          expandToMin={false}
+          expandToMin={true}
           gutterSize={sidebarVisible ? 5 : 0}
           gutterAlign="center"
           snapOffset={30}
           dragInterval={1}
           direction="horizontal"
           cursor="col-resize"
+          elementStyle={(dimension, size, gutterSize) => ({
+            'flex-basis': `calc(${size}% - ${gutterSize}px)`,
+          })}
+          gutterStyle={(dimension, gutterSize) => ({
+            'flex-basis': `${gutterSize}px`,
+          })}
         >
           <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
             <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
@@ -1236,6 +1257,16 @@ function App() {
               dragInterval={1}
               direction={isMobile ? "vertical" : "horizontal"}
               cursor={isMobile ? "row-resize" : "col-resize"}
+              elementStyle={(dimension, size, gutterSize) => ({
+                'flex-basis': `calc(${size}% - ${gutterSize}px)`,
+              })}
+              gutterStyle={(dimension, gutterSize) => ({
+                'flex-basis': `${gutterSize}px`,
+              })}
+              onDragEnd={() => {
+                // Force layout recalculation after resize
+                window.dispatchEvent(new Event('resize'));
+              }}
             >
               <div className={`overflow-hidden flex flex-col h-full ${!isEditorContainerVisible ? 'hidden' : ''}`} role="region" aria-label="Editor">
                 {/* Add editor tabs */}
@@ -1274,7 +1305,9 @@ function App() {
                     zIndex: 30, // Increase z-index to ensure it's above other elements
                     display: isEditorVisible ? "flex" : "none",
                     flexDirection: "column",
-                    minHeight: "0"
+                    minHeight: "0",
+                    width: "100%", // Ensure it takes full width of parent
+                    height: "100%" // Ensure it takes full height of parent
                   }}
                 >
                   {state.loading.content && !forcingScrollRef.current && (
@@ -1306,7 +1339,9 @@ function App() {
                 aria-label="Preview"
                 style={{
                   flexGrow: !isEditorContainerVisible ? 1 : 'unset',
-                  width: !isEditorContainerVisible ? '100%' : 'unset'
+                  width: !isEditorContainerVisible ? '100%' : 'unset',
+                  minHeight: "0", // Allow shrinking
+                  height: "100%" // Take full height
                 }}
               >
                 <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800">
@@ -1372,7 +1407,7 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <div className="preview-container flex-grow overflow-hidden h-full">
+                <div className="preview-container flex-grow overflow-hidden h-full" style={{ minHeight: "0", height: "100%" }}>
                   <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
                     <MarkdownPreview 
                       ref={previewRef}
@@ -1399,30 +1434,6 @@ function App() {
           unsavedChanges={state.editor.unsavedChanges} 
         />
       </footer>
-      
-      {/* Mobile controls */}
-      {isMobile && (
-        <div className="fixed bottom-4 right-4 flex space-x-2 z-10">
-          {!sidebarVisible && (
-            <button
-              onClick={() => setSidebarVisible(true)}
-              className="p-3 rounded-full bg-primary-600 text-white shadow-lg"
-              title="Show Sidebar"
-              aria-label="Show sidebar"
-            >
-              <IconFolderOpen size={18} aria-hidden="true" />
-            </button>
-          )}
-          <button
-            onClick={() => setPreviewVisible(!previewVisible)}
-            className="p-3 rounded-full bg-primary-600 text-white shadow-lg"
-            title={previewVisible ? "Hide Preview" : "Show Preview"}
-            aria-label={previewVisible ? "Hide Preview" : "Show Preview"}
-          >
-            <IconEye size={18} aria-hidden="true" />
-          </button>
-        </div>
-      )}
       
       {/* Settings Panel */}
       <SettingsPanel 

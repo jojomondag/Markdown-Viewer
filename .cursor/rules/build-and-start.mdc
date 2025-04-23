@@ -1,0 +1,28 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Build and Start Workflow
+
+After making changes to the Markdown Viewer codebase, remember to build and start the application to see your changes:
+
+1. Accept all changes made during the session
+2. Run `npm run build` to build the application
+   ```bash
+   npm run build
+   ```
+3. Run `npm run start` to start the application
+   ```bash
+   npm run start
+   ```
+
+## Key Project Files
+
+- [package.json](mdc:package.json) - Contains the build and start scripts
+- [webpack.config.js](mdc:webpack.config.js) - Build configuration
+- [src/App.jsx](mdc:src/App.jsx) - Main application component
+- [src/index.css](mdc:src/index.css) - Global styles
+- [src/splitPane.css](mdc:src/splitPane.css) - Split pane styles
+- [src/components/MarkdownEditor.jsx](mdc:src/components/MarkdownEditor.jsx) - Editor component
+- [src/components/MarkdownPreview.jsx](mdc:src/components/MarkdownPreview.jsx) - Preview component
