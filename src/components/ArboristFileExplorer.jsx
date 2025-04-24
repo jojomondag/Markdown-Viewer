@@ -18,13 +18,12 @@ const TreeNode = ({
   level = 0, 
   onNodeSelect, 
   onFolderToggle,
-  expandedNodes, 
-  isSelected, 
+  expandedNodes,
+  selectedNodePaths, // Changed from isSelected
   renamingNodePath, // Path of the node currently being renamed
   onRenameSubmit,   // Function to call when rename is submitted
   onRenameCancel,    // Function to call when rename is cancelled
   currentFilePath, // Added prop
-  selectedNodePath, // Added prop
   onContextMenu, // Re-added prop
   onMoveItem, // Added prop for drop handler
   isDragging, // Is this node being dragged?
@@ -32,6 +31,7 @@ const TreeNode = ({
   dragOverPath // Path of the node being dragged over (used by parent)
 }) => {
   const isExpanded = expandedNodes[node.path] || false;
+  const isSelected = selectedNodePaths.has(node.path); // Calculate isSelected internally
   const hasChildren = node.children && node.children.length > 0;
   const isFolder = node.type === 'folder';
   
@@ -257,12 +257,11 @@ const TreeNode = ({
               onNodeSelect={onNodeSelect} // Pass down selection handler
               onFolderToggle={onFolderToggle} // Re-added prop passing
               expandedNodes={expandedNodes}
-              isSelected={selectedNodePath === child.path} // Internal selection state
+              selectedNodePaths={selectedNodePaths} // Pass down the Set
               renamingNodePath={renamingNodePath} // Pass renaming state
               onRenameSubmit={onRenameSubmit} // Pass rename submit handler
               onRenameCancel={onRenameCancel} // Pass rename cancel handler
               currentFilePath={currentFilePath} // Pass down current file path
-              selectedNodePath={selectedNodePath} // Pass down selected path state
               onContextMenu={onContextMenu} // Pass down context menu handler
               onMoveItem={onMoveItem} // Pass down move handler
               isDragging={isDragging} 
@@ -295,7 +294,8 @@ const FileExplorer = ({
   const [expandedNodes, setExpandedNodes] = useState({});
   const [treeData, setTreeData] = useState([]);
   const [rootFolderName, setRootFolderName] = useState(''); // Optional: display root folder name
-  const [selectedNodePath, setSelectedNodePath] = useState(null); // State for selected node path
+  const [selectedNodePaths, setSelectedNodePaths] = useState(new Set()); // Use a Set for multi-selection
+  const [shiftSelectionAnchorPath, setShiftSelectionAnchorPath] = useState(null); // Anchor for shift-click range selection
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, node: null }); // Re-added context menu state
   const [renamingNodePath, setRenamingNodePath] = useState(null); // State for which node is being renamed
   const explorerRef = useRef(null); // Re-added ref for the explorer container
@@ -446,40 +446,95 @@ const FileExplorer = ({
     }));
   }, []);
 
+  // Helper function to get a flattened list of visible nodes
+  const getVisibleNodes = useCallback(() => {
+    const visible = [];
+    const traverse = (nodes) => {
+      if (!nodes) return;
+      nodes.forEach(node => {
+        visible.push(node);
+        if (node.type === 'folder' && expandedNodes[node.path] && node.children) {
+          traverse(node.children);
+        }
+      });
+    };
+    traverse(treeData);
+    return visible;
+  }, [treeData, expandedNodes]);
+
   // Updated handler for selecting/renaming/toggling nodes
   const handleNodeSelect = useCallback((node, event) => { // Accept event object
     console.log('Node selected/clicked:', node, 'Target:', event.target);
+    const isCtrlCmdPressed = event.metaKey || event.ctrlKey;
+    const isShiftPressed = event.shiftKey;
+    const clickedPath = node.path;
 
-    if (selectedNodePath === node.path) {
-      // Second click on the same node: Initiate rename ONLY if text was clicked
-      if (event.target.closest('[data-testid="node-name"]')) {
-        console.log('Second click on TEXT detected, initiating rename for:', node.path);
-        handleRenameStart(node);
-      } else {
-        console.log('Second click on NON-TEXT detected.');
-        // If second click is on an icon of an already selected item, perform icon action
-        if (node.type === 'folder') {
-          // Specifically handle toggling the folder if the icon area is clicked again
-          console.log('Toggling already selected folder:', node.path);
-          handleFolderToggle(node.path);
+    setSelectedNodePaths(prevSelectedPaths => {
+      let newSelectedPaths = new Set(prevSelectedPaths);
+
+      if (isShiftPressed && shiftSelectionAnchorPath) {
+        // Shift + Click: Select range
+        const visibleNodes = getVisibleNodes();
+        const anchorIndex = visibleNodes.findIndex(n => n.path === shiftSelectionAnchorPath);
+        const clickedIndex = visibleNodes.findIndex(n => n.path === clickedPath);
+
+        if (anchorIndex !== -1 && clickedIndex !== -1) {
+          newSelectedPaths = new Set(); // Start fresh for range selection
+          const start = Math.min(anchorIndex, clickedIndex);
+          const end = Math.max(anchorIndex, clickedIndex);
+          for (let i = start; i <= end; i++) {
+            newSelectedPaths.add(visibleNodes[i].path);
+          }
+          console.log('[Shift Select] Range selected:', newSelectedPaths);
+        } else {
+          // Anchor not found, treat as normal click
+          newSelectedPaths = new Set([clickedPath]);
+          setShiftSelectionAnchorPath(clickedPath);
         }
-        // If it was a file, clicking the icon again on a selected file does nothing extra
+      } else if (isCtrlCmdPressed) {
+        // Ctrl/Cmd + Click: Toggle selection
+        if (newSelectedPaths.has(clickedPath)) {
+          newSelectedPaths.delete(clickedPath);
+          console.log('[Ctrl Select] Deselected:', clickedPath);
+          // If we deselect the anchor, clear it or pick another? Clear for now.
+          if (shiftSelectionAnchorPath === clickedPath) {
+             setShiftSelectionAnchorPath(null);
+          }
+        } else {
+          newSelectedPaths.add(clickedPath);
+          setShiftSelectionAnchorPath(clickedPath); // Set anchor on add
+          console.log('[Ctrl Select] Selected:', clickedPath);
+        }
+      } else {
+        // Normal Click (or Shift without anchor): Select only this item
+        if (newSelectedPaths.has(clickedPath) && newSelectedPaths.size === 1) {
+           // Clicking the already single-selected item
+           // Initiate rename ONLY if clicking the text part
+          if (event.target.closest('[data-testid="node-name"]')) {
+            console.log('Second click on TEXT detected, initiating rename for:', node.path);
+             handleRenameStart(node);
+          } else if (node.type === 'folder') {
+             // Clicking the icon part of an already selected folder toggles it
+             console.log('Toggling already selected folder:', node.path);
+             handleFolderToggle(node.path);
+          }
+          // Keep selection as is if renaming or toggling
+        } else {
+          // Select only the clicked item
+          newSelectedPaths = new Set([clickedPath]);
+          setShiftSelectionAnchorPath(clickedPath); // Set anchor on normal click
+          console.log('[Normal Select] Selected:', clickedPath);
+          // Open file / Toggle folder only on a normal click that changes selection
+          if (node.type === 'file') {
+            onFileSelect(node);
+          } else if (node.type === 'folder') {
+            handleFolderToggle(node.path);
+          }
+        }
       }
-    } else {
-      // First click or click on a different node: Select and potentially toggle/open
-      console.log('First click or different node selected:', node.path);
-      setSelectedNodePath(node.path);
-
-      // If it's a file, call the original onFileSelect (presumably to open it)
-      if (node.type === 'file') {
-        onFileSelect(node);
-      } 
-      // If it's a folder, toggle its expansion
-      else if (node.type === 'folder') {
-        handleFolderToggle(node.path); // Toggle folder on first select
-      }
-    }
-  }, [selectedNodePath, onFileSelect, handleFolderToggle, handleRenameStart]); // Added dependencies
+      return newSelectedPaths;
+    });
+  }, [onFileSelect, handleFolderToggle, handleRenameStart, shiftSelectionAnchorPath, getVisibleNodes]); // Added dependencies
 
   // Function to initiate rename
   const handleRenameStart = useCallback((node) => { // Make useCallback
@@ -512,7 +567,7 @@ const FileExplorer = ({
             console.log(`Rename successful: ${oldPath} -> ${newPath}`);
             // The parent (App.jsx) should update the files/folders list,
             // which will cause this component to re-render with the new data.
-            setSelectedNodePath(newPath); // Select the newly renamed item
+            setSelectedNodePaths(new Set([newPath])); // Select the newly renamed item
         } else {
             console.warn('onRenameItem prop is not provided. Cannot perform rename.');
         }
@@ -582,7 +637,7 @@ const FileExplorer = ({
     const bounds = explorerRef.current?.getBoundingClientRect();
     const x = event.clientX - (bounds?.left ?? 0);
     const y = event.clientY - (bounds?.top ?? 0);
-    setSelectedNodePath(node.path); // Select node on right-click
+    setSelectedNodePaths(new Set([node.path])); // Select node on right-click
     setContextMenu({ visible: true, x, y, node });
   }, []);
 
@@ -724,7 +779,8 @@ const FileExplorer = ({
       className="file-explorer h-full flex flex-col relative" 
       onClick={() => {
         console.log('[Explorer Container Clicked] Deselecting node.');
-        setSelectedNodePath(null); // Clear selection when clicking the container bg
+        setSelectedNodePaths(new Set()); // Clear selection set
+        setShiftSelectionAnchorPath(null); // Clear anchor
       }}
     >
       {/* Tree content area */}
@@ -760,12 +816,11 @@ const FileExplorer = ({
                 onNodeSelect={handleNodeSelect} // Use the new selection handler
                 onFolderToggle={handleFolderToggle} // Keep this separate for buildTree logic
                 expandedNodes={expandedNodes}
-                isSelected={selectedNodePath === node.path} // Pass internal selection state
+                selectedNodePaths={selectedNodePaths} // Pass down the Set
                 renamingNodePath={renamingNodePath} // Pass renaming state
                 onRenameSubmit={handleRenameSubmit} // Pass rename submit handler
                 onRenameCancel={handleRenameCancel} // Pass rename cancel handler
                 currentFilePath={currentFilePath} // Pass down current file path
-                selectedNodePath={selectedNodePath} // Pass down selected path state
                 onContextMenu={handleContextMenu} // Pass down context menu handler
                 onMoveItem={handleMoveItem} // Pass down unified DnD handler
                 isDragging={draggingPath === node.path} 
