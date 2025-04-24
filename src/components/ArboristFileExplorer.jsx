@@ -43,13 +43,29 @@ const TreeNode = ({
   useEffect(() => {
     if (renamingNodePath === node.path) {
       setIsRenaming(true);
-      setNewName(node.name);
-      // Focus the input when renaming starts
-      setTimeout(() => renameInputRef.current?.focus(), 0);
+      const currentName = node.name; // Use original node name
+      setNewName(currentName); 
+      
+      // Focus the input and select text when renaming starts
+      setTimeout(() => {
+        const inputElement = renameInputRef.current;
+        if (inputElement) {
+          inputElement.focus();
+          
+          // Determine selection range
+          const isFile = node.type === 'file';
+          const lastDotIndex = isFile ? currentName.lastIndexOf('.') : -1;
+          const selectionEnd = (isFile && lastDotIndex > 0) ? lastDotIndex : currentName.length;
+          
+          inputElement.setSelectionRange(0, selectionEnd);
+        }
+      }, 0); // Timeout ensures element is rendered and ready
+
     } else {
       setIsRenaming(false);
     }
-  }, [renamingNodePath, node.path, node.name]);
+    // Add node.type as dependency
+  }, [renamingNodePath, node.path, node.name, node.type]);
 
   const handleClick = (e) => {
     e.stopPropagation(); // Prevent event bubbling
