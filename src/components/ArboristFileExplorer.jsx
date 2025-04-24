@@ -597,6 +597,14 @@ const FileExplorer = ({
       const newPath = await onCreateFile(folderNode.path); // Call prop and wait for path
       if (newPath) {
         console.log('New file created, initiating rename for:', newPath);
+        
+        // --- START: Expand parent folder if collapsed ---
+        if (!expandedNodes[folderNode.path]) {
+          console.log(`Expanding parent folder ${folderNode.path} after new file creation.`);
+          handleFolderToggle(folderNode.path);
+        }
+        // --- END: Expand parent folder if collapsed ---
+        
         setRenamingNodePath(newPath); // Trigger rename for the new file
         // Optional: Scroll the new item into view if needed
       } else {
