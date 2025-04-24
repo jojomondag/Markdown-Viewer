@@ -10,6 +10,7 @@ import {
 } from '@tabler/icons-react';
 import path from 'path-browserify';
 import { getBasename, getDirname } from '../utils/pathUtils'; // Assuming pathUtils exists
+import { isValidDrop, createDropDestination } from '../utils/fileOperations'; // Import DnD utils
 
 // Simple TreeNode component
 const TreeNode = ({ 
@@ -24,7 +25,11 @@ const TreeNode = ({
   onRenameCancel,    // Function to call when rename is cancelled
   currentFilePath, // Added prop
   selectedNodePath, // Added prop
-  onContextMenu // Re-added prop
+  onContextMenu, // Re-added prop
+  onMoveItem, // Added prop for drop handler
+  isDragging, // Is this node being dragged?
+  dragOverPosition, // Where is the cursor relative to this node? ('top', 'bottom', 'middle')
+  dragOverPath // Path of the node being dragged over (used by parent)
 }) => {
   const isExpanded = expandedNodes[node.path] || false;
   const hasChildren = node.children && node.children.length > 0;
@@ -91,8 +96,97 @@ const TreeNode = ({
     onContextMenu(e, node); // Pass event and node data
   };
 
+  // --- Drag and Drop Handlers ---
+  const handleDragStart = (e) => {
+    e.stopPropagation(); // Prevent parent drag
+    console.log('[DnD] Drag Start:', node.path);
+    // Set data to be transferred (path and type)
+    e.dataTransfer.setData('application/json', JSON.stringify({ path: node.path, type: node.type }));
+    e.dataTransfer.effectAllowed = 'move';
+    // Optionally set a drag image or rely on default browser behavior
+    // Notify parent about drag start (e.g., to set dragging state)
+    onMoveItem(node, null, 'dragStart'); 
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault(); // Necessary to allow dropping
+    e.stopPropagation();
+    
+    // Determine position relative to the target element
+    const rect = e.currentTarget.getBoundingClientRect();
+    const verticalMidpoint = rect.top + rect.height / 2;
+    const dropZoneHeight = rect.height;
+    const topThreshold = rect.top + dropZoneHeight * 0.2; // Upper 20%
+    const bottomThreshold = rect.top + dropZoneHeight * 0.8; // Lower 20%
+
+    let position = 'middle';
+    if (e.clientY < topThreshold) {
+        position = 'top';
+    } else if (e.clientY > bottomThreshold) {
+        position = 'bottom';
+    }
+
+    // Indicate this node is being dragged over
+    onMoveItem(null, node, 'dragOver', position); // Pass position
+    // Set drop effect (visual cue)
+    e.dataTransfer.dropEffect = 'move'; 
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[DnD] Drop onto:', node.path);
+    try {
+      const draggedItemData = JSON.parse(e.dataTransfer.getData('application/json'));
+      
+      // Determine drop position again (similar to dragOver)
+      const rect = e.currentTarget.getBoundingClientRect();
+      const verticalMidpoint = rect.top + rect.height / 2;
+      const dropZoneHeight = rect.height;
+      const topThreshold = rect.top + dropZoneHeight * 0.2;
+      const bottomThreshold = rect.top + dropZoneHeight * 0.8;
+      let position = 'middle';
+      if (e.clientY < topThreshold) position = 'top';
+      else if (e.clientY > bottomThreshold) position = 'bottom';
+
+      console.log('[DnD] Dropped item data:', draggedItemData, 'at position:', position);
+      if (draggedItemData && draggedItemData.path !== node.path) { // Ensure not dropping onto self
+        // Call the parent handler to perform the move
+        onMoveItem(draggedItemData, node, 'drop', position); // Pass position
+      } else {
+        console.log('[DnD] Drop ignored (self or invalid data)');
+      }
+    } catch (error) {
+      console.error('[DnD] Error parsing dropped data:', error);
+    }
+    // Notify parent to clear dragOver state
+    onMoveItem(null, null, 'dragEnd'); 
+  };
+
+  const handleDragEnd = (e) => {
+    e.stopPropagation();
+    console.log('[DnD] Drag End');
+    // Notify parent to clear all drag states
+    onMoveItem(null, null, 'dragEnd');
+  };
+  // --- End Drag and Drop Handlers ---
+
   return (
-    <div className="flex flex-col">
+    <div 
+      className={`flex flex-col 
+                 ${isDragging ? 'opacity-50' : ''} 
+                  /* Drag Over Visuals */
+                  ${dragOverPath === node.path && dragOverPosition === 'top' ? 'border-t-4 border-blue-600 bg-blue-200 dark:bg-blue-800/50 pt-1 mb-1' : ''} /* DEBUG: Added BG */
+                  ${dragOverPath === node.path && dragOverPosition === 'bottom' ? 'border-b-4 border-blue-600 bg-blue-200 dark:bg-blue-800/50 pb-1 mt-1' : ''} /* DEBUG: Added BG */
+                  ${dragOverPath === node.path && dragOverPosition === 'middle' && node.type === 'folder' ? 'bg-blue-100 dark:bg-blue-900/50 rounded' : ''} 
+                  ${dragOverPath === node.path && dragOverPosition === 'middle' && node.type !== 'folder' ? 'bg-error-100 dark:bg-error-900/50 rounded' : ''} // Invalid middle drop on file
+                 `}
+      draggable="true" // Make node draggable
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onDragEnd={handleDragEnd}
+    >
       <div 
         className={`flex items-center px-1 py-1 rounded cursor-pointer hover:bg-surface-200 dark:hover:bg-surface-700 
                     ${isSelected || node.path === currentFilePath ? 'bg-primary-100 dark:bg-primary-900 border border-primary-400 dark:border-primary-600' : ''}`}
@@ -151,6 +245,10 @@ const TreeNode = ({
               currentFilePath={currentFilePath} // Pass down current file path
               selectedNodePath={selectedNodePath} // Pass down selected path state
               onContextMenu={onContextMenu} // Pass down context menu handler
+              onMoveItem={onMoveItem} // Pass down move handler
+              isDragging={isDragging} 
+              dragOverPath={dragOverPath} 
+              dragOverPosition={dragOverPosition} // Pass down drag over position directly
             />
           ))}
         </div>
@@ -171,6 +269,8 @@ const FileExplorer = ({
   onCreateFile, // Added prop for create file handler
   onCreateFolder, // Added prop for create folder handler
   onDeleteItem, // Added prop for delete handler
+  onMoveItemProp, // Added prop for move handler from App.jsx
+  itemOrder, // Added prop for explicit item order
   // Add any other necessary props based on App.jsx usage
 }) => {
   const [expandedNodes, setExpandedNodes] = useState({});
@@ -181,8 +281,14 @@ const FileExplorer = ({
   const [renamingNodePath, setRenamingNodePath] = useState(null); // State for which node is being renamed
   const explorerRef = useRef(null); // Re-added ref for the explorer container
 
+  // --- Drag and Drop State ---
+  const [draggingPath, setDraggingPath] = useState(null);
+  const [dragOverPath, setDragOverPath] = useState(null); // Path of the node being dragged over
+  const [dragOverPosition, setDragOverPosition] = useState(null); // 'top', 'bottom', 'middle'
+  // --- End Drag and Drop State ---
+
   // Function to build the tree structure from flat lists based on currentFolders
-  const buildTree = useCallback((files, folders, currentFolders) => {
+  const buildTree = useCallback((files, folders, currentFolders, currentItemOrder) => {
     console.log("[Arborist buildTree] Building tree for roots:", currentFolders);
     const nodes = {};
     const roots = [];
@@ -232,27 +338,56 @@ const FileExplorer = ({
     });
 
     // Optional: Sort children within each node (folders first, then alphabetically)
-    const sortNodesRecursive = (nodeList) => {
+    const sortNodesRecursive = (nodeList, parentPath, orderMap) => {
         if (!nodeList) return;
+
+        console.log(`[Sort] Sorting children for parent: '${parentPath}'`);
+        // Get the predefined order for this parent, if available
+        const predefinedOrder = orderMap ? orderMap[parentPath] : null;
+        if(predefinedOrder) {
+            console.log(`[Sort] Found predefined order for '${parentPath}':`, JSON.stringify(predefinedOrder));
+        } else {
+            console.log(`[Sort] No predefined order found for '${parentPath}'. Using default sort.`);
+        }
+
         nodeList.sort((a, b) => {
+            // --- Predefined Order Logic --- 
+            if (predefinedOrder) {
+                const indexA = predefinedOrder.indexOf(a.path);
+                const indexB = predefinedOrder.indexOf(b.path);
+
+                // If both items are in the predefined order, sort by their index
+                if (indexA !== -1 && indexB !== -1) {
+                    return indexA - indexB;
+                }
+                // If only A is in the order, it comes first
+                if (indexA !== -1) return -1;
+                // If only B is in the order, it comes first
+                if (indexB !== -1) return 1;
+                // If neither is in the order, fall through to default sort
+            }
+            // --- Default Sort Logic --- 
+            let comparisonResult = 0;
             if (a.type === 'folder' && b.type !== 'folder') return -1;
             if (a.type !== 'folder' && b.type === 'folder') return 1;
-            return a.name.localeCompare(b.name);
+            comparisonResult = a.name.localeCompare(b.name);
+            // console.log(`[Sort Compare Default] ${a.name} vs ${b.name}: ${comparisonResult}`); // Optional: Very verbose log
+            return comparisonResult;
         });
         nodeList.forEach(node => {
-            if (node.children) sortNodesRecursive(node.children);
+            if (node.children) sortNodesRecursive(node.children, node.path, orderMap);
         });
     };
 
     // Sort children of all nodes in the map that have children
     Object.values(nodes).forEach(node => {
         if (node.children) {
-            sortNodesRecursive(node.children);
+            sortNodesRecursive(node.children, node.path, currentItemOrder);
         }
     });
 
-    // Sort the final list of root nodes themselves
-    sortNodesRecursive(roots);
+    // Sort the final list of root nodes themselves (using '.' as the key for the root level)
+    sortNodesRecursive(roots, '.', currentItemOrder);
 
     console.log("[Arborist buildTree] Final roots:", roots);
     return roots;
@@ -260,8 +395,8 @@ const FileExplorer = ({
 
   useEffect(() => {
     // Rebuild tree when files, folders, OR currentFolders change
-    console.log("Arborist useEffect rebuilding tree. currentFolders:", currentFolders);
-    const newTree = buildTree(files, folders, currentFolders);
+    console.log("Arborist useEffect rebuilding tree. currentFolders:", currentFolders, "itemOrder:", JSON.stringify(itemOrder));
+    const newTree = buildTree(files, folders, currentFolders, itemOrder);
     setTreeData(newTree);
 
     // Update root folder name based on the *last* added root folder
@@ -283,7 +418,7 @@ const FileExplorer = ({
         setExpandedNodes(prev => ({ ...prev, ...rootPathsToExpand })); 
     }
 
-  }, [files, folders, currentFolders, buildTree]); // Add currentFolders dependency
+  }, [files, folders, currentFolders, buildTree, itemOrder]);
 
   const handleFolderToggle = useCallback((path) => {
     setExpandedNodes(prev => ({
@@ -489,7 +624,63 @@ const FileExplorer = ({
         console.warn('onCreateFolder prop is not provided.');
     }
   };
-  // --- End Placeholder Action Handlers ---
+
+  // --- Drag and Drop Handler passed to TreeNode ---
+  const handleMoveItem = useCallback((sourceNodeData, targetNode, action, position = null) => {
+    if (action === 'dragStart' && sourceNodeData) {
+      setDraggingPath(sourceNodeData.path);
+      setDragOverPath(null); // Clear drag over when starting a new drag
+      setDragOverPosition(null);
+    } else if (action === 'dragOver' && targetNode) {
+      // --- Optimize: Only update state if path or position actually changes ---
+      if (targetNode.path !== dragOverPath || position !== dragOverPosition) {
+        // console.log(`[DnD State Update] Path: ${dragOverPath}=>${targetNode.path}, Pos: ${dragOverPosition}=>${position}`); // Debug log
+        setDragOverPath(targetNode.path);
+        setDragOverPosition(position);
+      }
+      // ---------------------------------------------------------------------
+      // Logic for allowing drop effect is handled by onDragOver in TreeNode directly
+    } else if (action === 'drop' && sourceNodeData && targetNode) {
+      setDragOverPath(null); // Clear visual cues immediately on drop
+      setDragOverPosition(null);
+      
+      // Determine the effective target and action for App.jsx
+      let effectiveTargetNode = targetNode;
+      let dropActionType = position; // 'top', 'bottom', 'middle'
+
+      // If dropping on top/bottom, the logical target is the parent
+      // We only pass the node we dropped relative to, and the position
+      if (position === 'top' || position === 'bottom') {
+        // Keep targetNode as the node we dropped relative to
+      } else if (position === 'middle' && targetNode.type !== 'folder') {
+        // Dropping onto a file is invalid for move *into*
+        console.log('[Explorer] Invalid drop target (middle of file).');
+        setDraggingPath(null);
+        return; // Abort
+      } // else: dropping middle of folder is fine, targetNode is correct
+
+      const sourceItem = { path: sourceNodeData.path, type: sourceNodeData.type };
+
+      // Check validity using the original target node
+      if (isValidDrop(sourceItem, targetNode)) { 
+        console.log(`[Explorer] Requesting move: ${sourceNodeData.path} relative to ${targetNode.path} at position ${position}`);
+        if (typeof onMoveItemProp === 'function') {
+            // Pass source, the node dropped relative to, and the position
+            onMoveItemProp(sourceItem, targetNode, position); 
+        } else {
+            console.warn('onMoveItemProp is not provided. Cannot perform move.');
+        }
+      }
+      // Reset drag path state regardless of validity
+      setDraggingPath(null);
+    } else if (action === 'dragEnd') {
+      // Reset all drag states when drag ends (dropped outside or cancelled)
+      setDraggingPath(null);
+      setDragOverPath(null);
+      setDragOverPosition(null);
+    }
+  }, [onMoveItemProp]); // Dependency on the prop from App
+  // --- End Drag and Drop Handler ---
 
   return (
     <div ref={explorerRef} className="file-explorer h-full flex flex-col relative"> {/* Keep relative for potential future absolute elements */}
@@ -533,6 +724,10 @@ const FileExplorer = ({
                 currentFilePath={currentFilePath} // Pass down current file path
                 selectedNodePath={selectedNodePath} // Pass down selected path state
                 onContextMenu={handleContextMenu} // Pass down context menu handler
+                onMoveItem={handleMoveItem} // Pass down unified DnD handler
+                isDragging={draggingPath === node.path} 
+                dragOverPath={dragOverPath} 
+                dragOverPosition={dragOverPosition} // Pass down drag over position directly
               />
             ))}
             {/* Optional Footer Info */}
@@ -545,41 +740,41 @@ const FileExplorer = ({
         )}
       </div>
       
-      {/* Context Menu */}      
-      {contextMenu.visible && contextMenu.node && (
-        <div 
-          className="absolute bg-white dark:bg-neutral-800 border border-surface-300 dark:border-surface-700 rounded shadow-lg py-1 z-50 text-sm"
-          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
-          onClick={(e) => e.stopPropagation()} // Prevent menu clicks from closing itself immediately
-        >
-          <ul>
-            {contextMenu.node.type === 'folder' && (
-              <>
-                <li 
-                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
-                  onClick={() => handleNewFile(contextMenu.node)}
-                >
-                  New File
-                </li>
-                <li 
-                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
-                  onClick={() => handleNewFolder(contextMenu.node)}
-                >
-                  New Folder
-                </li>
-                <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li> {/* Separator */} 
-              </>
-            )}
-            <li 
-              className="px-3 py-1 text-error-500 hover:bg-error-500 hover:text-white cursor-pointer"
-              onClick={() => handleDeleteItem(contextMenu.node)}
-            >
-              Delete {contextMenu.node.type === 'folder' ? 'Folder' : 'File'}
-            </li>
-            {/* Add other actions here later */}
-          </ul>
-        </div>
-      )}
+      {/* Context Menu temporarily commented out for debugging build error 
+        {contextMenu.visible && contextMenu.node ? (
+          <div 
+            className="absolute bg-white dark:bg-neutral-800 border border-surface-300 dark:border-surface-700 rounded shadow-lg py-1 z-50 text-sm"
+            style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+            onClick={(e) => e.stopPropagation()} // Prevent menu clicks from closing itself immediately
+          >
+            <ul>
+              {contextMenu.node.type === 'folder' && (
+                <>
+                  <li 
+                    className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
+                    onClick={() => handleNewFile(contextMenu.node)}
+                  >
+                    New File
+                  </li>
+                  <li 
+                    className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
+                    onClick={() => handleNewFolder(contextMenu.node)}
+                  >
+                    New Folder
+                  </li>
+                  <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li>
+                </>
+              )}
+              <li 
+                className="px-3 py-1 text-error-500 hover:bg-error-500 hover:text-white cursor-pointer"
+                onClick={() => handleDeleteItem(contextMenu.node)}
+              >
+                Delete {contextMenu.node.type === 'folder' ? 'Folder' : 'File'}
+              </li>
+            </ul>
+          </div>
+        ) : null} 
+      */} 
     </div>
   );
 };
