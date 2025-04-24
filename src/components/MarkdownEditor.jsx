@@ -417,6 +417,48 @@ const MarkdownEditor = forwardRef(({
                   
                   onScroll(scrollPercentage);
                 }
+              },
+              // Add mousedown handler for line number clicks
+              mousedown: (event, view) => {
+                console.log('[Line Number Click] mousedown event triggered'); // Log: Handler triggered
+                const target = event.target;
+                console.log('[Line Number Click] Target element:', target);
+                // More specific check: Is the clicked element a gutter element inside the line number container?
+                if (target.classList.contains('cm-gutterElement') && target.closest('.cm-lineNumbers')) {
+                  console.log('[Line Number Click] Click detected on a gutter element inside line numbers.');
+                  // Try getting position using coordinates first
+                  let pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+                  console.log('[Line Number Click] Calculated position via posAtCoords:', pos);
+
+                  // If posAtCoords fails (e.g., returns null), try getting the line block by height
+                  if (pos == null) {
+                    try {
+                      const lineBlock = view.lineBlockAtHeight(event.clientY);
+                      console.log('[Line Number Click] Trying lineBlockAtHeight:', lineBlock);
+                      if (lineBlock) {
+                        pos = lineBlock.from; // Use the start of the line block
+                        console.log('[Line Number Click] Position set from lineBlock.from:', pos);
+                      }
+                    } catch (e) {
+                       console.error('[Line Number Click] Error using lineBlockAtHeight:', e);
+                    }
+                  }
+
+                  if (pos != null) {
+                    const line = view.state.doc.lineAt(pos);
+                    console.log('[Line Number Click] Line object:', line);
+                    view.dispatch({
+                      selection: EditorSelection.range(line.from, line.to),
+                      scrollIntoView: { y: "nearest", x: "never" }
+                    });
+                    console.log('[Line Number Click] Selection dispatched for line:', line.number);
+                    event.preventDefault(); 
+                  } else {
+                    console.log('[Line Number Click] Could not determine position for the click.');
+                  }
+                } else {
+                   console.log('[Line Number Click] Click was not on a cm-gutterElement inside cm-lineNumbers.');
+                }
               }
             })
           ]
@@ -534,6 +576,268 @@ const MarkdownEditor = forwardRef(({
       }
     };
   }, [scrollTo, isScrolling]);
+  
+  // Add direct click handler for line numbers
+  useEffect(() => {
+    if (!viewRef.current) return;
+    
+    let startLineNumber = null;
+    let isDragging = false;
+    let initialScrollLeft = 0; // Store initial horizontal scroll position
+    let autoScrollInterval = null; // For auto-scrolling timer
+    let lastMouseY = 0; // Track last mouse Y position
+    let lastMouseTime = 0; // Track time of last mouse move
+    let mouseVelocity = 0; // Track vertical mouse velocity
+    let selectionOrigin = null; // Store the start position for selection
+    let rafId = null; // For requestAnimationFrame ID
+    
+    // Function for continuous scrolling using requestAnimationFrame
+    const continuousScroll = () => {
+      if (!isDragging || !viewRef.current || !viewRef.current.scrollDOM) {
+        // Cancel animation if no longer dragging
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        return;
+      }
+      
+      // Get mouse position relative to editor
+      const editorRect = viewRef.current.dom.getBoundingClientRect();
+      
+      // Calculate scroll speed based on distance from edges
+      let scrollSpeed = 0;
+      
+      if (lastMouseY < editorRect.top) {
+        // Above editor - scroll up
+        const distanceAbove = editorRect.top - lastMouseY;
+        scrollSpeed = -Math.min(50, Math.max(5, distanceAbove / 2));
+      } else if (lastMouseY > editorRect.bottom) {
+        // Below editor - scroll down
+        const distanceBelow = lastMouseY - editorRect.bottom;
+        scrollSpeed = Math.min(50, Math.max(5, distanceBelow / 2));
+      }
+      
+      // If we need to scroll, apply it
+      if (scrollSpeed !== 0) {
+        // Apply scroll
+        viewRef.current.scrollDOM.scrollTop += scrollSpeed;
+        
+        // Restore horizontal scroll position
+        viewRef.current.scrollDOM.scrollLeft = initialScrollLeft;
+        
+        // Update selection based on new scroll position
+        try {
+          // Attempt to get a position at current mouse X and adjusted Y within editor
+          const adjustedY = Math.max(editorRect.top, Math.min(editorRect.bottom, lastMouseY));
+          const adjustedPos = viewRef.current.posAtCoords({ x: lastMouseY, y: adjustedY });
+          
+          if (adjustedPos !== null) {
+            // Get line at this position
+            const lineAtPos = viewRef.current.state.doc.lineAt(adjustedPos);
+            
+            // Ensure we select full lines
+            const from = Math.min(selectionOrigin, lineAtPos.from);
+            const to = Math.max(selectionOrigin, lineAtPos.to);
+            
+            // Update selection
+            viewRef.current.dispatch({
+              selection: EditorSelection.range(from, to),
+              scrollIntoView: false // Don't cause additional scrolling
+            });
+          }
+        } catch (error) {
+          console.error('Error updating selection during continuous scroll:', error);
+        }
+      }
+      
+      // Continue the animation
+      rafId = requestAnimationFrame(continuousScroll);
+    };
+    
+    // Function to handle document mousemove (replaces gutter mousemove)
+    const handleDocumentMouseMove = (event) => {
+      if (!isDragging || startLineNumber === null || selectionOrigin === null) return;
+      
+      // Get the current mouse position
+      const mouseY = event.clientY;
+      const mouseX = event.clientX;
+      
+      // Update last known position
+      lastMouseY = mouseY;
+      
+      // Check if we need to start/stop continuous scrolling
+      const editorRect = viewRef.current.dom.getBoundingClientRect();
+      
+      // If mouse is outside editor vertically, ensure continuous scrolling is active
+      if (mouseY < editorRect.top || mouseY > editorRect.bottom) {
+        if (!rafId) {
+          rafId = requestAnimationFrame(continuousScroll);
+        }
+      } else {
+        // Mouse is inside editor, stop continuous scrolling if active
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        
+        // Handle normal selection within editor
+        try {
+          // Get position at mouse coordinates
+          const pos = viewRef.current.posAtCoords({ x: mouseX, y: mouseY });
+          if (pos === null) return;
+          
+          // Get line at position
+          const lineAtPos = viewRef.current.state.doc.lineAt(pos);
+          
+          // Ensure we select full lines
+          const from = Math.min(selectionOrigin, lineAtPos.from);
+          const to = Math.max(selectionOrigin, lineAtPos.to);
+          
+          // Update selection
+          viewRef.current.dispatch({
+            selection: EditorSelection.range(from, to),
+            scrollIntoView: { y: "nearest", x: "never" }
+          });
+          
+          // Restore horizontal scroll
+          setTimeout(() => {
+            if (viewRef.current && viewRef.current.scrollDOM) {
+              viewRef.current.scrollDOM.scrollLeft = initialScrollLeft;
+            }
+          }, 0);
+        } catch (error) {
+          console.error('Error during in-editor selection:', error);
+        }
+      }
+    };
+    
+    // Function to handle gutter mousedown
+    const handleGutterMouseDown = (event) => {
+      // Check if mousedown is on a gutter element
+      if (event.target.classList.contains('cm-gutterElement')) {
+        // Store initial horizontal scroll position
+        initialScrollLeft = viewRef.current.scrollDOM.scrollLeft;
+        
+        // Get the line number from the element's text content
+        const lineNumber = parseInt(event.target.textContent, 10);
+        if (isNaN(lineNumber)) return;
+        
+        console.log(`Gutter mousedown: Line ${lineNumber}`);
+        
+        // Store the starting line number for potential drag selection
+        startLineNumber = lineNumber;
+        isDragging = true;
+        
+        try {
+          // Get the line from the document (lines are 1-indexed in CodeMirror)
+          const line = viewRef.current.state.doc.line(lineNumber);
+          
+          // Store the selection origin (from position)
+          // For first line, use the line start position
+          selectionOrigin = line.from;
+          
+          // Force CM to recognize that we're starting a selection 
+          // This helps especially with row 1 selections
+          viewRef.current.focus();
+          
+          // Select the entire line
+          viewRef.current.dispatch({
+            selection: EditorSelection.range(line.from, line.to),
+            scrollIntoView: { y: "nearest", x: "never" }
+          });
+          
+          // Restore horizontal scroll position after a small delay
+          setTimeout(() => {
+            if (viewRef.current && viewRef.current.scrollDOM) {
+              viewRef.current.scrollDOM.scrollLeft = initialScrollLeft;
+            }
+          }, 0);
+          
+          // Prevent default behavior
+          event.preventDefault();
+        } catch (error) {
+          console.error('Error selecting line:', error);
+        }
+      }
+    };
+    
+    // Function to handle gutter mouseup
+    const handleGutterMouseUp = () => {
+      isDragging = false;
+      selectionOrigin = null;
+      
+      // Ensure horizontal scroll position is restored one final time
+      if (viewRef.current && viewRef.current.scrollDOM) {
+        viewRef.current.scrollDOM.scrollLeft = initialScrollLeft;
+      }
+      
+      // Clear animation frame if active
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      
+      // Clear any auto-scroll interval
+      if (autoScrollInterval) {
+        clearInterval(autoScrollInterval);
+        autoScrollInterval = null;
+      }
+    };
+    
+    // Function to handle document mouseup (for when mouse is released outside the gutter)
+    const handleDocumentMouseUp = () => {
+      isDragging = false;
+      selectionOrigin = null;
+      
+      // Ensure horizontal scroll position is restored one final time
+      if (viewRef.current && viewRef.current.scrollDOM) {
+        viewRef.current.scrollDOM.scrollLeft = initialScrollLeft;
+      }
+      
+      // Clear animation frame if active
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      
+      // Clear any auto-scroll interval
+      if (autoScrollInterval) {
+        clearInterval(autoScrollInterval);
+        autoScrollInterval = null;
+      }
+    };
+    
+    // Find the gutter element
+    const gutterElement = viewRef.current.dom.querySelector('.cm-gutters');
+    if (gutterElement) {
+      // Add event listeners
+      gutterElement.addEventListener('mousedown', handleGutterMouseDown);
+      document.addEventListener('mousemove', handleDocumentMouseMove);
+      gutterElement.addEventListener('mouseup', handleGutterMouseUp);
+      document.addEventListener('mouseup', handleDocumentMouseUp);
+      
+      // Return cleanup function
+      return () => {
+        gutterElement.removeEventListener('mousedown', handleGutterMouseDown);
+        document.removeEventListener('mousemove', handleDocumentMouseMove);
+        gutterElement.removeEventListener('mouseup', handleGutterMouseUp);
+        document.removeEventListener('mouseup', handleDocumentMouseUp);
+        
+        // Clean up any active animation frame
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        
+        // Clear any auto-scroll interval
+        if (autoScrollInterval) {
+          clearInterval(autoScrollInterval);
+          autoScrollInterval = null;
+        }
+      };
+    }
+  }, [viewRef.current]);
 
   return (
     <div className={`h-full flex flex-col relative ${className} dark`}>
@@ -542,6 +846,17 @@ const MarkdownEditor = forwardRef(({
         .cm-editor { height: 100%; }
         .cm-content { caret-color: white !important; }
         .cm-cursor { border-left: 2px solid white !important; }
+        
+        /* Make gutters and line numbers clickable */
+        .cm-gutters { pointer-events: auto !important; }
+        .cm-gutter { pointer-events: auto !important; }
+        .cm-lineNumbers { pointer-events: auto !important; }
+        .cm-gutterElement { 
+          pointer-events: auto !important; 
+          cursor: pointer; 
+          user-select: none; 
+          -webkit-user-select: none;
+        }
         
         /* Custom scrollbar styling for CodeMirror */
         .cm-scroller::-webkit-scrollbar {
