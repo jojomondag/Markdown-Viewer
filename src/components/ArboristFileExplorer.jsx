@@ -114,15 +114,13 @@ const TreeNode = ({
     
     // Determine position relative to the target element
     const rect = e.currentTarget.getBoundingClientRect();
-    const verticalMidpoint = rect.top + rect.height / 2;
-    const dropZoneHeight = rect.height;
-    const topThreshold = rect.top + dropZoneHeight * 0.2; // Upper 20%
-    const bottomThreshold = rect.top + dropZoneHeight * 0.8; // Lower 20%
+    const verticalMidpoint = rect.top + rect.height / 2; // Calculate the vertical middle
 
     let position = 'middle';
-    if (e.clientY < topThreshold) {
+    // If cursor is in the top half, position is 'top', otherwise 'bottom'
+    if (e.clientY < verticalMidpoint) {
         position = 'top';
-    } else if (e.clientY > bottomThreshold) {
+    } else {
         position = 'bottom';
     }
 
@@ -142,12 +140,13 @@ const TreeNode = ({
       // Determine drop position again (similar to dragOver)
       const rect = e.currentTarget.getBoundingClientRect();
       const verticalMidpoint = rect.top + rect.height / 2;
-      const dropZoneHeight = rect.height;
-      const topThreshold = rect.top + dropZoneHeight * 0.2;
-      const bottomThreshold = rect.top + dropZoneHeight * 0.8;
       let position = 'middle';
-      if (e.clientY < topThreshold) position = 'top';
-      else if (e.clientY > bottomThreshold) position = 'bottom';
+      // If cursor is in the top half, position is 'top', otherwise 'bottom'
+      if (e.clientY < verticalMidpoint) {
+          position = 'top';
+      } else {
+          position = 'bottom';
+      }
 
       console.log('[DnD] Dropped item data:', draggedItemData, 'at position:', position);
       if (draggedItemData && draggedItemData.path !== node.path) { // Ensure not dropping onto self
@@ -173,7 +172,7 @@ const TreeNode = ({
 
   return (
     <div 
-      className={`flex flex-col 
+      className={`flex flex-col transition-all duration-100 ease-in-out
                  ${isDragging ? 'opacity-50' : ''} 
                   /* Drag Over Visuals */
                   ${dragOverPath === node.path && dragOverPosition === 'top' ? 'border-t-4 border-blue-600 bg-blue-200 dark:bg-blue-800/50 pt-1 mb-1' : ''} /* DEBUG: Added BG */
@@ -679,7 +678,7 @@ const FileExplorer = ({
       setDragOverPath(null);
       setDragOverPosition(null);
     }
-  }, [onMoveItemProp]); // Dependency on the prop from App
+  }, [onMoveItemProp, dragOverPath, dragOverPosition]); // Add dragOver states as dependencies
   // --- End Drag and Drop Handler ---
 
   return (
