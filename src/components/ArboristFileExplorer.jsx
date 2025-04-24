@@ -186,6 +186,11 @@ const TreeNode = ({
   };
   // --- End Drag and Drop Handlers ---
 
+  const baseClasses = 'flex items-center px-1 py-1 rounded cursor-pointer hover:bg-surface-200 dark:hover:bg-surface-700';
+  const selectionClasses = isSelected ? 'bg-primary-100 dark:bg-primary-900 border border-primary-400 dark:border-primary-600' : '';
+  const currentFileClasses = !isSelected && node.path === currentFilePath ? 'font-semibold text-primary-700 dark:text-primary-300' : '';
+  const combinedClasses = `${baseClasses} ${selectionClasses} ${currentFileClasses}`.trim();
+
   return (
     <div 
       className={`flex flex-col transition-all duration-100 ease-in-out
@@ -203,8 +208,7 @@ const TreeNode = ({
       onDragEnd={handleDragEnd}
     >
       <div 
-        className={`flex items-center px-1 py-1 rounded cursor-pointer hover:bg-surface-200 dark:hover:bg-surface-700 
-                    ${isSelected || node.path === currentFilePath ? 'bg-primary-100 dark:bg-primary-900 border border-primary-400 dark:border-primary-600' : ''}`}
+        className={combinedClasses}
         onClick={handleClick}
         onContextMenu={handleContextMenu} // Re-added context menu handler
         style={{ paddingLeft: `${level * 16}px` }}
@@ -715,7 +719,14 @@ const FileExplorer = ({
   // --- End Drag and Drop Handler ---
 
   return (
-    <div ref={explorerRef} className="file-explorer h-full flex flex-col relative"> {/* Keep relative for potential future absolute elements */}
+    <div 
+      ref={explorerRef} 
+      className="file-explorer h-full flex flex-col relative" 
+      onClick={() => {
+        console.log('[Explorer Container Clicked] Deselecting node.');
+        setSelectedNodePath(null); // Clear selection when clicking the container bg
+      }}
+    >
       {/* Tree content area */}
       <div className="file-explorer-content p-2 w-full flex-grow overflow-auto">
         {treeData.length === 0 ? (
