@@ -739,41 +739,55 @@ const FileExplorer = ({
         )}
       </div>
       
-      {/* Context Menu temporarily commented out for debugging build error 
-        {contextMenu.visible && contextMenu.node ? (
-          <div 
-            className="absolute bg-white dark:bg-neutral-800 border border-surface-300 dark:border-surface-700 rounded shadow-lg py-1 z-50 text-sm"
-            style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
-            onClick={(e) => e.stopPropagation()} // Prevent menu clicks from closing itself immediately
-          >
-            <ul>
-              {contextMenu.node.type === 'folder' && (
-                <>
-                  <li 
-                    className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
-                    onClick={() => handleNewFile(contextMenu.node)}
-                  >
-                    New File
-                  </li>
-                  <li 
-                    className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
-                    onClick={() => handleNewFolder(contextMenu.node)}
-                  >
-                    New Folder
-                  </li>
-                  <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li>
-                </>
-              )}
-              <li 
-                className="px-3 py-1 text-error-500 hover:bg-error-500 hover:text-white cursor-pointer"
-                onClick={() => handleDeleteItem(contextMenu.node)}
-              >
-                Delete {contextMenu.node.type === 'folder' ? 'Folder' : 'File'}
-              </li>
-            </ul>
-          </div>
-        ) : null} 
-      */} 
+      {/* Context Menu - Now uncommented */}
+      {contextMenu.visible && contextMenu.node ? (
+        <div 
+          className="absolute bg-white dark:bg-neutral-800 border border-surface-300 dark:border-surface-700 rounded shadow-lg py-1 z-50 text-sm"
+          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          onClick={(e) => e.stopPropagation()} // Prevent menu clicks from closing itself immediately
+        >
+          <ul>
+            {/* Rename Option */}
+            <li
+              className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
+              onClick={() => {
+                setContextMenu(prev => ({ ...prev, visible: false })); // Close menu first
+                handleRenameStart(contextMenu.node); // Initiate rename
+              }}
+            >
+              Rename
+            </li>
+            <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li>
+
+            {/* Folder Specific Options */}
+            {contextMenu.node.type === 'folder' && (
+              <>
+                <li 
+                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
+                  onClick={() => handleNewFile(contextMenu.node)}
+                >
+                  New File
+                </li>
+                <li 
+                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
+                  onClick={() => handleNewFolder(contextMenu.node)}
+                >
+                  New Folder
+                </li>
+                <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li>
+              </>
+            )}
+            
+            {/* Delete Option */}
+            <li 
+              className="px-3 py-1 text-error-500 hover:bg-error-500 hover:text-white cursor-pointer"
+              onClick={() => handleDeleteItem(contextMenu.node)}
+            >
+              Delete {contextMenu.node.type === 'folder' ? 'Folder' : 'File'}
+            </li>
+          </ul>
+        </div>
+      ) : null} 
     </div>
   );
 };
