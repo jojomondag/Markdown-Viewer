@@ -609,25 +609,34 @@ const FileExplorer = ({
   const handleNewFile = async (folderNode) => { // Make async
     console.log('New file requested in:', folderNode);
     setContextMenu(prev => ({ ...prev, visible: false }));
-    if (typeof onCreateFile === 'function') {
+    if (typeof onCreateFile === 'function' && typeof onFileSelect === 'function') { // Check onFileSelect exists
       const newPath = await onCreateFile(folderNode.path); // Call prop and wait for path
       if (newPath) {
         console.log('New file created, initiating rename for:', newPath);
         
-        // --- START: Expand parent folder if collapsed ---
+        // Expand parent folder if collapsed
         if (!expandedNodes[folderNode.path]) {
           console.log(`Expanding parent folder ${folderNode.path} after new file creation.`);
           handleFolderToggle(folderNode.path);
         }
-        // --- END: Expand parent folder if collapsed ---
         
+        // --- START: Open the new file in the editor ---
+        const newFileObject = {
+          path: newPath,
+          name: getBasename(newPath), // Use path util to get name
+          type: 'file' 
+        };
+        console.log('Opening newly created file:', newFileObject);
+        onFileSelect(newFileObject); 
+        // --- END: Open the new file in the editor ---
+
         setRenamingNodePath(newPath); // Trigger rename for the new file
         // Optional: Scroll the new item into view if needed
       } else {
         console.error('onCreateFile prop failed or did not return a path.');
       }
     } else {
-      console.warn('onCreateFile prop is not provided.');
+      console.warn('onCreateFile or onFileSelect prop is not provided.'); // Updated warning
     }
   };
 

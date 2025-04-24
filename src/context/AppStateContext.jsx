@@ -121,13 +121,14 @@ function appStateReducer(state, action) {
       };
       
     case ActionTypes.UPDATE_OPEN_FILE:
+      // The payload should contain: { oldPath: string, updates: { path: string, name: string, ... } }
       return {
         ...state,
         openFiles: state.openFiles.map(file => {
-          if (file.path === action.payload.path) {
-            // Remove path from payload to avoid duplication
-            const { path, ...updates } = action.payload;
-            return { ...file, ...updates };
+          // Identify the file using the oldPath from the payload
+          if (file.path === action.payload.oldPath) {
+            // Apply all updates from the payload.updates object
+            return { ...file, ...action.payload.updates };
           }
           return file;
         }),
@@ -320,7 +321,7 @@ export const AppStateProvider = ({ children }) => {
     // Otherwise, do a regular update
     dispatch({
       type: ActionTypes.UPDATE_OPEN_FILE,
-      payload: { path: oldPath, ...updates }
+      payload: { oldPath, updates }
     });
   };
   

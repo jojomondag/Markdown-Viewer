@@ -1443,11 +1443,15 @@ function App() {
         // Update open file tabs if the renamed file was open
         const openFileIndex = openFiles.findIndex(f => f.path === oldPath);
         if (openFileIndex > -1) {
-          const updatedOpenFile = { ...openFiles[openFileIndex], path: newPath, name: getBasename(newPath) };
-          updateOpenFile(updatedOpenFile);
+          // Prepare just the updates needed
+          const updates = { path: newPath, name: getBasename(newPath) };
+          updateOpenFile(oldPath, updates); // Pass only the updates
+          
           // If the renamed file was the *current* file, update that too
           if (currentFile?.path === oldPath) {
-             setCurrentFile(updatedOpenFile);
+             // Need the full object to set currentFile
+             const updatedOpenFileForCurrent = { ...openFiles[openFileIndex], ...updates }; 
+             setCurrentFile(updatedOpenFileForCurrent);
           }
         }
       }
