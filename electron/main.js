@@ -748,3 +748,22 @@ ipcMain.handle('copyFolder', async (event, folderPath) => {
     return { success: false, error: error.message };
   }
 });
+
+// *** NEW: IPC Handler for deleting files ***
+ipcMain.handle('deleteFile', async (event, filePath) => {
+  console.log(`[Main Process] Deleting file: ${filePath}`);
+  try {
+    // Ensure the file exists before attempting deletion
+    await fs.promises.access(filePath, fs.constants.F_OK); // Check existence
+    await fs.promises.unlink(filePath); // Delete the file
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Main Process] Error deleting file:', error);
+    // Handle specific error case: File not found
+    if (error.code === 'ENOENT') {
+      return { success: false, error: 'File not found' };
+    }
+    return { success: false, error: error.message };
+  }
+});

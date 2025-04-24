@@ -23,7 +23,8 @@ const TreeNode = ({
   onRenameSubmit,   // Function to call when rename is submitted
   onRenameCancel,    // Function to call when rename is cancelled
   currentFilePath, // Added prop
-  selectedNodePath // Added prop
+  selectedNodePath, // Added prop
+  onContextMenu // Re-added prop
 }) => {
   const isExpanded = expandedNodes[node.path] || false;
   const hasChildren = node.children && node.children.length > 0;
@@ -49,7 +50,7 @@ const TreeNode = ({
     e.stopPropagation(); // Prevent event bubbling
     console.log('[TreeNode] handleClick triggered for node:', node);
     // Always call onNodeSelect to let the parent handle selection/rename/toggle logic
-    onNodeSelect(node);
+    onNodeSelect(node, e); // Pass event object
     
     // --- Removed folder toggle logic from here, moved to parent handler ---
     // if (isFolder) {
@@ -84,12 +85,19 @@ const TreeNode = ({
     }
   };
 
+  const handleContextMenu = (e) => {
+    e.preventDefault(); // Prevent default browser context menu
+    e.stopPropagation();
+    onContextMenu(e, node); // Pass event and node data
+  };
+
   return (
     <div className="flex flex-col">
       <div 
         className={`flex items-center px-1 py-1 rounded cursor-pointer hover:bg-surface-200 dark:hover:bg-surface-700 
                     ${isSelected || node.path === currentFilePath ? 'bg-primary-100 dark:bg-primary-900 border border-primary-400 dark:border-primary-600' : ''}`}
         onClick={handleClick}
+        onContextMenu={handleContextMenu} // Re-added context menu handler
         style={{ paddingLeft: `${level * 16}px` }}
       >
         <div className="flex-shrink-0 mr-1 w-4">
@@ -117,7 +125,7 @@ const TreeNode = ({
             style={{ marginLeft: '2px' }} // Add some spacing
           />
         ) : (
-          <div className="truncate text-sm">
+          <div className="truncate text-sm" data-testid="node-name">
             {node.name}
             {isFolder && hasChildren && (
               <span className="text-xs text-gray-400 ml-1">({node.children.length})</span>
@@ -142,6 +150,7 @@ const TreeNode = ({
               onRenameCancel={onRenameCancel} // Pass rename cancel handler
               currentFilePath={currentFilePath} // Pass down current file path
               selectedNodePath={selectedNodePath} // Pass down selected path state
+              onContextMenu={onContextMenu} // Pass down context menu handler
             />
           ))}
         </div>
@@ -159,14 +168,18 @@ const FileExplorer = ({
   onFileSelect, 
   onScanFolder, // Function provided by App.jsx to scan/add folders
   onRenameItem, // Added prop for rename handler
+  onCreateFile, // Added prop for create file handler
+  onCreateFolder, // Added prop for create folder handler
+  onDeleteItem, // Added prop for delete handler
   // Add any other necessary props based on App.jsx usage
 }) => {
   const [expandedNodes, setExpandedNodes] = useState({});
   const [treeData, setTreeData] = useState([]);
   const [rootFolderName, setRootFolderName] = useState(''); // Optional: display root folder name
   const [selectedNodePath, setSelectedNodePath] = useState(null); // State for selected node path
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, node: null }); // Re-added context menu state
   const [renamingNodePath, setRenamingNodePath] = useState(null); // State for which node is being renamed
-  const explorerRef = useRef(null); // Ref for the explorer container
+  const explorerRef = useRef(null); // Re-added ref for the explorer container
 
   // Function to build the tree structure from flat lists based on currentFolders
   const buildTree = useCallback((files, folders, currentFolders) => {
@@ -280,13 +293,24 @@ const FileExplorer = ({
   }, []);
 
   // Updated handler for selecting/renaming/toggling nodes
-  const handleNodeSelect = useCallback((node) => {
-    console.log('Node selected/clicked:', node);
+  const handleNodeSelect = useCallback((node, event) => { // Accept event object
+    console.log('Node selected/clicked:', node, 'Target:', event.target);
 
     if (selectedNodePath === node.path) {
-      // Second click on the same node: Initiate rename
-      console.log('Second click detected, initiating rename for:', node.path);
-      handleRenameStart(node);
+      // Second click on the same node: Initiate rename ONLY if text was clicked
+      if (event.target.closest('[data-testid="node-name"]')) {
+        console.log('Second click on TEXT detected, initiating rename for:', node.path);
+        handleRenameStart(node);
+      } else {
+        console.log('Second click on NON-TEXT detected.');
+        // If second click is on an icon of an already selected item, perform icon action
+        if (node.type === 'folder') {
+          // Specifically handle toggling the folder if the icon area is clicked again
+          console.log('Toggling already selected folder:', node.path);
+          handleFolderToggle(node.path);
+        }
+        // If it was a file, clicking the icon again on a selected file does nothing extra
+      }
     } else {
       // First click or click on a different node: Select and potentially toggle/open
       console.log('First click or different node selected:', node.path);
@@ -306,7 +330,6 @@ const FileExplorer = ({
   // Function to initiate rename
   const handleRenameStart = useCallback((node) => { // Make useCallback
     setRenamingNodePath(node.path);
-    // setContextMenu(prev => ({ ...prev, visible: false })); // Removed context menu part
   }, []); // Added dependency array
 
   // Function to handle submitted rename
@@ -398,40 +421,78 @@ const FileExplorer = ({
     }
   }, [onScanFolder]);
   
+  // Re-added context menu handlers and effects
+  const handleContextMenu = useCallback((event, node) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = explorerRef.current?.getBoundingClientRect();
+    const x = event.clientX - (bounds?.left ?? 0);
+    const y = event.clientY - (bounds?.top ?? 0);
+    setSelectedNodePath(node.path); // Select node on right-click
+    setContextMenu({ visible: true, x, y, node });
+  }, []);
+
+  const handleClickOutside = useCallback((event) => {
+    if (contextMenu.visible) {
+      setContextMenu(prev => ({ ...prev, visible: false }));
+    }
+  }, [contextMenu.visible]);
+
+  useEffect(() => {
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [handleClickOutside]);
+
+  // --- Placeholder Action Handlers --- 
+  const handleDeleteItem = (node) => {
+    console.log('Delete requested for:', node);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+    if (typeof onDeleteItem === 'function') {
+      onDeleteItem(node.path, node.type === 'folder');
+    } else {
+        console.warn('onDeleteItem prop is not provided.');
+    }
+  };
+
+  const handleNewFile = async (folderNode) => { // Make async
+    console.log('New file requested in:', folderNode);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+    if (typeof onCreateFile === 'function') {
+      const newPath = await onCreateFile(folderNode.path); // Call prop and wait for path
+      if (newPath) {
+        console.log('New file created, initiating rename for:', newPath);
+        setRenamingNodePath(newPath); // Trigger rename for the new file
+        // Optional: Scroll the new item into view if needed
+      } else {
+        console.error('onCreateFile prop failed or did not return a path.');
+      }
+    } else {
+      console.warn('onCreateFile prop is not provided.');
+    }
+  };
+
+  const handleNewFolder = async (parentNode) => { // Make async
+    console.log('New folder requested in:', parentNode);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+    if (typeof onCreateFolder === 'function') {
+      const newPath = await onCreateFolder(parentNode.path); // Call prop and wait for path
+      if (newPath) {
+        console.log('New folder created, initiating rename for:', newPath);
+        setRenamingNodePath(newPath); // Trigger rename for the new folder
+        // Optional: Scroll the new item into view if needed
+      } else {
+        console.error('onCreateFolder prop failed or did not return a path.');
+      }
+    } else {
+        console.warn('onCreateFolder prop is not provided.');
+    }
+  };
+  // --- End Placeholder Action Handlers ---
+
   return (
     <div ref={explorerRef} className="file-explorer h-full flex flex-col relative"> {/* Keep relative for potential future absolute elements */}
-      {/* Header with Add/Open buttons */}
-      <div className="file-explorer-header p-2 border-b border-surface-200 dark:border-surface-700 flex justify-between items-center">
-        <div className="text-sm font-medium flex items-center">
-          <span>Files</span>
-          {/* Optional Root Folder Display */}
-          {rootFolderName && (
-             <span className="ml-2 text-xs text-surface-500 dark:text-surface-400 flex items-center">
-               <IconFolder size={12} className="mr-1" />
-               {rootFolderName}
-             </span>
-          )}
-        </div>
-        <div className="flex space-x-1">
-          {/* Using handleOpenFolder for the "Open Folder" icon */}
-          <button 
-            onClick={handleOpenFolder} 
-            className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
-            title="Open Folder (Replaces current)"
-          >
-            <IconFolderOpen size={16} />
-          </button>
-          {/* Using handleAddFolder for the "Add Folder" icon */}
-          <button 
-            onClick={handleAddFolder}
-            className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
-            title="Add Folder (Adds to current)"
-          >
-            <IconFolderPlus size={16} />
-          </button>
-        </div>
-      </div>
-      
       {/* Tree content area */}
       <div className="file-explorer-content p-2 w-full flex-grow overflow-auto">
         {treeData.length === 0 ? (
@@ -471,6 +532,7 @@ const FileExplorer = ({
                 onRenameCancel={handleRenameCancel} // Pass rename cancel handler
                 currentFilePath={currentFilePath} // Pass down current file path
                 selectedNodePath={selectedNodePath} // Pass down selected path state
+                onContextMenu={handleContextMenu} // Pass down context menu handler
               />
             ))}
             {/* Optional Footer Info */}
@@ -482,6 +544,42 @@ const FileExplorer = ({
           </div>
         )}
       </div>
+      
+      {/* Context Menu */}      
+      {contextMenu.visible && contextMenu.node && (
+        <div 
+          className="absolute bg-white dark:bg-neutral-800 border border-surface-300 dark:border-surface-700 rounded shadow-lg py-1 z-50 text-sm"
+          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          onClick={(e) => e.stopPropagation()} // Prevent menu clicks from closing itself immediately
+        >
+          <ul>
+            {contextMenu.node.type === 'folder' && (
+              <>
+                <li 
+                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
+                  onClick={() => handleNewFile(contextMenu.node)}
+                >
+                  New File
+                </li>
+                <li 
+                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
+                  onClick={() => handleNewFolder(contextMenu.node)}
+                >
+                  New Folder
+                </li>
+                <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li> {/* Separator */} 
+              </>
+            )}
+            <li 
+              className="px-3 py-1 text-error-500 hover:bg-error-500 hover:text-white cursor-pointer"
+              onClick={() => handleDeleteItem(contextMenu.node)}
+            >
+              Delete {contextMenu.node.type === 'folder' ? 'Folder' : 'File'}
+            </li>
+            {/* Add other actions here later */}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

@@ -35,9 +35,13 @@ contextBridge.exposeInMainWorld(
     copyItem: (sourcePath, targetPath, isDirectory) => 
       ipcRenderer.invoke('copy-item', sourcePath, targetPath, isDirectory),
     
-    // New folder operations
+    // Deletion operations
+    deleteFile: (filePath) => 
+      ipcRenderer.invoke('deleteFile', filePath),
     deleteFolder: (folderPath) => 
       ipcRenderer.invoke('deleteFolder', folderPath),
+    
+    // Move/Copy operations (keeping for reference, moveItem can rename)
     moveFolder: (sourcePath, targetPath) => 
       ipcRenderer.invoke('moveFolder', sourcePath, targetPath),
     copyFile: (filePath) => 

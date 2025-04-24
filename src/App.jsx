@@ -174,7 +174,7 @@ function App() {
             );
             if (!alreadyExists) {
               console.log(`[App] setCurrentFolders: Adding new path: ${folderPath}`);
-              newFolders.push(folderPath);
+              newFolders.push(normalizedPath);
             }
           });
           console.log('[App] setCurrentFolders: New state:', newFolders); 
@@ -960,50 +960,95 @@ function App() {
   }, [openFiles, removeOpenFile, currentFile, originalOpenFile, showSuccess]);
 
   // Add handler for creating new folders
-  const handleCreateFolder = useCallback((folderData) => {
-    console.log('[App] handleCreateFolder called with folderData:', folderData); // Log entry
-    
-    // Extract just the basename for the folder name
-    const folderBasename = path.basename(folderData.path);
-    console.log('[App] handleCreateFolder - Using basename for folder display:', folderBasename);
-    
-    // Add the new folder to the folders list
-    setFolders(prevFolders => {
-      console.log('[App] handleCreateFolder - setFolders: Previous count:', prevFolders.length); // Log prev count
-      const newFolderObject = {
-        ...folderData,
-        // Ensure we use only the basename without any path components
-        name: folderBasename,
-        displayName: folderBasename, // Explicitly add displayName
-        type: 'folder'
-      };
-      console.log('[App] handleCreateFolder - setFolders: Adding new folder object:', newFolderObject); // Log new object
-      const newState = [...prevFolders, newFolderObject];
-      console.log('[App] handleCreateFolder - setFolders: New count:', newState.length); // Log new count
-      return newState;
-    });
-    
-    // Use the basename of the folder name for the success message
-    showSuccess(`Created folder: ${folderBasename}`);
-    console.log('[App] handleCreateFolder finished.'); // Log finish
-  }, [showSuccess]);
+  const handleCreateFolder = async (parentFolderPath) => {
+    console.log(`[App] Creating new folder in: ${parentFolderPath}`);
+    let newFolderPath = null;
+    try {
+      // Determine a unique folder name
+      let counter = 0;
+      let baseName = "New Folder";
+      let potentialName = baseName;
+      newFolderPath = path.join(parentFolderPath, potentialName);
 
-  // Add handler for creating new files
-  const handleCreateFile = useCallback((fileData) => {
-    console.log('Created new file:', fileData);
-    
-    // Add the new file to the files list
-    setFiles(prevFiles => [...prevFiles, {
-      ...fileData,
-      name: path.basename(fileData.path),
-      type: 'file'
-    }]);
-    
-    // Don't open the file after creation - it will be opened after renaming
-    // openFile(fileData); - removing this line
-    
-    showSuccess(`Created file: ${fileData.name}`);
-  }, [showSuccess]);
+      // Check existing folders in the specific parent folder
+      const siblingFolders = folders.filter(f => getDirname(f.path) === parentFolderPath);
+      
+      while (siblingFolders.some(f => f.name === potentialName)) {
+        counter++;
+        potentialName = `${baseName} (${counter})`;
+        newFolderPath = path.join(parentFolderPath, potentialName);
+      }
+
+      console.log(`[App] Attempting to create folder at: ${newFolderPath}`);
+      // Call API to create the folder
+      const createdFolder = await window.api.createFolder(newFolderPath);
+
+      if (!createdFolder || !createdFolder.path) {
+          throw new Error('Folder creation API did not return a valid folder object.');
+      }
+      
+      console.log('[App] Folder created successfully via API:', createdFolder);
+      // Ensure path uses forward slashes before adding to state
+      const normalizedPath = createdFolder.path.replace(/\\/g, '/');
+      // Add to folder state
+      setFolders(prev => [...prev, { ...createdFolder, path: normalizedPath, name: getBasename(normalizedPath), type: 'folder' }]);
+      showSuccess(`Created folder: ${getBasename(createdFolder.path)}`);
+      
+      // Return the path of the new folder to initiate rename
+      return normalizedPath;
+
+    } catch (error) {
+        console.error(`[App] Error creating folder: ${error.message}`);
+        showError(`Failed to create folder: ${error.message}`);
+        return null; // Indicate failure
+    }
+  };
+
+  // *** NEW: Handler for creating a new file ***
+  const handleCreateFile = async (parentFolderPath) => {
+    console.log(`[App] Creating new file in: ${parentFolderPath}`);
+    let newFilePath = null;
+    try {
+      // Determine a unique filename
+      let counter = 0;
+      let baseName = "Untitled";
+      const extension = ".md";
+      let potentialName = `${baseName}${extension}`;
+      newFilePath = path.join(parentFolderPath, potentialName);
+      
+      // Check existing files in the specific parent folder
+      const siblingFiles = files.filter(f => getDirname(f.path) === parentFolderPath);
+
+      while (siblingFiles.some(f => f.name === potentialName)) {
+        counter++;
+        potentialName = `${baseName} (${counter})${extension}`;
+        newFilePath = path.join(parentFolderPath, potentialName);
+      }
+      
+      console.log(`[App] Attempting to create file at: ${newFilePath}`);
+      // Call API to create the file (empty content by default)
+      const createdFile = await window.api.createFile(newFilePath);
+      
+      if (!createdFile || !createdFile.path) {
+        throw new Error('File creation API did not return a valid file object.');
+      }
+      
+      console.log('[App] File created successfully via API:', createdFile);
+      // Ensure path uses forward slashes before adding to state
+      const normalizedPath = createdFile.path.replace(/\\/g, '/');
+      // Add to file state
+      setFiles(prev => [...prev, { ...createdFile, path: normalizedPath, name: getBasename(normalizedPath), type: 'file' }]);
+      showSuccess(`Created file: ${getBasename(createdFile.path)}`);
+      
+      // Return the path of the new file to initiate rename
+      return normalizedPath;
+      
+    } catch (error) {
+      console.error(`[App] Error creating file: ${error.message}`);
+      showError(`Failed to create file: ${error.message}`);
+      return null; // Indicate failure
+    }
+  };
 
   // Add handler for sort changes - memoize it with useCallback to prevent infinite loop
   const handleExplorerSortChange = useCallback((sortBy, direction) => {
@@ -1231,6 +1276,83 @@ function App() {
     }
   };
 
+  // *** NEW: Handler for deleting files/folders ***
+  const handleDeleteItem = async (itemPath, isDirectory) => {
+    const itemName = getBasename(itemPath);
+    const itemType = isDirectory ? 'folder' : 'file';
+    
+    // Confirmation dialog
+    const confirmed = window.confirm(`Are you sure you want to delete the ${itemType} "${itemName}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    console.log(`[App] Deleting ${itemType}: ${itemPath}`);
+    try {
+      setLoading({ files: true }); // Indicate loading
+      
+      let result;
+      if (isDirectory) {
+        result = await window.api.deleteFolder(itemPath);
+      } else {
+        result = await window.api.deleteFile(itemPath);
+      }
+
+      if (!result || !result.success) {
+        throw new Error(result?.error || `Unknown error deleting ${itemType}`);
+      }
+
+      // Update state after successful deletion
+      if (isDirectory) {
+        // Remove folder and all descendants from state
+        const pathPrefix = itemPath.endsWith('/') ? itemPath : itemPath + '/';
+        setFolders(prev => prev.filter(f => f.path !== itemPath && !f.path.startsWith(pathPrefix)));
+        setFiles(prev => prev.filter(f => !f.path.startsWith(pathPrefix)));
+        
+        // Close any open files that were inside the deleted folder
+        const openFilesInFolder = openFiles.filter(f => f.path.startsWith(pathPrefix));
+        openFilesInFolder.forEach(file => removeOpenFile(file));
+        
+        // If the current file was in the deleted folder, clear it
+        if (currentFile?.path.startsWith(pathPrefix)) {
+          setCurrentFile(null); 
+          updateContent('');
+        }
+
+      } else { // It's a file
+        // Remove the file from state
+        setFiles(prev => prev.filter(f => f.path !== itemPath));
+        
+        // Close the tab if it was open
+        const openFileIndex = openFiles.findIndex(f => f.path === itemPath);
+        if (openFileIndex > -1) {
+          removeOpenFile(openFiles[openFileIndex]);
+        }
+        
+        // If it was the current file, clear the editor (or switch tab if others open)
+        if (currentFile?.path === itemPath) {
+          const remainingOpen = openFiles.filter(f => f.path !== itemPath);
+          if (remainingOpen.length > 0) {
+             // Open the previous/next tab logic
+             const currentIndex = openFiles.findIndex(f => f.path === itemPath);
+             const nextIndex = currentIndex > 0 ? currentIndex - 1 : 0;
+             originalOpenFile(remainingOpen[nextIndex]);
+          } else {
+            setCurrentFile(null);
+            updateContent('');
+          }
+        }
+      }
+
+      showSuccess(`Deleted ${itemType}: ${itemName}`);
+      console.log(`[App] ${itemType} deleted successfully, state updated.`);
+
+    } catch (error) {
+        console.error(`[App] Error deleting ${itemType}: ${error.message}`);
+        showError(`Failed to delete ${itemType}: ${error.message}`);
+    } finally {
+       setLoading({ files: false });
+    }
+  };
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       <AccessibilityHelper />
@@ -1341,23 +1463,9 @@ function App() {
                       onMoveFolder={handleMoveFolder}
                       onCopyFile={handleCopyFile}
                       onCopyFolder={handleCopyFolder}
-                      onScanFolder={async (folderPath, addMode) => {
-                        console.log('[App] Prop onScanFolder called with:', { folderPath, addMode });
-                        const result = await scanFolder(folderPath, addMode);
-                        // If called in addMode from Arborist, update currentFolders here
-                        if (addMode && folderPath) {
-                          const normalizedPath = folderPath.replace(/\\/g, '/');
-                          setCurrentFolders(prev => {
-                            if (!prev.includes(normalizedPath) && !prev.includes(folderPath)) { // Check both formats just in case
-                               console.log(`[App] Prop onScanFolder updating currentFolders with: ${folderPath}`);
-                               return [...prev, folderPath]; // Add the original path format
-                            }
-                            return prev;
-                          });
-                        }
-                        return result; // Return the result from the original scanFolder
-                      }}
+                      onScanFolder={scanFolder}
                       onRenameItem={handleRenameItem}
+                      onDeleteItem={handleDeleteItem}
                     />
                   ) : (
                     <div className="text-sm text-surface-600 p-4">
