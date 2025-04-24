@@ -143,15 +143,17 @@ const TreeNode = ({
     e.stopPropagation();
     
     // Determine position relative to the target element
+    const hoverThreshold = 0.25; // Percentage of height for top/bottom zones
     const rect = e.currentTarget.getBoundingClientRect();
-    const verticalMidpoint = rect.top + rect.height / 2; // Calculate the vertical middle
+    const hoverY = e.clientY - rect.top;
 
     let position = 'middle';
-    // If cursor is in the top half, position is 'top', otherwise 'bottom'
-    if (e.clientY < verticalMidpoint) {
+    if (hoverY < rect.height * hoverThreshold) {
         position = 'top';
-    } else {
+    } else if (hoverY > rect.height * (1 - hoverThreshold)) {
         position = 'bottom';
+    } else {
+        position = 'middle';
     }
 
     // Indicate this node is being dragged over
@@ -168,14 +170,17 @@ const TreeNode = ({
       const draggedItemsData = JSON.parse(e.dataTransfer.getData('application/json')); // Now expects an array
       
       // Determine drop position again (similar to dragOver)
+      const hoverThreshold = 0.25; // Percentage of height for top/bottom zones
       const rect = e.currentTarget.getBoundingClientRect();
-      const verticalMidpoint = rect.top + rect.height / 2;
+      const hoverY = e.clientY - rect.top;
+
       let position = 'middle';
-      // If cursor is in the top half, position is 'top', otherwise 'bottom'
-      if (e.clientY < verticalMidpoint) {
+      if (hoverY < rect.height * hoverThreshold) {
           position = 'top';
-      } else {
+      } else if (hoverY > rect.height * (1 - hoverThreshold)) {
           position = 'bottom';
+      } else {
+          position = 'middle';
       }
 
       console.log('[DnD] Dropped items data:', draggedItemsData, 'at position:', position);
