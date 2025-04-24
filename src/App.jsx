@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash, IconEyeOff } from '@tabler/icons-react';
 import Split from 'react-split';
 // import { newFilesInProgress } from './components/FileExplorer'; // Remove reference to deleted file
@@ -88,6 +88,7 @@ function App() {
   
   // Ref to track previous file loading state for order initialization
   const prevFileLoadingRef = useRef(true); 
+  const [isOrderInitialized, setIsOrderInitialized] = useState(false); // <-- Add state to track initialization
   
   // *** NEW: State to manage explicit item order within folders ***
   const [itemOrder, setItemOrder] = useState({});
@@ -1630,14 +1631,42 @@ function App() {
 
   // Initialize order AFTER initial file scan completes, but not on subsequent changes
   useEffect(() => {
-    // Check if loading just finished (went from true to false)
-    if (prevFileLoadingRef.current && !state.loading.files) {
-      console.log('[App itemOrder Effect] Initial file loading finished. Initializing order.');
-      initializeOrUpdateOrder();
+    // Check if loading just finished, order hasn't been initialized yet, AND we have some files/folders
+    if (prevFileLoadingRef.current && !state.loading.files && !isOrderInitialized && (files.length > 0 || folders.length > 0)) { // <-- Added check for files/folders length
+      console.log('[App itemOrder Effect] Initial file loading finished AND files/folders exist. Initializing order for the first time.');
+
+      // Calculate the initial order based on current files/folders
+      const initialOrderMap = {};
+      const allItems = [...files, ...folders]; // Use files/folders directly from useFiles hook
+      const itemsByParent = allItems.reduce((acc, item) => {
+        const parentPath = getDirname(item.path) || '.'; 
+        if (!acc[parentPath]) acc[parentPath] = [];
+        acc[parentPath].push(item);
+        return acc;
+      }, {});
+      for (const parentPath in itemsByParent) {
+        const children = itemsByParent[parentPath];
+        // Apply default sort (folders first, then alpha)
+        children.sort((a, b) => {
+            if (a.type === 'folder' && b.type !== 'folder') return -1;
+            if (a.type !== 'folder' && b.type === 'folder') return 1;
+            return a.name.localeCompare(b.name);
+        });
+        // Store the ordered paths
+        initialOrderMap[parentPath] = children.map(child => child.path);
+      }
+
+      setItemOrder(initialOrderMap); // Set the calculated initial order
+      setIsOrderInitialized(true);    // Mark as initialized
+      console.log('[App itemOrder Effect] Set initial itemOrder:', initialOrderMap);
     }
-    // Update the ref for the next render
+    // Update the loading ref for the next render
     prevFileLoadingRef.current = state.loading.files;
-  }, [state.loading.files, initializeOrUpdateOrder]); 
+  }, [state.loading.files, isOrderInitialized, files, folders]); // Dependencies: loading state, init flag, and the data needed for initial calc
+
+  // Memoize files and folders arrays to prevent unnecessary re-renders of FileExplorer
+  const memoizedFiles = useMemo(() => files, [files]);
+  const memoizedFolders = useMemo(() => folders, [folders]);
 
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
@@ -1734,10 +1763,10 @@ function App() {
                     <FileHistory onFileSelect={openFile} />
                   )}
                   
-                  {files.length > 0 || folders.length > 0 ? (
+                  {memoizedFiles.length > 0 || memoizedFolders.length > 0 ? (
                     <FileExplorer 
-                      files={files} 
-                      folders={folders}
+                      files={memoizedFiles} 
+                      folders={memoizedFolders}
                       currentFolders={currentFolders}
                       currentFilePath={currentFile?.path}
                       onFileSelect={openFile} 
