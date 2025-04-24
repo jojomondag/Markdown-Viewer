@@ -17,7 +17,8 @@ const FileHistory = ({ onFileSelect }) => {
 
   // Helper to determine file icon based on file type
   const getFileIcon = (file) => {
-    if (file.type === 'markdown' || file.name.endsWith('.md')) {
+    // Safely check if file.name exists and has endsWith method
+    if (file.type === 'markdown' || (file.name && typeof file.name === 'string' && file.name.endsWith('.md'))) {
       return <IconFileText size={16} className="text-primary-500" />;
     }
     return <IconFile size={16} className="text-surface-500" />;
@@ -64,7 +65,7 @@ const FileHistory = ({ onFileSelect }) => {
                 title={file.path}
               >
                 <span className="mr-2 flex-shrink-0">{getFileIcon(file)}</span>
-                <span className="truncate">{file.name}</span>
+                <span className="truncate">{file.name || file.path}</span>
               </button>
             </li>
           ))}

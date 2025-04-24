@@ -573,53 +573,6 @@ ipcMain.handle('copy-item', async (event, sourcePath, targetPath, isDirectory) =
   }
 });
 
-ipcMain.handle('rename-item', async (event, oldPath, newName, isDirectory) => {
-  try {
-    // Normalize path to handle different path separators
-    oldPath = path.normalize(oldPath);
-    
-    const dirPath = path.dirname(oldPath);
-    const newPath = path.join(dirPath, newName);
-    
-    // Check if target already exists
-    if (fs.existsSync(newPath)) {
-      return { 
-        success: false, 
-        message: `A file or folder named "${newName}" already exists in this location`,
-        oldPath: oldPath,
-        newPath: null
-      };
-    }
-    
-    // Perform the rename operation
-    await fs.promises.rename(oldPath, newPath);
-    
-    // Verify the rename was successful
-    if (fs.existsSync(newPath) && !fs.existsSync(oldPath)) {
-      return { 
-        success: true, 
-        oldPath: oldPath,
-        newPath: newPath
-      };
-    } else {
-      return { 
-        success: false, 
-        message: 'Rename operation did not complete as expected',
-        oldPath: oldPath,
-        newPath: null
-      };
-    }
-  } catch (error) {
-    console.error('Error renaming item:', error);
-    return { 
-      success: false, 
-      message: `Error renaming: ${error.message}`,
-      oldPath: oldPath,
-      newPath: null
-    };
-  }
-});
-
 // *** NEW: Add handler for opening external links ***
 ipcMain.handle('open-external-link', async (event, url) => {
   try {
@@ -656,5 +609,142 @@ ipcMain.handle('path-resolve', (event, ...paths) => {
   } catch (error) {
     console.error('[Main Process] Error in path-resolve handler:', error);
     throw error; // Propagate error back to renderer
+  }
+});
+
+// *** NEW: IPC Handlers for file/folder operations ***
+ipcMain.handle('deleteFolder', async (event, folderPath) => {
+  console.log(`[Main Process] Deleting folder: ${folderPath}`);
+  try {
+    // Use recursive option to delete all contents
+    await fs.promises.rm(folderPath, { recursive: true, force: true });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Main Process] Error deleting folder:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('moveFolder', async (event, sourcePath, targetPath) => {
+  console.log(`[Main Process] Moving folder: ${sourcePath} to ${targetPath}`);
+  try {
+    const folderName = path.basename(sourcePath);
+    const destinationPath = path.join(targetPath, folderName);
+    
+    // Check if destination already exists
+    if (fs.existsSync(destinationPath)) {
+      console.error(`[Main Process] Cannot move folder: Destination already exists: ${destinationPath}`);
+      return { success: false, error: 'A folder with that name already exists at the destination' };
+    }
+    
+    // Create target directory if it doesn't exist
+    if (!fs.existsSync(targetPath)) {
+      await fs.promises.mkdir(targetPath, { recursive: true });
+    }
+    
+    // Move the folder
+    await fs.promises.rename(sourcePath, destinationPath);
+    
+    return {
+      success: true,
+      oldPath: sourcePath,
+      newPath: destinationPath
+    };
+  } catch (error) {
+    console.error('[Main Process] Error moving folder:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('copyFile', async (event, filePath) => {
+  console.log(`[Main Process] Copying file: ${filePath}`);
+  try {
+    const dirPath = path.dirname(filePath);
+    const baseName = path.basename(filePath);
+    const extension = path.extname(filePath);
+    const nameWithoutExt = baseName.slice(0, -extension.length);
+    
+    // Generate a unique name for the copy
+    let copyPath = path.join(dirPath, `${nameWithoutExt} - Copy${extension}`);
+    let counter = 1;
+    
+    // If the copy already exists, increment counter
+    while (fs.existsSync(copyPath)) {
+      copyPath = path.join(dirPath, `${nameWithoutExt} - Copy (${counter})${extension}`);
+      counter++;
+    }
+    
+    // Copy the file
+    await fs.promises.copyFile(filePath, copyPath);
+    
+    // Get file stats
+    const stats = await fs.promises.stat(copyPath);
+    
+    return {
+      success: true,
+      path: copyPath,
+      name: path.basename(copyPath),
+      type: 'file',
+      lastModified: stats.mtime
+    };
+  } catch (error) {
+    console.error('[Main Process] Error copying file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('copyFolder', async (event, folderPath) => {
+  console.log(`[Main Process] Copying folder: ${folderPath}`);
+  try {
+    const dirPath = path.dirname(folderPath);
+    const baseName = path.basename(folderPath);
+    
+    // Generate a unique name for the copy
+    let copyPath = path.join(dirPath, `${baseName} - Copy`);
+    let counter = 1;
+    
+    // If the copy already exists, increment counter
+    while (fs.existsSync(copyPath)) {
+      copyPath = path.join(dirPath, `${baseName} - Copy (${counter})`);
+      counter++;
+    }
+    
+    // Create the folder
+    await fs.promises.mkdir(copyPath, { recursive: true });
+    
+    // Helper function to copy files and folders recursively
+    const copyRecursive = async (src, dest) => {
+      const entries = await fs.promises.readdir(src, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        
+        if (entry.isDirectory()) {
+          await fs.promises.mkdir(destPath, { recursive: true });
+          await copyRecursive(srcPath, destPath);
+        } else {
+          await fs.promises.copyFile(srcPath, destPath);
+        }
+      }
+    };
+    
+    // Copy contents recursively
+    await copyRecursive(folderPath, copyPath);
+    
+    // Get folder stats
+    const stats = await fs.promises.stat(copyPath);
+    
+    return {
+      success: true,
+      path: copyPath,
+      name: path.basename(copyPath),
+      type: 'folder',
+      lastModified: stats.mtime
+    };
+  } catch (error) {
+    console.error('[Main Process] Error copying folder:', error);
+    return { success: false, error: error.message };
   }
 });

@@ -34,36 +34,39 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.invoke('move-item', sourcePath, targetPath, isDirectory),
     copyItem: (sourcePath, targetPath, isDirectory) => 
       ipcRenderer.invoke('copy-item', sourcePath, targetPath, isDirectory),
-    renameItem: (oldPath, newName, isDirectory) => 
-      ipcRenderer.invoke('rename-item', oldPath, newName, isDirectory),
-    createFile: (filePath, content = '') => {
-      console.log('[Preload] Creating file at:', filePath);
-      return ipcRenderer.invoke('create-file', filePath, content);
-    },
-    createFolder: (folderPath) => {
-      console.log('[Preload] Creating folder at:', folderPath);
-      return ipcRenderer.invoke('create-folder', folderPath);
-    },
     
-    // Event listeners
-    onFileChange: (callback) => {
-      // Clean up previous listeners to avoid duplicates
-      ipcRenderer.removeAllListeners('file-changed');
-      ipcRenderer.on('file-changed', (event, path) => callback(path));
-    },
-    removeFileChangeListener: () => {
-      ipcRenderer.removeAllListeners('file-changed');
-    },
-    openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
-
-    // Open a folder in the system file explorer
-    openInExplorer: (folderPath) => {
-      console.log('[Preload] Opening folder in system explorer:', folderPath);
-      return ipcRenderer.invoke('open-in-explorer', folderPath);
-    },
-
-    // *** NEW: Expose path functions via IPC ***
+    // New folder operations
+    deleteFolder: (folderPath) => 
+      ipcRenderer.invoke('deleteFolder', folderPath),
+    moveFolder: (sourcePath, targetPath) => 
+      ipcRenderer.invoke('moveFolder', sourcePath, targetPath),
+    copyFile: (filePath) => 
+      ipcRenderer.invoke('copyFile', filePath),
+    copyFolder: (folderPath) => 
+      ipcRenderer.invoke('copyFolder', folderPath),
+    
+    // File creation operations
+    createFile: (filePath, content = '') => ipcRenderer.invoke('create-file', filePath, content),
+    createFolder: (folderPath) => ipcRenderer.invoke('create-folder', folderPath),
+    
+    // Path operations
+    pathResolve: (...paths) => ipcRenderer.invoke('path-resolve', ...paths),
     pathDirname: (filePath) => ipcRenderer.invoke('path-dirname', filePath),
-    pathResolve: (...paths) => ipcRenderer.invoke('path-resolve', ...paths)
+    
+    // File explorer integration
+    openInExplorer: (path) => ipcRenderer.invoke('open-in-explorer', path),
+    
+    // Get imported folders
+    getImportedFolders: () => ipcRenderer.invoke('get-imported-folders'),
+    
+    // IPC for file watching
+    onFileChange: (callback) => {
+      const subscription = (event, ...args) => callback(...args);
+      ipcRenderer.on('file-change', subscription);
+      return () => {
+        ipcRenderer.removeListener('file-change', subscription);
+      };
+    },
+    openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url)
   }
 ); 

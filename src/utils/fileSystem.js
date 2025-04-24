@@ -42,7 +42,56 @@ export const scanDirectory = async (directoryPath) => {
       return window.api?.scanDirectory(directoryPath) || { files: [], folders: [] };
     }
     
+    // Normalize the directory path for consistency
+    const normalizedDirPath = directoryPath.replace(/\\/g, '/');
+    
     const result = await window.api.scanDirectory(directoryPath);
+    
+    // Ensure all folder and file paths are properly structured
+    if (result && result.folders) {
+      result.folders = result.folders.map(folder => {
+        // Normalize all paths to use forward slashes
+        const normalizedPath = folder.path.replace(/\\/g, '/');
+        
+        // Make sure the path is properly formatted as a child of the directory path
+        if (!normalizedPath.startsWith(normalizedDirPath + '/') && normalizedPath !== normalizedDirPath) {
+          const folderName = folder.name || folder.path.split('/').pop().split('\\').pop();
+          return {
+            ...folder,
+            path: `${normalizedDirPath}/${folderName}`,
+            name: folderName
+          };
+        }
+        return {
+          ...folder,
+          path: normalizedPath,
+          name: folder.name || normalizedPath.split('/').pop()
+        };
+      });
+    }
+    
+    if (result && result.files) {
+      result.files = result.files.map(file => {
+        // Normalize all paths to use forward slashes
+        const normalizedPath = file.path.replace(/\\/g, '/');
+        
+        // Make sure the path is properly formatted as a child of the directory path
+        if (!normalizedPath.startsWith(normalizedDirPath + '/') && normalizedPath !== normalizedDirPath) {
+          const fileName = file.name || file.path.split('/').pop().split('\\').pop();
+          return {
+            ...file,
+            path: `${normalizedDirPath}/${fileName}`,
+            name: fileName
+          };
+        }
+        return {
+          ...file,
+          path: normalizedPath,
+          name: file.name || normalizedPath.split('/').pop()
+        };
+      });
+    }
+    
     return result;
   } catch (error) {
     console.error('Error scanning directory:', error);

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { IconX, IconPlus } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
-import { newFilesInProgress } from './FileExplorer';
 
 const EditorTabs = ({ 
   currentFile, 
@@ -13,11 +12,7 @@ const EditorTabs = ({
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, file: null });
   const { showInfo } = useNotification();
   
-  // Filter out any temporary files that are being created/renamed
-  const filteredOpenFiles = openFiles.filter(file => {
-    // Only show files that are not in the newFilesInProgress set
-    return !newFilesInProgress.has(file.path);
-  });
+  const filteredOpenFiles = openFiles;
   
   // Close context menu when clicking outside
   useEffect(() => {

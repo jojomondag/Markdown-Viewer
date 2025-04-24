@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash, IconEyeOff } from '@tabler/icons-react';
 import Split from 'react-split';
-import FileExplorer, { newFilesInProgress } from './components/FileExplorer';
+// import { newFilesInProgress } from './components/FileExplorer'; // Remove reference to deleted file
+import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
 import FileHistory from './components/FileHistory';
 import MarkdownEditor from './components/MarkdownEditor';
 import MarkdownPreview from './components/MarkdownPreview';
@@ -17,15 +18,17 @@ import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import useFiles from './hooks/useFiles';
-import { registerGlobalShortcuts, KEYBOARD_SHORTCUTS } from './utils/keyboardShortcuts';
+import { registerGlobalShortcuts } from './utils/keyboardShortcuts';
 import useNotification from './hooks/useNotification';
 import { useSettings } from './context/SettingsContext';
 import EditorTabs from './components/EditorTabs';
 import FileSearch from './components/FileSearch';
 import { isValidDrop, createDropDestination } from './utils/fileOperations';
 import path from 'path';
+import { getDirname, getBasename } from './utils/pathUtils'; // Import path utils
 
 function App() {
+  console.log('[App] Component rendering');
   const editorRef = useRef(null);
   const editorContainerRef = useRef(null);
   const previewRef = useRef(null);
@@ -116,71 +119,220 @@ function App() {
   
   // Wrap the openFile function to handle tabs
   const openFile = (file) => {
+    console.log('[App] openFile called with:', file);
     try {
-      // IMPORTANT: First check if this is a temporary file with a name pattern like "new_1234567890.md"
-      // This provides a second layer of protection in case the newFilesInProgress set doesn't catch it
-      const isTemporaryNewFile = file && file.path && 
-        (newFilesInProgress.has(file.path) || 
-         (typeof file.name === 'string' && /^new_\d+\.md$/.test(file.name)));
-      
-      if (isTemporaryNewFile) {
-        console.log(`Blocking temporary file from being opened in a tab: ${file.path}`);
-        return; // Don't open a tab for temporary files
-      }
-
       // Check if file is already open
       const isAlreadyOpen = openFiles.some(f => f.path === file.path);
+      console.log(`[App] openFile - isAlreadyOpen: ${isAlreadyOpen}`);
       
       if (!isAlreadyOpen) {
         // Add file to open files
+        console.log(`[App] openFile - adding file to openFiles state`);
         addOpenFile(file);
       }
       
       // Actually open the file
+      console.log(`[App] openFile - calling originalOpenFile`);
       originalOpenFile(file);
       
       // Add file to history
+      console.log(`[App] openFile - adding file to history`);
       addToHistory(file);
       
       // Focus the editor after opening the file
       setTimeout(() => {
         if (editorRef.current && editorRef.current.focus) {
+          console.log(`[App] openFile - focusing editor`);
           editorRef.current.focus();
         }
       }, 300);
     } catch (error) {
-      console.error(`Failed to open file: ${error.message}`);
+      console.error(`[App] Error in openFile: ${error.message}`);
     }
   };
   
   // Wrap the openAndScanFolder function
   const openAndScanFolder = async () => {
+    console.log('[App] openAndScanFolder called'); // Log entry
     try {
-      const result = await originalOpenAndScanFolder();
+      // Calls the original function (which shows the dialog)
+      const result = await originalOpenAndScanFolder(); 
+      console.log('[App] originalOpenAndScanFolder result:', result); // Log hook result
+      
+      // If the user selected folder(s)...
       if (result && result.folderPaths && result.folderPaths.length > 0) {
-        // Add all new folders to the current folders
-        setCurrentFolders(prev => {
-          // Create a new array to avoid mutation
+        console.log('[App] Folders selected:', result.folderPaths);
+        
+        // Update the list of root folders
+        setCurrentFolders(prev => { 
+          console.log('[App] setCurrentFolders: Previous state:', prev);
           const newFolders = [...prev];
-          
-          // Add each folder that's not already in the list
           result.folderPaths.forEach(folderPath => {
-            // Normalize paths for comparison
             const normalizedPath = folderPath.replace(/\\/g, '/');
             const alreadyExists = newFolders.some(
               existingPath => existingPath.replace(/\\/g, '/') === normalizedPath
             );
-            
             if (!alreadyExists) {
+              console.log(`[App] setCurrentFolders: Adding new path: ${folderPath}`);
               newFolders.push(folderPath);
             }
           });
-          
-          return newFolders;
+          console.log('[App] setCurrentFolders: New state:', newFolders); 
+          return newFolders; 
         });
+        
+        // --- FIX: Call scanFolder for each selected path --- 
+        console.log('[App] Calling scanFolder for each selected path...');
+        for (const folderPath of result.folderPaths) {
+          await scanFolder(folderPath, true); // Call scanFolder in add mode
+        }
+        console.log('[App] Finished calling scanFolder for all paths.');
+        // --- End Fix ---
+        
+        return result; // Keep returning the result
+      } else {
+        console.log('[App] No folders selected or dialog cancelled.');
       }
     } catch (error) {
-      console.error(`Failed to open folder: ${error.message}`);
+      console.error(`[App] Error in openAndScanFolder: ${error.message}`); // Log errors
+    }
+  };
+  
+  // Scan a folder and update files/folders state
+  const scanFolder = async (folderPath, addMode = false) => {
+    console.log(`[scanFolder] Called with path: ${folderPath}, addMode: ${addMode}`); // Log entry
+    try {
+      if (!folderPath) return;
+      
+      setLoading({ files: true });
+      
+      // Use the utility function from fileSystem.js to scan the directory
+      const { scanDirectory } = await import('./utils/fileSystem');
+      const result = await scanDirectory(folderPath);
+      console.log('[scanFolder] Scan result:', result); // Log scan result
+      
+      if (result) {
+        // Normalize the root folder path for consistency
+        const normalizedRootPath = folderPath.replace(/\\/g, '/');
+        console.log(`[scanFolder] Normalized root path: ${normalizedRootPath}`); // Log normalized path
+        
+        // Create a root folder object to ensure the folder itself is included
+        const rootFolder = {
+          path: normalizedRootPath,
+          name: path.basename(normalizedRootPath),
+          type: 'folder'
+        };
+        console.log('[scanFolder] Created root folder object:', rootFolder); // Log root folder object
+        
+        // Process files and folders to ensure proper paths
+        const processedFolders = [];
+        if (result.folders && result.folders.length > 0) {
+          // First include the root folder
+          processedFolders.push(rootFolder);
+          
+          // Then add all subfolders ensuring they have proper paths
+          result.folders.forEach(folder => {
+            if (!folder.path.startsWith(normalizedRootPath)) {
+              // Fix the path if needed - this ensures subfolders have the correct parent path
+              const folderName = path.basename(folder.path);
+              const fixedPath = `${normalizedRootPath}/${folderName}`;
+              processedFolders.push({
+                ...folder,
+                path: fixedPath,
+                name: folderName
+              });
+            } else {
+              processedFolders.push(folder);
+            }
+          });
+        } else {
+          // Even if there are no subfolders, still include the root folder
+          processedFolders.push(rootFolder);
+        }
+        
+        // Process files to ensure they have proper paths
+        const processedFiles = [];
+        if (result.files && result.files.length > 0) {
+          result.files.forEach(file => {
+            if (!file.path.startsWith(normalizedRootPath)) {
+              // Fix the path if needed
+              const fileName = path.basename(file.path);
+              const fixedPath = `${normalizedRootPath}/${fileName}`;
+              processedFiles.push({
+                ...file,
+                path: fixedPath,
+                name: fileName
+              });
+            } else {
+              processedFiles.push(file);
+            }
+          });
+        }
+        
+        console.log('[scanFolder] Processed files:', processedFiles); // Log processed files
+        console.log('[scanFolder] Processed folders (incl. root):', processedFolders); // Log processed folders
+        
+        if (addMode) {
+          console.log('[scanFolder] Entering addMode'); // Log entering addMode
+          // In add mode, preserve existing files/folders and add new ones
+          setFiles(prevFiles => {
+            console.log('[scanFolder] setFiles: Previous files count:', prevFiles.length); // Log prev files count
+            // Filter out duplicates based on path
+            const uniqueFiles = processedFiles.filter(newFile => 
+              !prevFiles.some(existingFile => existingFile.path === newFile.path)
+            );
+            console.log('[scanFolder] setFiles: Adding unique files:', uniqueFiles); // Log unique files to add
+            const newState = [...prevFiles, ...uniqueFiles];
+            console.log('[scanFolder] setFiles: New state count:', newState.length); // Log new files count
+            return newState;
+          });
+          
+          setFolders(prevFolders => {
+            console.log('[scanFolder] setFolders: Previous folders count:', prevFolders.length); // Log prev folders count
+            // Filter out duplicates based on path for subfolders ONLY
+            const uniqueSubFolders = processedFolders.filter(newFolder => 
+              newFolder.path !== normalizedRootPath && // Exclude the root folder from duplicate check
+              !prevFolders.some(existingFolder => existingFolder.path === newFolder.path)
+            );
+            console.log('[scanFolder] setFolders: Adding root folder:', rootFolder); // Log root folder to add
+            console.log('[scanFolder] setFolders: Adding unique subfolders:', uniqueSubFolders); // Log unique subfolders to add
+            // Always include the root folder + unique subfolders
+            const newState = [...prevFolders, rootFolder, ...uniqueSubFolders]; 
+            console.log('[scanFolder] setFolders: New state count:', newState.length); // Log new folders count
+            return newState;
+          });
+        } else {
+          console.log('[scanFolder] Entering replace/refresh mode'); // Log entering replace mode
+          // In replace/refresh mode, update files and folders for this path only
+          setFiles(prevFiles => {
+            // Remove files from this folder, then add the new ones
+            const remainingFiles = prevFiles.filter(file => 
+              !file.path.startsWith(normalizedRootPath + '/') && file.path !== normalizedRootPath
+            );
+            return [...remainingFiles, ...processedFiles];
+          });
+          
+          setFolders(prevFolders => {
+            // Remove folders from this folder, then add the new ones
+            const remainingFolders = prevFolders.filter(folder => 
+              !folder.path.startsWith(normalizedRootPath + '/') && folder.path !== normalizedRootPath
+            );
+            return [...remainingFolders, ...processedFolders];
+          });
+        }
+        
+        return {
+          ...result,
+          folders: processedFolders,
+          files: processedFiles
+        };
+      }
+    } catch (error) {
+      console.error(`[scanFolder] Error: ${error.message}`); // Log errors
+      showError(`Failed to scan folder: ${error.message}`);
+    } finally {
+      setLoading({ files: false });
+      console.log('[scanFolder] Finished.'); // Log finish
     }
   };
 
@@ -359,23 +511,6 @@ function App() {
     return [100 - settings.ui.previewWidth, settings.ui.previewWidth];
   };
 
-  // Safety timeout to prevent infinite loading
-  useEffect(() => {
-    if (loading) {
-      // If loading takes more than 10 seconds, reset it
-      const safetyTimeout = setTimeout(() => {
-        if (loading) {
-          console.warn('Loading timeout reached - forcing reset');
-          setLoading('files', false);
-          setLoading('content', false);
-          prevLoadingRef.current = false;
-        }
-      }, 10000); // 10 seconds timeout
-      
-      return () => clearTimeout(safetyTimeout);
-    }
-  }, [loading, setLoading]);
-  
   // Update loading states
   useEffect(() => {
     // Skip loading state update if nothing changed
@@ -772,198 +907,6 @@ function App() {
     }
   };
 
-  // Add handler for file rename operations
-  const handleRenameFile = useCallback((filePath, newName) => {
-    // Skip if empty
-    if (!newName || !filePath) return;
-
-    // Normalize the input path
-    filePath = path.normalize(filePath);
-
-    // Determine if this is a file or folder
-    const isDirectory = folders.some(folder => folder.path === filePath);
-    
-    // Calculate the new full path
-    const dirPath = path.dirname(filePath);
-    const newPath = path.join(dirPath, newName);
-    
-    // Check if a file with this name already exists (to prevent the API call when we know it will fail)
-    const fileExists = files.some(f => f.path === newPath) || folders.some(f => f.path === newPath);
-    if (fileExists) {
-      console.error('A file or folder with this name already exists');
-      showError('A file or folder with this name already exists');
-      return;
-    }
-    
-    // Flag to track whether the file system operation was successful
-    let fileSystemSuccess = false;
-    
-    const updateUIState = (oldPath, finalNewPath) => {
-      // Use the actual paths returned from the API if available, otherwise use the calculated paths
-      const actualOldPath = oldPath ? path.normalize(oldPath) : filePath;
-      const actualNewPath = finalNewPath ? path.normalize(finalNewPath) : newPath;
-      
-      console.log(`Updating UI after rename: ${actualOldPath} -> ${actualNewPath}`);
-      
-      if (isDirectory) {
-        // Update the folder itself
-        setFolders(prevFolders => {
-          const updatedFolders = [];
-          
-          // Process all folders, updating paths as needed
-          prevFolders.forEach(folder => {
-            const normalizedFolderPath = path.normalize(folder.path);
-            
-            if (normalizedFolderPath === actualOldPath) {
-              // This is the folder being renamed
-              updatedFolders.push({
-                ...folder,
-                path: actualNewPath,
-                name: path.basename(actualNewPath)
-              });
-            } else if (
-              normalizedFolderPath.startsWith(actualOldPath + path.sep) || 
-              // Handle edge case for different path separators
-              normalizedFolderPath.startsWith(actualOldPath + '/')
-            ) {
-              // This is a subfolder of the renamed folder
-              let relativePath;
-              
-              if (normalizedFolderPath.startsWith(actualOldPath + path.sep)) {
-                relativePath = normalizedFolderPath.substring(actualOldPath.length + path.sep.length);
-              } else {
-                relativePath = normalizedFolderPath.substring(actualOldPath.length + 1); // +1 for the slash
-              }
-              
-              const newFolderPath = path.join(actualNewPath, relativePath);
-              updatedFolders.push({
-                ...folder,
-                path: newFolderPath,
-                name: path.basename(newFolderPath)
-              });
-            } else {
-              // Unaffected folder
-              updatedFolders.push(folder);
-            }
-          });
-          
-          return updatedFolders;
-        });
-        
-        // Update paths of any files inside the folder
-        setFiles(prevFiles => {
-          return prevFiles.map(file => {
-            const normalizedFilePath = path.normalize(file.path);
-            
-            if (
-              normalizedFilePath.startsWith(actualOldPath + path.sep) || 
-              // Handle edge case for different path separators
-              normalizedFilePath.startsWith(actualOldPath + '/')
-            ) {
-              // This is a file inside the renamed folder
-              let relativePath;
-              
-              if (normalizedFilePath.startsWith(actualOldPath + path.sep)) {
-                relativePath = normalizedFilePath.substring(actualOldPath.length + path.sep.length);
-              } else {
-                relativePath = normalizedFilePath.substring(actualOldPath.length + 1); // +1 for the slash
-              }
-              
-              const newFilePath = path.join(actualNewPath, relativePath);
-              return {
-                ...file,
-                path: newFilePath,
-                name: path.basename(newFilePath)
-              };
-            } else if (normalizedFilePath === actualOldPath) {
-              // This is the file being renamed (unlikely for a folder, but just in case)
-              return {
-                ...file,
-                path: actualNewPath,
-                name: path.basename(actualNewPath)
-              };
-            }
-            
-            // Unaffected file
-            return file;
-          });
-        });
-        
-        if (fileSystemSuccess) {
-          showSuccess(`Renamed folder to ${newName}`);
-        }
-      } else {
-        // Update file list
-        setFiles(prevFiles => {
-          return prevFiles.map(file => {
-            const normalizedFilePath = path.normalize(file.path);
-            
-            if (normalizedFilePath === actualOldPath) {
-              // This is the file being renamed
-              return {
-                ...file,
-                path: actualNewPath,
-                name: path.basename(actualNewPath)
-              };
-            }
-            return file;
-          });
-        });
-        
-        // Update open files if the file is currently open
-        const openFile = openFiles.find(f => path.normalize(f.path) === actualOldPath);
-        if (openFile) {
-          // Update the file in open files with the new path and name
-          console.log(`Updating open file from ${actualOldPath} to ${actualNewPath}`);
-          updateOpenFile(actualOldPath, { 
-            path: actualNewPath, 
-            name: path.basename(actualNewPath) 
-          });
-          
-          // If this is the current file, we need special handling
-          if (currentFile && path.normalize(currentFile.path) === actualOldPath) {
-            console.log(`Updating current file to ${actualNewPath}`);
-            // Don't open a new tab, just update the current file
-            setCurrentFile({
-              ...currentFile,
-              path: actualNewPath,
-              name: path.basename(actualNewPath)
-            });
-          }
-        }
-        
-        if (fileSystemSuccess) {
-          showSuccess(`Renamed file to ${newName}`);
-        }
-      }
-    };
-    
-    // First try to rename the file on disk if we're in Electron
-    if (window.api && window.api.renameItem) {
-      window.api.renameItem(filePath, newName, isDirectory)
-        .then(result => {
-          if (result && result.success) {
-            fileSystemSuccess = true;
-            console.log(`Successfully renamed ${isDirectory ? 'folder' : 'file'} from ${result.oldPath || filePath} to ${result.newPath || newPath}`);
-            // Now update the UI state after the file system operation succeeds
-            updateUIState(result.oldPath, result.newPath);
-          } else {
-            console.error(`Failed to rename ${isDirectory ? 'folder' : 'file'}:`, result ? result.message : 'Unknown error');
-            showError(`Failed to rename ${isDirectory ? 'folder' : 'file'}: ${result ? result.message : 'Unknown error'}`);
-          }
-        })
-        .catch(error => {
-          console.error(`Error renaming ${isDirectory ? 'folder' : 'file'}:`, error);
-          showError(`Failed to rename ${isDirectory ? 'folder' : 'file'}: ${error.message || 'Unknown error'}`);
-        });
-    } else {
-      // In browser mode, just simulate success
-      fileSystemSuccess = true;
-      console.log(`Simulating rename ${isDirectory ? 'folder' : 'file'} from ${filePath} to ${newPath}`);
-      updateUIState();
-    }
-  }, [folders, files, openFiles, updateOpenFile, currentFile, originalOpenFile, showSuccess, showError]);
-
   // Add handler for file/folder deletion
   const handleDeleteFile = useCallback((filePath, isDirectory) => {
     if (isDirectory) {
@@ -1018,23 +961,31 @@ function App() {
 
   // Add handler for creating new folders
   const handleCreateFolder = useCallback((folderData) => {
-    console.log('Creating new folder:', folderData);
+    console.log('[App] handleCreateFolder called with folderData:', folderData); // Log entry
     
     // Extract just the basename for the folder name
     const folderBasename = path.basename(folderData.path);
-    console.log('Using basename for folder display:', folderBasename);
+    console.log('[App] handleCreateFolder - Using basename for folder display:', folderBasename);
     
     // Add the new folder to the folders list
-    setFolders(prevFolders => [...prevFolders, {
-      ...folderData,
-      // Ensure we use only the basename without any path components
-      name: folderBasename,
-      displayName: folderBasename, // Explicitly add displayName
-      type: 'folder'
-    }]);
+    setFolders(prevFolders => {
+      console.log('[App] handleCreateFolder - setFolders: Previous count:', prevFolders.length); // Log prev count
+      const newFolderObject = {
+        ...folderData,
+        // Ensure we use only the basename without any path components
+        name: folderBasename,
+        displayName: folderBasename, // Explicitly add displayName
+        type: 'folder'
+      };
+      console.log('[App] handleCreateFolder - setFolders: Adding new folder object:', newFolderObject); // Log new object
+      const newState = [...prevFolders, newFolderObject];
+      console.log('[App] handleCreateFolder - setFolders: New count:', newState.length); // Log new count
+      return newState;
+    });
     
     // Use the basename of the folder name for the success message
     showSuccess(`Created folder: ${folderBasename}`);
+    console.log('[App] handleCreateFolder finished.'); // Log finish
   }, [showSuccess]);
 
   // Add handler for creating new files
@@ -1115,6 +1066,170 @@ function App() {
     
     return () => clearTimeout(timer);
   }, [isEditorContainerVisible, previewVisible]);
+  
+  const handleDeleteFolder = async (path) => {
+    try {
+      // Confirm deletion
+      const folderName = path.split('/').pop().split('\\').pop();
+      const confirmed = window.confirm(`Are you sure you want to delete the folder "${folderName}" and all its contents? This cannot be undone.`);
+      
+      if (!confirmed) return;
+      
+      setLoading(true);
+      const result = await window.api.deleteFolder(path);
+      
+      if (result.success) {
+        showSuccess(`Folder deleted: ${folderName}`);
+        
+        // Refresh folders
+        const refreshResult = await window.api.listFolders(currentFolders);
+        if (refreshResult.success) {
+          setFolders(refreshResult.folders);
+        }
+      } else {
+        showError(`Failed to delete folder: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error deleting folder:', error);
+      showError(`Error deleting folder: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleMoveFolder = async (sourcePath, targetPath) => {
+    try {
+      if (!targetPath) return;
+      
+      setLoading(true);
+      const result = await window.api.moveFolder(sourcePath, targetPath);
+      
+      if (result.success) {
+        const folderName = sourcePath.split('/').pop().split('\\').pop();
+        showSuccess(`Folder moved: ${folderName}`);
+        
+        // Refresh folders
+        const refreshResult = await window.api.listFolders(currentFolders);
+        if (refreshResult.success) {
+          setFolders(refreshResult.folders);
+        }
+        
+        // Refresh files
+        const filesResult = await window.api.listFiles(currentFolders);
+        if (filesResult.success) {
+          setFiles(filesResult.files);
+        }
+      } else {
+        showError(`Failed to move folder: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error moving folder:', error);
+      showError(`Error moving folder: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleCopyFile = async (path) => {
+    try {
+      setLoading(true);
+      const result = await window.api.copyFile(path);
+      
+      if (result.success) {
+        const fileName = path.split('/').pop().split('\\').pop();
+        showSuccess(`File copied: ${fileName}`);
+        
+        // Refresh files
+        const filesResult = await window.api.listFiles(currentFolders);
+        if (filesResult.success) {
+          setFiles(filesResult.files);
+        }
+      } else {
+        showError(`Failed to copy file: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error copying file:', error);
+      showError(`Error copying file: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleCopyFolder = async (path) => {
+    try {
+      setLoading(true);
+      const result = await window.api.copyFolder(path);
+      
+      if (result.success) {
+        const folderName = path.split('/').pop().split('\\').pop();
+        showSuccess(`Folder copied: ${folderName}`);
+        
+        // Refresh folders
+        const refreshResult = await window.api.listFolders(currentFolders);
+        if (refreshResult.success) {
+          setFolders(refreshResult.folders);
+        }
+        
+        // Refresh files
+        const filesResult = await window.api.listFiles(currentFolders);
+        if (filesResult.success) {
+          setFiles(filesResult.files);
+        }
+      } else {
+        showError(`Failed to copy folder: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error copying folder:', error);
+      showError(`Error copying folder: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // *** NEW: Handler for renaming files/folders ***
+  const handleRenameItem = async (oldPath, newPath, isDirectory) => {
+    console.log(`[App] Renaming item: ${oldPath} -> ${newPath}, isDirectory: ${isDirectory}`);
+    try {
+      // Use the existing moveItem API which handles both files and folders
+      // Note: main.js implements moveItem as copy+delete, not fs.rename directly
+      const result = await window.api.moveItem(oldPath, newPath, isDirectory);
+      
+      if (!result || !result.success) {
+        throw new Error(result?.message || 'Unknown error during rename/move');
+      }
+
+      // Update state
+      if (isDirectory) {
+        // Update the specific folder
+        setFolders(prev => prev.map(f => f.path === oldPath ? { ...f, path: newPath, name: getBasename(newPath) } : f));
+        // TODO: Need to recursively update paths of children folders and files if backend doesn't provide them
+        // This might require re-scanning the parent directory or handling recursion here.
+        // For now, just updating the main folder path.
+      } else {
+        // Update the specific file
+        setFiles(prev => prev.map(f => f.path === oldPath ? { ...f, path: newPath, name: getBasename(newPath) } : f));
+        
+        // Update open file tabs if the renamed file was open
+        const openFileIndex = openFiles.findIndex(f => f.path === oldPath);
+        if (openFileIndex > -1) {
+          const updatedOpenFile = { ...openFiles[openFileIndex], path: newPath, name: getBasename(newPath) };
+          updateOpenFile(updatedOpenFile);
+          // If the renamed file was the *current* file, update that too
+          if (currentFile?.path === oldPath) {
+             setCurrentFile(updatedOpenFile);
+          }
+        }
+      }
+      
+      showSuccess(`Renamed to ${getBasename(newPath)}`);
+      console.log('[App] Rename successful, state updated.');
+      
+    } catch (error) {
+      console.error(`[App] Error renaming item: ${error.message}`);
+      showError(`Failed to rename: ${error.message}`);
+      // Optionally, trigger a rescan or revert state changes if needed
+    }
+  };
 
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
@@ -1123,10 +1238,10 @@ function App() {
       <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center justify-start space-x-2">
-            <button 
-              className="flex items-center bg-primary-600 hover:bg-primary-500 dark:bg-primary-700 dark:hover:bg-primary-600 px-2 py-1 rounded text-white text-sm"
+            <button
               onClick={openAndScanFolder}
-              title={`Add Folder ${KEYBOARD_SHORTCUTS.OPEN_FILE}`}
+              className="btn btn-primary flex items-center gap-2 w-full justify-center"
+              title={`Add Folder (Ctrl+O)`}
               disabled={loading}
             >
               {loading ? (
@@ -1216,16 +1331,33 @@ function App() {
                       files={files} 
                       folders={folders}
                       currentFolders={currentFolders}
+                      currentFilePath={currentFile?.path}
                       onFileSelect={openFile} 
-                      onRenameFile={handleRenameFile}
                       onDeleteFile={handleDeleteFile}
                       onCreateFile={handleCreateFile}
                       onCreateFolder={handleCreateFolder}
+                      onDeleteFolder={handleDeleteFolder}
                       onMoveFile={handleMoveFile}
-                      fileOperationStatus={fileOperationStatus}
-                      sortBy={explorerSortBy}
-                      sortDirection={explorerSortDirection}
-                      onSortChange={handleExplorerSortChange}
+                      onMoveFolder={handleMoveFolder}
+                      onCopyFile={handleCopyFile}
+                      onCopyFolder={handleCopyFolder}
+                      onScanFolder={async (folderPath, addMode) => {
+                        console.log('[App] Prop onScanFolder called with:', { folderPath, addMode });
+                        const result = await scanFolder(folderPath, addMode);
+                        // If called in addMode from Arborist, update currentFolders here
+                        if (addMode && folderPath) {
+                          const normalizedPath = folderPath.replace(/\\/g, '/');
+                          setCurrentFolders(prev => {
+                            if (!prev.includes(normalizedPath) && !prev.includes(folderPath)) { // Check both formats just in case
+                               console.log(`[App] Prop onScanFolder updating currentFolders with: ${folderPath}`);
+                               return [...prev, folderPath]; // Add the original path format
+                            }
+                            return prev;
+                          });
+                        }
+                        return result; // Return the result from the original scanFolder
+                      }}
+                      onRenameItem={handleRenameItem}
                     />
                   ) : (
                     <div className="text-sm text-surface-600 p-4">

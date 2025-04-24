@@ -47,28 +47,6 @@ export const copyItem = async (sourcePath, targetPath, isDirectory) => {
 };
 
 /**
- * Rename a file or folder
- * @param {string} sourcePath - Original path
- * @param {string} newName - New name (not path)
- * @param {boolean} isDirectory - Whether the item is a directory
- * @returns {Promise<boolean>} - Success status
- */
-export const renameItem = async (sourcePath, newName, isDirectory) => {
-  try {
-    if (window.electron) {
-      // Use Electron's IPC for file operations
-      return await window.electron.renameItem(sourcePath, newName, isDirectory);
-    } else {
-      console.warn('File operations in browser mode are simulated and do not affect actual files');
-      return true;
-    }
-  } catch (error) {
-    console.error('Error renaming item:', error);
-    throw error;
-  }
-};
-
-/**
  * Checks if a drag and drop operation is valid
  * Prevents dropping an item onto itself or onto its descendant
  * 
@@ -108,32 +86,11 @@ export const createDropDestination = (sourceItem, targetItem) => {
   return joinPaths(targetDir, sourceItem.name);
 };
 
-/**
- * Gets the parent directory path for a file or folder
- * 
- * @param {string} itemPath - The path of the file or folder
- * @returns {string} - The parent directory path
- */
-export const getParentDir = (itemPath) => {
-  return getDirname(itemPath);
-};
-
-/**
- * Extracts the name from a path
- * 
- * @param {string} itemPath - The path of the file or folder
- * @returns {string} - The name of the file or folder
- */
-export const getNameFromPath = (itemPath) => {
-  return getBasename(itemPath);
-};
-
 export default {
   moveItem,
   copyItem,
-  renameItem,
   isValidDrop,
   createDropDestination,
-  getParentDir,
-  getNameFromPath
+  getDirname,
+  getBasename
 };

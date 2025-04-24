@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { newFilesInProgress } from '../components/FileExplorer';
 
 // Define initial state
 const initialState = {
@@ -305,12 +304,6 @@ export const AppStateProvider = ({ children }) => {
   
   // Open files actions
   const addOpenFile = (file) => {
-    // Check if this is a temporary file being created/renamed
-    if (file && file.path && newFilesInProgress.has(file.path)) {
-      console.log(`Not adding temporary file to open tabs: ${file.path}`);
-      return; // Don't dispatch the action for temporary files
-    }
-    
     dispatch({
       type: ActionTypes.ADD_OPEN_FILE,
       payload: file
@@ -323,26 +316,6 @@ export const AppStateProvider = ({ children }) => {
   });
   
   const updateOpenFile = (oldPath, updates) => {
-    // If the updates contain a new path, we need to properly update the open file
-    if (updates.path && updates.path !== oldPath) {
-      // First, get a copy of the current file with the old path
-      const file = state.openFiles.find(f => f.path === oldPath);
-      if (file) {
-        // Then dispatch an action to remove the file with the old path
-        dispatch({
-          type: ActionTypes.REMOVE_OPEN_FILE,
-          payload: { path: oldPath }
-        });
-        
-        // Finally, add the file with the new path and updates
-        dispatch({
-          type: ActionTypes.ADD_OPEN_FILE,
-          payload: { ...file, ...updates }
-        });
-        
-        return;
-      }
-    }
     
     // Otherwise, do a regular update
     dispatch({
