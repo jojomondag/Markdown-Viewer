@@ -114,14 +114,28 @@ const TreeNode = ({
 
   // --- Drag and Drop Handlers ---
   const handleDragStart = (e) => {
-    e.stopPropagation(); // Prevent parent drag
-    console.log('[DnD] Drag Start:', node.path);
-    // Set data to be transferred (path and type)
-    e.dataTransfer.setData('application/json', JSON.stringify({ path: node.path, type: node.type }));
+    e.stopPropagation();
+
+    let draggedItems = [];
+    const isNodeSelected = selectedNodePaths.has(node.path);
+
+    if (isNodeSelected) {
+      // Dragging a selected node: include all selected items
+      // Find all nodes corresponding to selected paths (needs access to all nodes, might be better done in parent)
+      // For now, let's assume we pass the selected paths and the parent resolves them.
+      draggedItems = Array.from(selectedNodePaths).map(path => ({ path, type: 'unknown' })); // Type might need resolving later
+      console.log('[DnD] Dragging selected group:', draggedItems);
+    } else {
+      // Dragging an unselected node: select only this node and drag it
+      // This implicit selection should happen in the parent via onMoveItem or similar
+      draggedItems = [{ path: node.path, type: node.type }];
+      console.log('[DnD] Dragging single unselected item:', draggedItems);
+    }
+
+    e.dataTransfer.setData('application/json', JSON.stringify(draggedItems));
     e.dataTransfer.effectAllowed = 'move';
-    // Optionally set a drag image or rely on default browser behavior
-    // Notify parent about drag start (e.g., to set dragging state)
-    onMoveItem(node, null, 'dragStart'); 
+
+    onMoveItem(draggedItems, null, 'dragStart'); // Pass items
   };
 
   const handleDragOver = (e) => {
@@ -151,7 +165,7 @@ const TreeNode = ({
     e.stopPropagation();
     console.log('[DnD] Drop onto:', node.path);
     try {
-      const draggedItemData = JSON.parse(e.dataTransfer.getData('application/json'));
+      const draggedItemsData = JSON.parse(e.dataTransfer.getData('application/json')); // Now expects an array
       
       // Determine drop position again (similar to dragOver)
       const rect = e.currentTarget.getBoundingClientRect();
@@ -164,10 +178,16 @@ const TreeNode = ({
           position = 'bottom';
       }
 
-      console.log('[DnD] Dropped item data:', draggedItemData, 'at position:', position);
-      if (draggedItemData && draggedItemData.path !== node.path) { // Ensure not dropping onto self
-        // Call the parent handler to perform the move
-        onMoveItem(draggedItemData, node, 'drop', position); // Pass position
+      console.log('[DnD] Dropped items data:', draggedItemsData, 'at position:', position);
+
+      // Basic validation: ensure dragged data is an array and not empty
+      if (Array.isArray(draggedItemsData) && draggedItemsData.length > 0) {
+        // Check if dropping onto self or one of the dragged items (more complex for multi-drag)
+        const isDroppingOnSelfOrDragged = draggedItemsData.some(item => item.path === node.path);
+        if (!isDroppingOnSelfOrDragged) { 
+          // Call the parent handler to perform the move for all items
+          onMoveItem(draggedItemsData, node, 'drop', position); // Pass array of items
+        }
       } else {
         console.log('[DnD] Drop ignored (self or invalid data)');
       }
@@ -718,12 +738,21 @@ const FileExplorer = ({
 
   // --- Drag and Drop Handler passed to TreeNode ---
   const handleMoveItem = useCallback((sourceNodeData, targetNode, action, position = null) => {
+    // sourceNodeData can now be an array of items or a single item (from dragStart)
     if (action === 'dragStart' && sourceNodeData) {
-      setDraggingPath(sourceNodeData.path);
+      // If dragging an unselected item, select it first
+      const items = Array.isArray(sourceNodeData) ? sourceNodeData : [sourceNodeData];
+      if (items.length === 1 && !selectedNodePaths.has(items[0].path)) {
+        console.log('[Explorer DnD] Selecting single dragged item:', items[0].path);
+        setSelectedNodePaths(new Set([items[0].path]));
+        setShiftSelectionAnchorPath(items[0].path);
+      }
+      // Mark the primary dragged item for visual feedback (optional)
+      setDraggingPath(items[0]?.path || null);
       setDragOverPath(null); // Clear drag over when starting a new drag
       setDragOverPosition(null);
     } else if (action === 'dragOver' && targetNode) {
-      // --- Optimize: Only update state if path or position actually changes ---
+      // Update drag over state for visual feedback
       if (targetNode.path !== dragOverPath || position !== dragOverPosition) {
         // console.log(`[DnD State Update] Path: ${dragOverPath}=>${targetNode.path}, Pos: ${dragOverPosition}=>${position}`); // Debug log
         setDragOverPath(targetNode.path);
@@ -731,36 +760,34 @@ const FileExplorer = ({
       }
       // ---------------------------------------------------------------------
       // Logic for allowing drop effect is handled by onDragOver in TreeNode directly
-    } else if (action === 'drop' && sourceNodeData && targetNode) {
+    } else if (action === 'drop' && sourceNodeData && targetNode) { 
+      // sourceNodeData is now guaranteed to be an array by handleDrop
+      const sourceItems = sourceNodeData; 
+
       setDragOverPath(null); // Clear visual cues immediately on drop
       setDragOverPosition(null);
       
-      // Determine the effective target and action for App.jsx
-      let effectiveTargetNode = targetNode;
-      let dropActionType = position; // 'top', 'bottom', 'middle'
-
-      // If dropping on top/bottom, the logical target is the parent
-      // We only pass the node we dropped relative to, and the position
       if (position === 'top' || position === 'bottom') {
         // Keep targetNode as the node we dropped relative to
       } else if (position === 'middle' && targetNode.type !== 'folder') {
         // Dropping onto a file is invalid for move *into*
         console.log('[Explorer] Invalid drop target (middle of file).');
-        setDraggingPath(null);
+        // No need to clear draggingPath here, dragEnd will handle it
         return; // Abort
       } // else: dropping middle of folder is fine, targetNode is correct
 
-      const sourceItem = { path: sourceNodeData.path, type: sourceNodeData.type };
-
-      // Check validity using the original target node
-      if (isValidDrop(sourceItem, targetNode)) { 
-        console.log(`[Explorer] Requesting move: ${sourceNodeData.path} relative to ${targetNode.path} at position ${position}`);
+      // Check validity for the *first* dragged item as a representative check
+      // More robust checking might be needed depending on requirements
+      if (sourceItems.length > 0 && isValidDrop(sourceItems[0], targetNode)) { 
+        console.log(`[Explorer] Requesting move for ${sourceItems.length} items relative to ${targetNode.path} at position ${position}`);
         if (typeof onMoveItemProp === 'function') {
-            // Pass source, the node dropped relative to, and the position
-            onMoveItemProp(sourceItem, targetNode, position); 
+            // Pass source items array, the node dropped relative to, and the position
+            onMoveItemProp(sourceItems, targetNode, position); 
         } else {
             console.warn('onMoveItemProp is not provided. Cannot perform move.');
         }
+      } else {
+        console.log('[Explorer] Drop deemed invalid or no items.');
       }
       // Reset drag path state regardless of validity
       setDraggingPath(null);
@@ -770,7 +797,7 @@ const FileExplorer = ({
       setDragOverPath(null);
       setDragOverPosition(null);
     }
-  }, [onMoveItemProp, dragOverPath, dragOverPosition]); // Add dragOver states as dependencies
+  }, [onMoveItemProp, dragOverPath, dragOverPosition, selectedNodePaths, setSelectedNodePaths, setShiftSelectionAnchorPath]); // Added dependencies
   // --- End Drag and Drop Handler ---
 
   return (
