@@ -1678,6 +1678,29 @@ function App() {
   const memoizedFiles = useMemo(() => files, [files]);
   const memoizedFolders = useMemo(() => folders, [folders]);
 
+  // Add back the wheel handler, using the ref's zoom methods
+  const handlePreviewWheel = useCallback((event) => {
+    // Check if Ctrl key is pressed and the preview element exists
+    if (event.ctrlKey && previewRef.current) {
+      event.preventDefault(); // Prevent default page scroll
+      let newZoomLevel = null;
+
+      // Determine zoom direction based on wheel delta
+      if (event.deltaY < 0) {
+        // Wheel up, zoom in - Call the zoomIn method and capture its return value
+        newZoomLevel = previewRef.current.zoomIn?.(); 
+      } else {
+        // Wheel down, zoom out - Call the zoomOut method and capture its return value
+        newZoomLevel = previewRef.current.zoomOut?.();
+      }
+      
+      // Update the zoom display state variable with the returned level
+      if (newZoomLevel !== null) {
+        setPreviewZoom(newZoomLevel);
+      }
+    }
+  }, [previewRef, setPreviewZoom]); // Dependency is the ref and setPreviewZoom
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       {/* <AccessibilityHelper /> */}
@@ -1970,10 +1993,15 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <div className="preview-container flex-grow overflow-hidden h-full" style={{ minHeight: "0", height: "100%" }}>
+                <div 
+                  className="preview-container flex-grow overflow-auto h-full" // <-- Outer container
+                  style={{ minHeight: "0", height: "100%", backgroundColor: "transparent" }}
+                  onScroll={handlePreviewScroll} // <-- Keep existing onScroll
+                  onWheel={handlePreviewWheel} // <-- Add the wheel event listener HERE
+                >
                   <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
-                    {/* Removed Suspense */}
-                    <MarkdownPreview 
+                     {/* The MarkdownPreview component is inside the LoadingOverlay */}
+                     <MarkdownPreview 
                       ref={previewRef}
                       content={content}
                       onScroll={handlePreviewScroll}

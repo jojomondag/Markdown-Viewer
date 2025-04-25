@@ -27,17 +27,26 @@ renderer.image = function(href, title, text) {
 
 // Custom link rendering to handle video and audio links
 renderer.link = function(href, title, text) {
+  // *** ADD CHECK: Ensure href is a string before processing ***
+  if (typeof href !== 'string') {
+    // If href is not a string, just render the text content safely.
+    // You might want to log a warning here if needed.
+    console.warn(`[MarkdownPreview Renderer] Encountered non-string href:`, href, `for text:`, text);
+    // Render the text without a link tag, or use a span if preferred
+    return text || ''; 
+  }
+
   // Check if the link is a video file
   const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov'];
-  const isVideo = videoExtensions.some(ext => href?.toLowerCase().endsWith(ext));
+  const isVideo = videoExtensions.some(ext => href.toLowerCase().endsWith(ext));
   
   // Check if the link is an audio file
   const audioExtensions = ['.mp3', '.wav', '.ogg', '.aac'];
-  const isAudio = audioExtensions.some(ext => href?.toLowerCase().endsWith(ext));
+  const isAudio = audioExtensions.some(ext => href.toLowerCase().endsWith(ext));
   
   // Check if it's a YouTube or Vimeo link
-  const isYouTube = href?.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-  const isVimeo = href?.match(/(?:vimeo\.com\/)([0-9]+)/);
+  const isYouTube = href.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+  const isVimeo = href.match(/(?:vimeo\.com\/)([0-9]+)/);
   
   if (isVideo) {
     return `
