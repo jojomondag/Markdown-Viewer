@@ -1758,7 +1758,7 @@ function App() {
             'flex-basis': `${gutterSize}px`,
           })}
         >
-          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
+          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
             <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
               <SidebarTabs.Pane id="files">
                 <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
