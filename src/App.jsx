@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash, IconEyeOff } from '@tabler/icons-react';
 import Split from 'react-split';
-// import { newFilesInProgress } from './components/FileExplorer'; // Remove reference to deleted file
 import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
 import FileHistory from './components/FileHistory';
 import MarkdownEditor from './components/MarkdownEditor';
@@ -13,7 +12,6 @@ import MarkdownToolbar from './components/MarkdownToolbar';
 import LoadingOverlay from './components/LoadingOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
 import SettingsPanel from './components/SettingsPanel';
-import AccessibilityHelper from './components/AccessibilityHelper';
 import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
@@ -23,7 +21,6 @@ import useNotification from './hooks/useNotification';
 import { useSettings } from './context/SettingsContext';
 import EditorTabs from './components/EditorTabs';
 import FileSearch from './components/FileSearch';
-import { isValidDrop, createDropDestination } from './utils/fileOperations';
 import path from 'path';
 import { getDirname, getBasename } from './utils/pathUtils'; // Import path utils
 
@@ -39,7 +36,6 @@ function App() {
   const [previewVisible, setPreviewVisible] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [customCSS, setCustomCSS] = useState('');
   const [isEditorContainerVisible, setIsEditorContainerVisible] = useState(true);
   const {
     files,
@@ -71,7 +67,6 @@ function App() {
     setLoading,
     setUnsavedChanges,
     setSidebarTab,
-    setPanel,
     addToHistory,
     addOpenFile,
     removeOpenFile,
@@ -1141,58 +1136,6 @@ function App() {
     setLoading({ files: false }); // Turn off loading indicator
   };
 
-  // Add handler for file/folder deletion
-  const handleDeleteFile = useCallback((filePath, isDirectory) => {
-    if (isDirectory) {
-      console.log(`Deleting folder: ${filePath}`);
-      
-      // Remove folder and all subfolders
-      setFolders(prevFolders => 
-        prevFolders.filter(folder => 
-          folder.path !== filePath && !folder.path.startsWith(filePath + '/')
-        )
-      );
-      
-      // Remove all files in the folder
-      setFiles(prevFiles => 
-        prevFiles.filter(file => 
-          !file.path.startsWith(filePath + '/')
-        )
-      );
-      
-      // Close any open files from that folder
-      openFiles.forEach(file => {
-        if (file.path.startsWith(filePath + '/')) {
-          removeOpenFile(file);
-        }
-      });
-      
-      showSuccess(`Deleted folder ${path.basename(filePath)}`);
-    } else {
-      console.log(`Deleting file: ${filePath}`);
-      
-      // Remove the file
-      setFiles(prevFiles => 
-        prevFiles.filter(file => file.path !== filePath)
-      );
-      
-      // If the file is open, close it
-      const openFile = openFiles.find(file => file.path === filePath);
-      if (openFile) {
-        removeOpenFile(openFile);
-      }
-      
-      // If it's the current file, clear the editor
-      if (currentFile && currentFile.path === filePath) {
-        // In a real app, you might want to switch to another open file
-        // For now, we'll just clear the current file
-        originalOpenFile(null);
-      }
-      
-      showSuccess(`Deleted file ${path.basename(filePath)}`);
-    }
-  }, [openFiles, removeOpenFile, currentFile, originalOpenFile, showSuccess]);
-
   // Add handler for creating new folders
   const handleCreateFolder = async (parentFolderPath) => {
     console.log(`[App] Creating new folder in: ${parentFolderPath}`);
@@ -1737,7 +1680,7 @@ function App() {
 
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
-      <AccessibilityHelper />
+      {/* <AccessibilityHelper /> */}
       
       <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
         <div className="container mx-auto flex items-center justify-between">
@@ -1837,14 +1780,11 @@ function App() {
                       currentFolders={currentFolders}
                       currentFilePath={currentFile?.path}
                       onFileSelect={openFile} 
-                      onDeleteFile={handleDeleteFile}
+                      onDeleteFile={handleDeleteItem}
                       onCreateFile={handleCreateFile}
                       onCreateFolder={handleCreateFolder}
-                      onDeleteFolder={handleDeleteFolder}
+                      onDeleteFolder={handleDeleteItem}
                       onMoveItemProp={handleMoveItem}
-                      onMoveFolder={handleMoveFolder}
-                      onCopyFile={handleCopyFile}
-                      onCopyFolder={handleCopyFolder}
                       onScanFolder={scanFolder}
                       onRenameItem={handleRenameItem}
                       onDeleteItem={handleDeleteItem}
@@ -2036,7 +1976,6 @@ function App() {
                       ref={previewRef}
                       content={content}
                       onScroll={handlePreviewScroll}
-                      customCSS={customCSS}
                       inScrollSync={scrollSyncEnabled}
                       scrollSource={scrollSource}
                       currentFilePath={currentFile?.path}
