@@ -1,0 +1,33 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Tailwind CSS v4 and Skeleton UI v3 Setup Guide
+
+This document outlines the configuration and usage of Tailwind CSS v4 and Skeleton UI v3 within this project.
+
+## Tailwind CSS v4
+
+- **Core Package:** `tailwindcss` (v4.x)
+- **PostCSS Plugin:** `@tailwindcss/postcss` (v4.x) is used for integration. See configuration in [postcss.config.js](mdc:postcss.config.js).
+- **Main Import:** Tailwind is imported in the main CSS file [src/index.css](mdc:src/index.css) using `@import "tailwindcss";`. The older `@tailwind base/components/utilities` directives are no longer used.
+- **Configuration:**
+    - Tailwind v4 primarily uses a CSS-first configuration approach within [src/index.css](mdc:src/index.css) using the `@theme` directive to define custom CSS variables (e.g., `--color-*`, `--breakpoint-*`).
+    - The legacy JavaScript configuration file [tailwind.config.js](mdc:tailwind.config.js) still exists and defines theme extensions (like the `surface` colors). Tailwind v4 can use this via an `@config` directive in the CSS if needed, but the primary method is CSS variables.
+- **CSS Variables:** Theme tokens defined (either via `@theme` or the JS config) are available as CSS variables (e.g., `var(--color-primary-500)`).
+
+## Skeleton UI v3
+
+- **Core Package:** `@skeletonlabs/skeleton` (v3.x)
+- **Dependency:** Requires the `@tailwindcss/forms` plugin. This is installed as a dev dependency and imported in [src/index.css](mdc:src/index.css) via `@import "@tailwindcss/forms";`.
+- **CSS Imports:** Skeleton's styles and themes must be imported in [src/index.css](mdc:src/index.css) *after* the main Tailwind import. This includes:
+    - A theme file (e.g., `@import "@skeletonlabs/skeleton/themes/theme-skeleton.css";`)
+    - Skeleton's core component styles (`@import "@skeletonlabs/skeleton/styles/skeleton.css";`)
+- **Theme Activation:** A `data-theme` attribute must be set on the `<html>` tag in [index.html](mdc:index.html) to activate the chosen Skeleton theme (e.g., `data-theme="skeleton"`).
+- **Component Styling:** Skeleton components are built with Tailwind utility classes and adapt based on the active `data-theme`.
+
+## Styling Practices
+
+- **Utility Classes:** Prefer using standard Tailwind utility classes directly in your component files (HTML/JSX).
+- **Custom CSS Rules:** When applying theme-based styles within custom CSS rules (like in [src/index.css](mdc:src/index.css)), use the corresponding CSS variables (`var(--color-surface-900)`) instead of applying utility classes with `@apply` (e.g., avoid `@apply bg-surface-900`).

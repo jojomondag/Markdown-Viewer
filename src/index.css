@@ -1,6 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@config '../tailwind.config.js'; /* Corrected path relative to src/ */
+
+/* Replace Tailwind directives with v4 import */
+@import "tailwindcss";
+
+/* Import Skeleton core ONLY */
+@import "@skeletonlabs/skeleton"; 
+/* @import "@skeletonlabs/skeleton/themes/theme-skeleton"; <-- Removed theme import */
+
+/* Remove direct forms import (Tailwind v4 handles plugin styles) */
+/* @import "@tailwindcss/forms"; */
 
 /* Custom scrollbar styling */
 /* For Webkit browsers (Chrome, Safari, Edge) */
@@ -72,15 +80,21 @@ main {
 
 /* Dark mode styles */
 .dark body {
-  @apply bg-surface-900 text-surface-100;
+  /* @apply bg-surface-900 text-surface-100; */
+  background-color: var(--color-surface-900);
+  color: var(--color-surface-100);
 }
 
 .dark .markdown-preview {
-  @apply bg-surface-800 text-surface-100 border-surface-700;
+  /* @apply bg-surface-800 text-surface-100 border-surface-700; */
+  background-color: var(--color-surface-800);
+  color: var(--color-surface-100);
+  border-color: var(--color-surface-700);
 }
 
 .dark .markdown-preview pre {
-  @apply bg-surface-900;
+  /* @apply bg-surface-900; */
+  background-color: var(--color-surface-900);
 }
 
 /* Responsive styles */
