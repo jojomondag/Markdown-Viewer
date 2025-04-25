@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
 import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash, IconEyeOff } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
 import FileHistory from './components/FileHistory';
-import MarkdownEditor from './components/MarkdownEditor';
-import MarkdownPreview from './components/MarkdownPreview';
+import MarkdownEditor from './components/MarkdownEditor'; // Revert to static import
+import MarkdownPreview from './components/MarkdownPreview'; // Revert to static import
 import SidebarTabs from './components/SidebarTabs';
 import ThemeToggle from './components/ThemeToggle';
 import StatusBar from './components/StatusBar';
@@ -1972,6 +1972,7 @@ function App() {
                 </div>
                 <div className="preview-container flex-grow overflow-hidden h-full" style={{ minHeight: "0", height: "100%" }}>
                   <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
+                    {/* Removed Suspense */}
                     <MarkdownPreview 
                       ref={previewRef}
                       content={content}

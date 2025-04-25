@@ -8,6 +8,7 @@
     "watch": "webpack --mode development --watch",
     "electron:dev": "concurrently \"npm run watch\" \"electron . --inspect\"",
     "build": "webpack --mode production",
+    "analyze": "ANALYZE=true npm run build",
     "test": "jest"
   },
   "keywords": [
@@ -45,6 +46,7 @@
     "tailwindcss": "^4.1.4",
     "vite": "^6.3.3",
     "webpack": "^5.99.7",
+    "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {

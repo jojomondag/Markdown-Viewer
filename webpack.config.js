@@ -1,4 +1,5 @@
 const path = require('path');
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 
 module.exports = {
   mode: 'development',
@@ -40,5 +41,19 @@ module.exports = {
       '@codemirror/lang-html': path.resolve(__dirname, 'src/mocks/lang-html-mock.js'),
     }
   },
-  devtool: 'source-map'
+  devtool: 'source-map',
+  plugins: [
+    // Add the analyzer plugin; it runs only if ANALYZE env var is set
+    process.env.ANALYZE ? new BundleAnalyzerPlugin({
+      analyzerMode: 'json', // Output JSON instead of starting a server
+      reportFilename: path.resolve(__dirname, 'build/stats.json'), // Specify output path
+      openAnalyzer: false // Don't open the browser
+    }) : null
+  ].filter(Boolean), // Filter out null values if ANALYZE is not set
+  // Add performance hints configuration
+  performance: {
+    hints: 'warning', // Show warnings for large bundles
+    maxAssetSize: 900 * 1024, // Set max asset size to 900 KiB (in bytes)
+    maxEntrypointSize: 900 * 1024, // Set max entrypoint size to 900 KiB (in bytes)
+  }
 }; 
