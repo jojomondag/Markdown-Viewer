@@ -58,7 +58,7 @@ const SidebarTabs = ({ children, activeTab: externalActiveTab, onTabChange, ...r
           );
         })}
       </div>
-      <div className="tab-content flex-grow overflow-hidden">
+      <div className="tab-content flex-grow overflow-auto">
         {activeContent}
       </div>
     </div>
@@ -68,7 +68,7 @@ const SidebarTabs = ({ children, activeTab: externalActiveTab, onTabChange, ...r
 // Pane component for tab content
 SidebarTabs.Pane = ({ children, id }) => {
   return (
-    <div id={id} role="tabpanel" className="h-full overflow-auto">
+    <div id={id} role="tabpanel" className="h-full overflow-auto flex flex-col">
       {children}
     </div>
   );

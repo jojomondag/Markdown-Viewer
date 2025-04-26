@@ -772,20 +772,15 @@ const FileExplorer = ({
             <IconFolderOff size={24} className="mb-2 opacity-50" />
             <p>No files loaded</p>
             <div className="mt-3 flex flex-col gap-2">
-              {/* Button to open a folder initially */}
+              {/* Remove the Open Folder button from here */}
+              {/* 
               <button
                 onClick={handleOpenFolder}
                 className="px-3 py-1 bg-primary-500 hover:bg-primary-600 text-white rounded text-sm"
               >
                 Open Folder
               </button>
-               {/* Button to add a folder initially */}
-              <button
-                onClick={handleAddFolder}
-                className="px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700"
-              >
-                Add Folder
-              </button>
+              */}
             </div>
           </div>
         ) : (
@@ -812,6 +807,17 @@ const FileExplorer = ({
             ))}
           </div>
         )}
+      </div>
+
+      {/* Footer area for permanent buttons */}
+      <div className="p-2 border-t border-surface-200 dark:border-surface-700">
+        <button
+          onClick={handleAddFolder}
+          className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
+        >
+          <IconFolderPlus size={16} />
+          Add Folder
+        </button>
       </div>
 
       {/* Context Menu */}

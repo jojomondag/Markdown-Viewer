@@ -1708,35 +1708,26 @@ function App() {
       <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center justify-start space-x-2">
+            {/* Renamed back to Open Folder */}
             <button
-              onClick={openAndScanFolder}
+              onClick={openAndScanFolder} // Handler remains the same (adds folders)
               className="btn btn-primary flex items-center gap-2 w-full justify-center"
-              title={`Add Folder (Ctrl+O)`}
-              disabled={loading}
+              title={`Open Folder (Ctrl+O)`} // Updated title
+              disabled={loading} // Keep disabled logic
             >
               {loading ? (
                 <>
                   <LoadingSpinner size="sm" color="white" className="mr-1" />
-                  {!isMobile && "Adding..."}
+                  {!isMobile && "Adding..."} // Keep loading text as "Adding..."
                 </>
               ) : (
                 <>
                   <IconFolderOpen size={isMobile ? 16 : 18} className="mr-1" />
-                  {isMobile ? "Add" : "Add Folder"}
+                  {isMobile ? "Open" : "Open Folder"} {/* Updated text */}
                 </>
               )}
             </button>
-            
-            {currentFolders.length > 0 && (
-              <button 
-                className="flex items-center bg-error-600 hover:bg-error-500 dark:bg-error-700 dark:hover:bg-error-600 px-2 py-1 rounded text-sm text-white"
-                onClick={clearAllFolders}
-                title="Clear all folders"
-              >
-                <IconTrash size={isMobile ? 16 : 18} className="mr-1" />
-                {!isMobile && "Clear All"}
-              </button>
-            )}
+            {/* End of button */}
             
             {state.editor.unsavedChanges && (
               <span className="ml-2 text-xs bg-warning-500 px-1.5 py-0.5 rounded">
@@ -1781,7 +1772,7 @@ function App() {
             'flex-basis': `${gutterSize}px`,
           })}
         >
-          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
+          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-auto flex-shrink-0 ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar"> {/* Changed overflow-hidden to overflow-auto */}
             <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
               <SidebarTabs.Pane id="files">
                 <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
@@ -1796,28 +1787,33 @@ function App() {
                     <FileHistory onFileSelect={openFile} />
                   )}
                   
+                  {/* Always render FileExplorer and let it handle its empty state */}
+                  <FileExplorer 
+                    files={memoizedFiles} 
+                    folders={memoizedFolders}
+                    currentFolders={currentFolders}
+                    currentFilePath={currentFile?.path}
+                    onFileSelect={openFile} 
+                    onDeleteFile={handleDeleteItem}
+                    onCreateFile={handleCreateFile}
+                    onCreateFolder={handleCreateFolder}
+                    onDeleteFolder={handleDeleteItem}
+                    onMoveItemProp={handleMoveItem}
+                    onScanFolder={scanFolder}
+                    onRenameItem={handleRenameItem}
+                    onDeleteItem={handleDeleteItem}
+                    itemOrder={itemOrder}
+                  />
+                  {/* Remove the conditional rendering logic that was here */}
+                  {/* 
                   {memoizedFiles.length > 0 || memoizedFolders.length > 0 ? (
-                    <FileExplorer 
-                      files={memoizedFiles} 
-                      folders={memoizedFolders}
-                      currentFolders={currentFolders}
-                      currentFilePath={currentFile?.path}
-                      onFileSelect={openFile} 
-                      onDeleteFile={handleDeleteItem}
-                      onCreateFile={handleCreateFile}
-                      onCreateFolder={handleCreateFolder}
-                      onDeleteFolder={handleDeleteItem}
-                      onMoveItemProp={handleMoveItem}
-                      onScanFolder={scanFolder}
-                      onRenameItem={handleRenameItem}
-                      onDeleteItem={handleDeleteItem}
-                      itemOrder={itemOrder}
-                    />
+                    <FileExplorer ... />
                   ) : (
                     <div className="text-sm text-surface-600 p-4">
                       No files loaded. Click "Open Folder" to get started.
                     </div>
                   )}
+                  */}
                 </LoadingOverlay>
               </SidebarTabs.Pane>
               <SidebarTabs.Pane id="search">
