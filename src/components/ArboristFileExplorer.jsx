@@ -11,274 +11,7 @@ import {
 import path from 'path-browserify';
 import { getBasename, getDirname } from '../utils/pathUtils'; // Assuming pathUtils exists
 import { isValidDrop } from '../utils/fileOperations'; // Import DnD utils
-
-// Simple TreeNode component
-const TreeNode = ({
-  node,
-  level = 0,
-  onNodeSelect,
-  onFolderToggle,
-  expandedNodes,
-  selectedNodePaths, // Changed from isSelected
-  renamingNodePath, // Path of the node currently being renamed
-  onRenameSubmit,   // Function to call when rename is submitted
-  onRenameCancel,    // Function to call when rename is cancelled
-  currentFilePath, // Added prop
-  onContextMenu, // Re-added prop
-  onMoveItem, // Added prop for drop handler
-  isDragging, // Is this node being dragged?
-  dragOverPosition, // Where is the cursor relative to this node? ('top', 'bottom', 'middle')
-  dragOverPath // Path of the node being dragged over (used by parent)
-}) => {
-  const isExpanded = expandedNodes[node.path] || false;
-  const isSelected = selectedNodePaths.has(node.path); // Calculate isSelected internally
-  const hasChildren = node.children && node.children.length > 0;
-  const isFolder = node.type === 'folder';
-
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(node.name);
-  const renameInputRef = useRef(null);
-
-  // Effect to set renaming state based on prop
-  useEffect(() => {
-    if (renamingNodePath === node.path) {
-      setIsRenaming(true);
-      const currentName = node.name; // Use original node name
-      setNewName(currentName);
-
-      // Focus the input and select text when renaming starts
-      setTimeout(() => {
-        const inputElement = renameInputRef.current;
-        if (inputElement) {
-          inputElement.focus();
-
-          // Determine selection range
-          const isFile = node.type === 'file';
-          const lastDotIndex = isFile ? currentName.lastIndexOf('.') : -1;
-          const selectionEnd = (isFile && lastDotIndex > 0) ? lastDotIndex : currentName.length;
-
-          inputElement.setSelectionRange(0, selectionEnd);
-        }
-      }, 0); // Timeout ensures element is rendered and ready
-
-    } else {
-      setIsRenaming(false);
-    }
-    // Add node.type as dependency
-  }, [renamingNodePath, node.path, node.name, node.type]);
-
-  const handleClick = (e) => {
-    e.stopPropagation(); // Prevent event bubbling
-    // Always call onNodeSelect to let the parent handle selection/rename/toggle logic
-    onNodeSelect(node, e); // Pass event object
-  };
-
-  const handleRenameChange = (e) => {
-    setNewName(e.target.value);
-  };
-
-  const handleRenameKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleRenameBlur(); // Submit on Enter
-    } else if (e.key === 'Escape') {
-      setIsRenaming(false); // Cancel on Escape
-      setNewName(node.name); // Reset name
-      onRenameCancel(); // Notify parent
-    }
-  };
-
-  const handleRenameBlur = () => {
-    if (isRenaming) {
-      const trimmedName = newName.trim();
-      if (trimmedName && trimmedName !== node.name) {
-        onRenameSubmit(node, trimmedName); // Submit if name changed and not empty
-      } else {
-        onRenameCancel(); // Cancel if name is unchanged or empty
-      }
-      setIsRenaming(false); // Exit renaming mode regardless
-    }
-  };
-
-  const handleContextMenu = (e) => {
-    e.preventDefault(); // Prevent default browser context menu
-    e.stopPropagation();
-    onContextMenu(e, node); // Pass event and node data
-  };
-
-  // --- Drag and Drop Handlers ---
-  const handleDragStart = (e) => {
-    e.stopPropagation();
-
-    let draggedItems = [];
-    const isNodeSelected = selectedNodePaths.has(node.path);
-
-    if (isNodeSelected) {
-      // Dragging a selected node: include all selected items
-      // For now, let's assume we pass the selected paths and the parent resolves them.
-      draggedItems = Array.from(selectedNodePaths).map(path => ({ path, type: 'unknown' })); // Type might need resolving later
-    } else {
-      // Dragging an unselected node: select only this node and drag it
-      // This implicit selection should happen in the parent via onMoveItem or similar
-      draggedItems = [{ path: node.path, type: node.type }];
-    }
-
-    e.dataTransfer.setData('application/json', JSON.stringify(draggedItems));
-    e.dataTransfer.effectAllowed = 'move';
-
-    onMoveItem(draggedItems, null, 'dragStart'); // Pass items
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault(); // Necessary to allow dropping
-    e.stopPropagation();
-
-    // Determine position relative to the target element
-    const hoverThreshold = 0.25; // Percentage of height for top/bottom zones
-    const rect = e.currentTarget.getBoundingClientRect();
-    const hoverY = e.clientY - rect.top;
-
-    let position = 'middle';
-    if (hoverY < rect.height * hoverThreshold) {
-        position = 'top';
-    } else if (hoverY > rect.height * (1 - hoverThreshold)) {
-        position = 'bottom';
-    } else {
-        position = 'middle';
-    }
-
-    // Indicate this node is being dragged over
-    onMoveItem(null, node, 'dragOver', position); // Pass position
-    // Set drop effect (visual cue)
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      const draggedItemsData = JSON.parse(e.dataTransfer.getData('application/json')); // Now expects an array
-
-      // Determine drop position again (similar to dragOver)
-      const hoverThreshold = 0.25; // Percentage of height for top/bottom zones
-      const rect = e.currentTarget.getBoundingClientRect();
-      const hoverY = e.clientY - rect.top;
-
-      let position = 'middle';
-      if (hoverY < rect.height * hoverThreshold) {
-          position = 'top';
-      } else if (hoverY > rect.height * (1 - hoverThreshold)) {
-          position = 'bottom';
-      } else {
-          position = 'middle';
-      }
-
-
-      // Basic validation: ensure dragged data is an array and not empty
-      if (Array.isArray(draggedItemsData) && draggedItemsData.length > 0) {
-        // Check if dropping onto self or one of the dragged items (more complex for multi-drag)
-        const isDroppingOnSelfOrDragged = draggedItemsData.some(item => item.path === node.path);
-        if (!isDroppingOnSelfOrDragged) {
-          // Call the parent handler to perform the move for all items
-          onMoveItem(draggedItemsData, node, 'drop', position); // Pass array of items
-        }
-      } else {
-        console.error('[DnD] Drop ignored (self or invalid data)');
-      }
-    } catch (error) {
-      console.error('[DnD] Error parsing dropped data:', error);
-    }
-    // Notify parent to clear dragOver state
-    onMoveItem(null, null, 'dragEnd');
-  };
-
-  const handleDragEnd = (e) => {
-    e.stopPropagation();
-    // Notify parent to clear all drag states
-    onMoveItem(null, null, 'dragEnd');
-  };
-  // --- End Drag and Drop Handlers ---
-
-  const baseClasses = 'flex items-center px-1 py-1 rounded cursor-pointer hover:bg-surface-200 dark:hover:bg-surface-700 overflow-hidden';
-  const selectionClasses = isSelected ? 'bg-primary-100 dark:bg-primary-900 border border-primary-400 dark:border-primary-600' : '';
-  const currentFileClasses = !isSelected && node.path === currentFilePath ? 'font-semibold text-primary-700 dark:text-primary-300' : '';
-  const combinedClasses = `${baseClasses} ${selectionClasses} ${currentFileClasses}`.trim();
-
-  return (
-    <div
-      className={`flex flex-col transition-all duration-100 ease-in-out ${isDragging ? 'opacity-50' : ''} ${dragOverPath === node.path && dragOverPosition === 'top' ? 'border-t-4 border-blue-600 bg-blue-200 dark:bg-blue-800/50 pt-1 mb-1' : ''} ${dragOverPath === node.path && dragOverPosition === 'bottom' ? 'border-b-4 border-blue-600 bg-blue-200 dark:bg-blue-800/50 pb-1 mt-1' : ''} ${dragOverPath === node.path && dragOverPosition === 'middle' && node.type === 'folder' ? 'bg-blue-100 dark:bg-blue-900/50 rounded' : ''} ${dragOverPath === node.path && dragOverPosition === 'middle' && node.type !== 'folder' ? 'bg-error-100 dark:bg-error-900/50 rounded' : ''}`.trim()}
-      draggable="true" // Make node draggable
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      onDragEnd={handleDragEnd}
-    >
-      <div
-        className={combinedClasses}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu} // Re-added context menu handler
-        style={{ paddingLeft: `${level * 16}px` }}
-      >
-        <div className="flex-shrink-0 mr-1 w-4">
-          {isFolder && hasChildren && (
-            isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />
-          )}
-        </div>
-        <div className="flex-shrink-0 mr-2">
-          {isFolder ? (
-            isExpanded ? <IconFolderOpen size={16} color="#60a5fa" /> : <IconFolder size={16} color="#60a5fa" />
-          ) : (
-            <IconFile size={16} color="#a1a1aa" />
-          )}
-        </div>
-        {isRenaming ? (
-          <input
-            ref={renameInputRef}
-            type="text"
-            value={newName}
-            onChange={handleRenameChange}
-            onKeyDown={handleRenameKeyDown}
-            onBlur={handleRenameBlur}
-            onClick={(e) => e.stopPropagation()} // Prevent click from bubbling to node selection
-            className="flex-grow bg-surface-100 dark:bg-surface-800 border border-primary-500 rounded px-1 text-sm outline-none"
-            style={{ marginLeft: '2px' }} // Add some spacing
-          />
-        ) : (
-          <div className="truncate text-sm" data-testid="node-name">
-            {node.name}
-            {isFolder && hasChildren && (
-              <span className="text-xs text-gray-400 ml-1">({node.children.length})</span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {isFolder && isExpanded && hasChildren && (
-        <div className="ml-2"> {/* Indent children */}
-          {node.children.map(child => (
-            <TreeNode
-              key={child.path}
-              node={child}
-              level={level + 1}
-              onNodeSelect={onNodeSelect} // Pass down selection handler
-              onFolderToggle={onFolderToggle} // Re-added prop passing
-              expandedNodes={expandedNodes}
-              selectedNodePaths={selectedNodePaths} // Pass down the Set
-              renamingNodePath={renamingNodePath} // Pass renaming state
-              onRenameSubmit={onRenameSubmit} // Pass rename submit handler
-              onRenameCancel={onRenameCancel} // Pass rename cancel handler
-              currentFilePath={currentFilePath} // Pass down current file path
-              onContextMenu={onContextMenu} // Pass down context menu handler
-              onMoveItem={onMoveItem} // Pass down move handler
-              isDragging={isDragging}
-              dragOverPath={dragOverPath}
-              dragOverPosition={dragOverPosition} // Pass down drag over position directly
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+import TreeNode from './TreeNode';
 
 // Main FileExplorer component (Arborist style)
 const FileExplorer = ({
@@ -294,9 +27,11 @@ const FileExplorer = ({
   onDeleteItem, // Added prop for delete handler
   onMoveItemProp, // Added prop for move handler from App.jsx
   itemOrder, // Added prop for explicit item order
+  onAddFolder, // Added prop for adding folders
+  expandedNodes, // <-- Accept expandedNodes state from props
+  onFolderToggle, // <-- Accept folder toggle handler from props
   // Add any other necessary props based on App.jsx usage
 }) => {
-  const [expandedNodes, setExpandedNodes] = useState({});
   const [treeData, setTreeData] = useState([]);
   const [rootFolderName, setRootFolderName] = useState(''); // Optional: display root folder name
   const [selectedNodePaths, setSelectedNodePaths] = useState(new Set()); // Use a Set for multi-selection
@@ -420,25 +155,7 @@ const FileExplorer = ({
         setRootFolderName('');
     }
 
-    // Auto-expand all root folders defined in currentFolders
-    if (currentFolders.length > 0) {
-        const rootPathsToExpand = {};
-        currentFolders.forEach(rootPath => {
-            const normalizedPath = rootPath.replace(/\\/g, '/');
-            rootPathsToExpand[normalizedPath] = true;
-        });
-        // Merge with existing expanded nodes to preserve subfolder state
-        setExpandedNodes(prev => ({ ...prev, ...rootPathsToExpand }));
-    }
-
   }, [files, folders, currentFolders, buildTree, itemOrder]);
-
-  const handleFolderToggle = useCallback((path) => {
-    setExpandedNodes(prev => ({
-      ...prev,
-      [path]: !prev[path]
-    }));
-  }, []);
 
   // Helper function to get a flattened list of visible nodes
   const getVisibleNodes = useCallback(() => {
@@ -504,7 +221,7 @@ const FileExplorer = ({
              handleRenameStart(node);
           } else if (node.type === 'folder') {
              // Clicking the icon part of an already selected folder toggles it
-             handleFolderToggle(node.path);
+             onFolderToggle(node.path);
           }
           // Keep selection as is if renaming or toggling
         } else {
@@ -515,13 +232,13 @@ const FileExplorer = ({
           if (node.type === 'file') {
             onFileSelect(node);
           } else if (node.type === 'folder') {
-            handleFolderToggle(node.path);
+            onFolderToggle(node.path);
           }
         }
       }
       return newSelectedPaths;
     });
-  }, [onFileSelect, handleFolderToggle, handleRenameStart, shiftSelectionAnchorPath, getVisibleNodes]); // Added dependencies
+  }, [onFileSelect, onFolderToggle, handleRenameStart, shiftSelectionAnchorPath, getVisibleNodes]); // Added dependencies
 
   // Function to initiate rename
   const handleRenameStart = useCallback((node) => { // Make useCallback
@@ -589,30 +306,6 @@ const FileExplorer = ({
     }
   }, [onScanFolder]);
 
-  // Handle add folder button click (Adds to existing content)
-  const handleAddFolder = useCallback(() => {
-    if (window.api && window.api.openFolderDialog) {
-      window.api.openFolderDialog().then(folderPath => {
-        if (folderPath && onScanFolder) {
-          // Scan the selected folder, adding to existing content (addMode = true)
-          onScanFolder(folderPath, true).then(() => {
-            // Auto-expand the newly added folder
-            if (folderPath) {
-              // Normalize the path for consistency
-              const normalizedPath = path.normalize(folderPath).replace(/\\/g, '/');
-              setExpandedNodes(prev => ({
-                ...prev,
-                [normalizedPath]: true
-              }));
-            }
-          });
-        }
-      });
-    } else {
-      console.error("API for opening folder dialog not available");
-    }
-  }, [onScanFolder]);
-
   // Re-added context menu handlers and effects
   const handleContextMenu = useCallback((event, node) => {
     event.preventDefault();
@@ -655,7 +348,7 @@ const FileExplorer = ({
 
         // Expand parent folder if collapsed
         if (!expandedNodes[folderNode.path]) {
-          handleFolderToggle(folderNode.path);
+          onFolderToggle(folderNode.path);
         }
 
         // --- START: Open the new file in the editor ---
@@ -791,7 +484,7 @@ const FileExplorer = ({
                 node={node}
                 level={0} // Start top-level nodes at level 0
                 onNodeSelect={handleNodeSelect} // Use the new selection handler
-                onFolderToggle={handleFolderToggle} // Keep this separate for buildTree logic
+                onFolderToggle={onFolderToggle} // Pass down the handler from props
                 expandedNodes={expandedNodes}
                 selectedNodePaths={selectedNodePaths} // Pass down the Set
                 renamingNodePath={renamingNodePath} // Pass renaming state
@@ -812,7 +505,7 @@ const FileExplorer = ({
       {/* Footer area for permanent buttons */}
       <div className="p-2 border-t border-surface-200 dark:border-surface-700">
         <button
-          onClick={handleAddFolder}
+          onClick={onAddFolder}
           className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
         >
           <IconFolderPlus size={16} />

@@ -1,5 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
-import { IconFolderOpen, IconSettings, IconX, IconEye, IconLink, IconUnlink, IconZoomIn, IconZoomOut, IconZoomReset, IconPrinter, IconSortAscending, IconSortDescending, IconTrash, IconEyeOff } from '@tabler/icons-react';
+import React, { useState, useEffect, useRef, useReducer, useCallback, useMemo, useLayoutEffect } from 'react';
+import { 
+  IconFolderOpen, 
+  IconFolderPlus,
+  IconFilePlus,
+  IconDeviceFloppy, 
+  IconSettings, 
+  IconSearch,
+  IconFiles,
+  IconHistory,
+  IconFolderOff,
+  IconEyeOff, // <-- Add IconEyeOff
+  IconEye,    // <-- Add IconEye (likely needed too)
+  IconLink,   // <-- Add IconLink
+  IconUnlink, // <-- Add IconUnlink
+  IconZoomIn, // <-- Add IconZoomIn
+  IconZoomOut,// <-- Add IconZoomOut
+  IconZoomReset, // <-- Add IconZoomReset
+  IconPrinter // <-- Add IconPrinter
+} from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
 import FileHistory from './components/FileHistory';
@@ -21,7 +39,8 @@ import useNotification from './hooks/useNotification';
 import { useSettings } from './context/SettingsContext';
 import EditorTabs from './components/EditorTabs';
 import FileSearch from './components/FileSearch';
-import path from 'path';
+import SaveStateDialog from './components/SaveStateDialog'; // <-- Import the new dialog
+import path from 'path-browserify'; // Use browser-compatible path
 import { getDirname, getBasename } from './utils/pathUtils'; // Import path utils
 
 function App() {
@@ -37,6 +56,8 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isEditorContainerVisible, setIsEditorContainerVisible] = useState(true);
+  const [isSaveStateDialogOpen, setIsSaveStateDialogOpen] = useState(false); // <-- Add state for the dialog
+  const [expandedNodes, setExpandedNodes] = useState({}); // <-- State for expanded nodes
   const {
     files,
     folders,
@@ -183,13 +204,24 @@ function App() {
           return newFolders; 
         });
         
-        // --- FIX: Call scanFolder for each selected path --- 
-        console.log('[App] Calling scanFolder for each selected path...');
+        // --- Auto-expand newly added root folders ---
+        const rootPathsToExpand = {};
+        result.folderPaths.forEach(folderPath => {
+          const normalizedPath = folderPath.replace(/\\/g, '/');
+          rootPathsToExpand[normalizedPath] = true;
+        });
+        setExpandedNodes(prev => ({ ...prev, ...rootPathsToExpand }));
+        // --- End Auto-expand ---
+        
+        // --- Scan each added folder --- 
+        console.log('[App] Calling scanFolder for each added path...');
         for (const folderPath of result.folderPaths) {
           await scanFolder(folderPath, true); // Call scanFolder in add mode
         }
-        console.log('[App] Finished calling scanFolder for all paths.');
-        // --- End Fix ---
+        console.log('[App] Finished calling scanFolder for all added paths.');
+        // --- End Scan --- 
+        
+        setIsProjectOpen(true); // <-- Set project open state to true
         
         return result; // Keep returning the result
       } else {
@@ -1701,46 +1733,235 @@ function App() {
     }
   }, [previewRef, setPreviewZoom]); // Dependency is the ref and setPreviewZoom
 
+  // State to track if a project (folder) is open
+  const [isProjectOpen, setIsProjectOpen] = useState(false); // <-- Add this state
+  
+  // --- State for Saved Workspace States (keyed by user-provided name) ---
+  const [savedWorkspaceStates, setSavedWorkspaceStates] = useState({});
+  
+  // Load saved projects from localStorage on mount
+  useEffect(() => {
+    const storedStates = localStorage.getItem('savedMdViewerWorkspaceStates'); // <-- Updated key
+    if (storedStates) {
+      try {
+        const parsedStates = JSON.parse(storedStates);
+        // Basic validation: check if it's an object
+        if (typeof parsedStates === 'object' && parsedStates !== null && !Array.isArray(parsedStates)) {
+          setSavedWorkspaceStates(parsedStates);
+        } else {
+          console.warn("Invalid format for saved project states in localStorage. Resetting.");
+          localStorage.removeItem('savedMdViewerWorkspaceStates'); // <-- Updated key
+        } 
+      } catch (e) {
+        console.error("Failed to parse saved project states from localStorage:", e);
+        localStorage.removeItem('savedMdViewerWorkspaceStates'); // <-- Updated key
+      }
+    }
+  }, []);
+  // --- End New State ---
+
+  // Placeholder for Save Project functionality - now just opens the dialog
+  const handleSaveProject = async () => {
+    console.log('[App] handleSaveProject called - opening dialog');
+    
+    if (currentFolders.length === 0) {
+      showError("Cannot save project state: No folder is open.");
+      return;
+    }
+    
+    // Open the dialog instead of prompting directly
+    setIsSaveStateDialogOpen(true);
+  };
+  
+  // New handler called by the SaveStateDialog
+  const confirmSaveState = (stateName) => {
+    console.log(`[App] confirmSaveState called with name: ${stateName}`);
+    
+    if (!stateName) {
+      console.error("[App] confirmSaveState called without a name.");
+      return; // Should not happen if dialog validation works
+    }
+    
+    // Get project path (should still be available)
+    if (currentFolders.length === 0) {
+      showError("Cannot save project state: Folder context lost.");
+      return;
+    }
+    // REMOVED incorrect prompt logic below
+
+    const projectData = {
+      name: stateName, // Use the user-provided name from the dialog parameter
+      timestamp: Date.now(), // Use timestamp to identify this state
+      rootFolders: currentFolders, // <-- Save ALL current root folders
+      expandedNodes: expandedNodes, // <-- Save current expanded nodes state
+      openFiles: openFiles.map(file => file.path) // <-- Save paths of currently open files
+      // Future: save sidebar state, split sizes, etc.
+    };
+    
+    console.log('[App] Saving workspace state:', projectData);
+    
+    try {
+      // Update state and localStorage
+      setSavedWorkspaceStates(prevStates => {
+        // Use the user-provided name as the key
+        // This will overwrite if the name already exists. 
+        // Consider adding a confirmation if prevStates[stateName] exists.
+        const newState = { ...prevStates, [stateName]: projectData };
+        localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(newState)); // <-- Updated key
+        return newState;
+      });
+      
+      // No longer switching header mode
+      showSuccess(`Workspace state \'${stateName}\' saved!`); 
+      
+    } catch (error) {
+      console.error("Failed to save project state to localStorage:", error);
+      showError("Failed to save project state.");
+    }
+  };
+  
+  // Placeholder for loading a saved workspace state
+  const handleLoadWorkspaceState = async (stateData) => { // Renamed, takes full state data
+    console.log(`[App] handleLoadWorkspaceState called with:`, stateData);
+    const { name, rootFolders = [], expandedNodes: loadedExpandedNodes = {}, openFiles: loadedOpenFiles = [] } = stateData;
+
+    showInfo(`Loading workspace state \'${name}\'...`);
+    
+    // 1. Clear current workspace state (implementation depends on context/hooks)
+    // TODO: Need a way to properly clear/reset state managed by useFiles and AppStateProvider
+    // Example (Conceptual - needs actual implementation):
+    // closeAllTabs(); // Dispatch action to close all editor tabs
+    // setCurrentFile(null); // Clear current file
+    // updateContent(\'\'); // Clear editor content
+    // originalClearFolders(); // Clear folders in useFiles hook (if exposed)
+    // setFiles([]); // Clear files state
+    // setFolders([]); // Clear folders state
+    // setCurrentFolders([]); // Clear root folders
+    // setExpandedNodes({}); // Clear expanded nodes
+    console.warn("[App] Workspace clearing logic is not fully implemented!");
+
+    // --- TEMPORARY: Simple Reset --- 
+    setCurrentFolders([]);
+    setFiles([]);
+    setFolders([]);
+    setExpandedNodes({});
+    // closeAllTabs(); // Assuming a function/dispatch exists
+    // --- End Temporary Reset ---
+
+    // 2. Set state from loaded data
+    setCurrentFolders(rootFolders);
+    setExpandedNodes(loadedExpandedNodes);
+    setIsProjectOpen(rootFolders.length > 0);
+
+    // 3. Scan all folders from the loaded state
+    if (rootFolders.length > 0) {
+      setLoading({ files: true });
+      try {
+        const scanPromises = rootFolders.map(folderPath => scanFolder(folderPath, true));
+        await Promise.all(scanPromises);
+        console.log("[App] Finished scanning all folders for loaded state.");
+
+        // 4. Re-open files after scan is complete
+        // Need to find the full file objects from the newly scanned files list
+        const filesToOpen = loadedOpenFiles.map(filePath => files.find(f => f.path === filePath)).filter(Boolean);
+        console.log("[App] Attempting to re-open files:", filesToOpen);
+        // TODO: Implement logic to open these files (e.g., using addOpenFile, originalOpenFile?)
+        // filesToOpen.forEach(file => openFile(file)); // This might trigger multiple loads
+        console.warn("[App] File re-opening logic is not fully implemented!");
+
+        showSuccess(`Workspace state \'${name}\' loaded.`);
+      } catch (error) {
+        showError(`Error loading workspace state \'${name}\': ${error.message}`);
+        // Attempt to revert to a clean state?
+        setCurrentFolders([]);
+        setFiles([]);
+        setFolders([]);
+        setExpandedNodes({});
+        setIsProjectOpen(false);
+      } finally {
+        setLoading({ files: false });
+      }
+    } else {
+       showSuccess(`Loaded empty workspace state \'${name}\'`);
+    }
+  };
+
+  // Handler to toggle folder expansion state (passed down to explorer)
+  const handleFolderToggle = useCallback((path) => {
+    setExpandedNodes(prev => ({
+      ...prev,
+      [path]: !prev[path]
+    }));
+  }, []);
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       {/* <AccessibilityHelper /> */}
       
       <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
-        <div className="container mx-auto flex items-center justify-between">
-          <div className="flex items-center justify-start space-x-2">
-            {/* Renamed back to Open Folder */}
+        <div className="container mx-auto flex items-center justify-between gap-4"> {/* Added gap */} 
+          
+          {/* --- Left Section: Open/Save Button and Saved State Tabs --- */}          
+          <div className="flex items-center space-x-2 flex-shrink min-w-0"> {/* Allow shrinking */} 
+            {/* --- Open/Save Button --- */}
             <button
-              onClick={openAndScanFolder} // Handler remains the same (adds folders)
-              className="btn btn-primary flex items-center gap-2 w-full justify-center"
-              title={`Open Folder (Ctrl+O)`} // Updated title
-              disabled={loading} // Keep disabled logic
+              onClick={isProjectOpen ? handleSaveProject : openAndScanFolder}
+              className={`btn btn-primary flex items-center gap-2 ${isProjectOpen ? 'flex-shrink-0' : 'w-full justify-center'}`} // Adjust width based on mode
+              title={isProjectOpen ? `Save Current Project State` : `Open Folder (Ctrl+O)`}
+              disabled={loading || (isProjectOpen && currentFolders.length === 0)}
             >
               {loading ? (
                 <>
                   <LoadingSpinner size="sm" color="white" className="mr-1" />
-                  {!isMobile && "Adding..."} // Keep loading text as "Adding..."
+                  {!isMobile && (isProjectOpen ? "Saving..." : "Adding...")} {/* Conditional loading text */}
                 </>
               ) : (
                 <>
-                  <IconFolderOpen size={isMobile ? 16 : 18} className="mr-1" />
-                  {isMobile ? "Open" : "Open Folder"} {/* Updated text */}
+                  {isProjectOpen ? (
+                    <IconDeviceFloppy size={isMobile ? 16 : 18} className="mr-1" />
+                  ) : (
+                    <IconFolderOpen size={isMobile ? 16 : 18} className="mr-1" />
+                  )}
+                  {isMobile ? (isProjectOpen ? "Save" : "Open") : (isProjectOpen ? "Save State" : "Open Folder")} {/* Changed Save button text */}
                 </>
               )}
             </button>
-            {/* End of button */}
             
-            {state.editor.unsavedChanges && (
-              <span className="ml-2 text-xs bg-warning-500 px-1.5 py-0.5 rounded">
+            {/* --- Saved State Tabs (only if project is open and states exist) --- */}
+            {isProjectOpen && Object.keys(savedWorkspaceStates).length > 0 && (
+              <div className="flex items-center space-x-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 border-l border-surface-300 dark:border-surface-600 pl-2 ml-2"> {/* Add separator and scroll */} 
+                {Object.values(savedWorkspaceStates).map((stateData) => (
+                  <button
+                    key={stateData.name} // Use state name as unique key
+                    onClick={() => handleLoadWorkspaceState(stateData)}
+                    className="flex-shrink-0 px-3 py-1.5 border border-surface-300 dark:border-surface-600 rounded bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-sm whitespace-nowrap" // Basic tab style 
+                    title={`Load state: ${stateData.name}`}
+                  >
+                    {stateData.name} {/* Display the saved state name */}
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            {/* Unsaved changes indicator (if applicable) */}            
+            {isProjectOpen && state.editor.unsavedChanges && (
+              <span className="ml-2 text-xs bg-warning-500 px-1.5 py-0.5 rounded flex-shrink-0">
                 Unsaved
               </span>
             )}
           </div>
           
-          <div className="flex justify-center">
-            {/* App title or logo could go here */}
+          {/* --- Center Section (Optional Title) --- */}          
+          <div className="flex justify-center flex-grow min-w-0 px-4">\n            {/* App title or logo could go here, ensure it doesn't get crushed */}
+            {isProjectOpen && currentFolders.length > 0 && (
+              <span className="text-sm font-medium truncate" title={currentFolders[0]}> { /* Show current project name */}
+                {getBasename(currentFolders[0])}
+              </span>
+            )}
           </div>
-          
-          <div className="flex items-center justify-end space-x-2">
+
+          {/* --- Right Section: Theme Toggle, Settings --- */}
+          <div className="flex items-center justify-end space-x-2 flex-shrink-0"> { /* No shrink */} 
             <ThemeToggle />
             <button 
               className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
@@ -1803,6 +2024,9 @@ function App() {
                     onRenameItem={handleRenameItem}
                     onDeleteItem={handleDeleteItem}
                     itemOrder={itemOrder}
+                    onAddFolder={openAndScanFolder} // <-- Pass the handler down
+                    expandedNodes={expandedNodes} // <-- Pass state down
+                    onFolderToggle={handleFolderToggle} // <-- Pass handler down
                   />
                   {/* Remove the conditional rendering logic that was here */}
                   {/* 
@@ -2026,6 +2250,14 @@ function App() {
       <SettingsPanel 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)}
+      />
+      
+      {/* --- Add the Save State Dialog --- */}      
+      <SaveStateDialog 
+        isOpen={isSaveStateDialogOpen} 
+        onClose={() => setIsSaveStateDialogOpen(false)} 
+        onSubmit={confirmSaveState} 
+        defaultName={`Saved State - ${new Date().toLocaleString()}`} // Pass default name
       />
     </div>
   );
