@@ -113,13 +113,31 @@ const MarkdownEditor = forwardRef(({
   
   // Function to create the theme extension based on font size
   const createThemeExtension = (currentFontSize) => {
+    const lineHeight = 1.5; // Define a consistent line height
     return EditorView.theme({
       "&": { height: "100%" },
       ".cm-scroller": { overflow: "auto" },
       ".cm-content": { 
-        whiteSpace: "pre-wrap",
+        whiteSpace: "pre", // Changed back to "pre" to disable wrapping
         caretColor: "white", // Make cursor visible
-        fontSize: `${currentFontSize}px` // Use dynamic font size
+        fontSize: `${currentFontSize}px`, // Use dynamic font size
+        lineHeight: lineHeight // Apply consistent line height
+      },
+      ".cm-gutters": { // Styles for the main gutter container
+        fontSize: `${currentFontSize}px`,
+        lineHeight: lineHeight,
+        // Add background/border if desired for the whole gutter area
+        // backgroundColor: "#f0f0f0", 
+        // borderRight: "1px solid #ccc",
+      },
+      ".cm-lineNumbers": { // Specific styles for the line number gutter
+         width: "3.5em !important",    // Ensure FIXED width (adjust value as needed)
+         paddingRight: "1em", // Add space to the right of the numbers
+         textAlign: "right",  // Align numbers to the right
+         color: "#888"       // Optional: Set a specific color for line numbers
+      },
+      ".cm-gutterElement": { // Ensure individual gutter elements inherit line height correctly
+        lineHeight: `${lineHeight}em` // Use em to ensure it scales with font size if needed
       },
       ".cm-cursor": {
         borderLeftWidth: "2px",
@@ -776,21 +794,25 @@ const MarkdownEditor = forwardRef(({
         
         // Handle normal selection within editor
         try {
+          const view = viewRef.current;
           // Get position at mouse coordinates
-          const pos = viewRef.current.posAtCoords({ x: mouseX, y: mouseY });
+          const pos = view.posAtCoords({ x: mouseX, y: mouseY });
           if (pos === null) return;
           
           // Get line at position
-          const lineAtPos = viewRef.current.state.doc.lineAt(pos);
+          const currentLine = view.state.doc.lineAt(pos);
           
-          // Ensure we select full lines
-          const from = Math.min(selectionOrigin, lineAtPos.from);
-          const to = Math.max(selectionOrigin, lineAtPos.to);
+          // Get the starting line object (using the line number stored on mousedown)
+          const startLine = view.state.doc.line(startLineNumber); 
           
-          // Update selection
-          viewRef.current.dispatch({
-            selection: EditorSelection.range(from, to),
-            scrollIntoView: { y: "nearest", x: "never" }
+          // Determine the full range from the start line to the current line
+          const selectionFrom = Math.min(startLine.from, currentLine.from);
+          const selectionTo = Math.max(startLine.to, currentLine.to);
+          
+          // Update selection to cover the full lines
+          view.dispatch({
+            selection: EditorSelection.range(selectionFrom, selectionTo),
+            scrollIntoView: false // Let continuousScroll handle scrolling if needed
           });
           
           // Restore horizontal scroll

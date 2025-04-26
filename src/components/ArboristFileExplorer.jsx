@@ -198,7 +198,7 @@ const TreeNode = ({
   };
   // --- End Drag and Drop Handlers ---
 
-  const baseClasses = 'flex items-center px-1 py-1 rounded cursor-pointer hover:bg-surface-200 dark:hover:bg-surface-700';
+  const baseClasses = 'flex items-center px-1 py-1 rounded cursor-pointer hover:bg-surface-200 dark:hover:bg-surface-700 overflow-hidden';
   const selectionClasses = isSelected ? 'bg-primary-100 dark:bg-primary-900 border border-primary-400 dark:border-primary-600' : '';
   const currentFileClasses = !isSelected && node.path === currentFilePath ? 'font-semibold text-primary-700 dark:text-primary-300' : '';
   const combinedClasses = `${baseClasses} ${selectionClasses} ${currentFileClasses}`.trim();
