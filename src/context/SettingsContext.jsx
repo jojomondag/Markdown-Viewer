@@ -4,7 +4,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 export const DEFAULT_SETTINGS = {
   // Editor preferences
   editor: {
-    fontSize: 14,
     fontFamily: 'monospace',
     lineNumbers: true,
     wordWrap: true,
@@ -65,6 +64,12 @@ export const SettingsProvider = ({ children }) => {
 
   // Update a specific setting
   const updateSetting = (category, key, value) => {
+    // Prevent updating fontSize via this context
+    if (category === 'editor' && key === 'fontSize') {
+      console.warn('Editor font size should be updated via AppStateContext');
+      return; 
+    }
+    
     setSettings(prev => ({
       ...prev,
       [category]: {
@@ -76,7 +81,26 @@ export const SettingsProvider = ({ children }) => {
 
   // Reset settings to defaults
   const resetSettings = () => {
-    setSettings(DEFAULT_SETTINGS);
+    // Keep the current font size from AppStateContext when resetting?
+    // For now, let's just reset other settings.
+    // If resetting font size is desired, it should trigger setEditorFontSize from AppStateContext.
+    const { editor: { fontSize, ...otherEditorSettings }, ...otherCategories } = DEFAULT_SETTINGS;
+    setSettings(prev => ({
+      ...otherCategories,
+      editor: {
+        ...otherEditorSettings,
+        // Optionally keep the current non-fontSize settings if needed
+        // fontFamily: prev.editor.fontFamily, 
+        // etc...
+      },
+      // Keep other categories as they were unless they should reset too
+      // ui: prev.ui 
+    }));
+    
+    // Note: Resetting doesn't currently affect the AppStateContext fontSize.
+    // If you want reset to also reset the editor font size, you'd need 
+    // to call the `setEditorFontSize` function from AppStateContext here.
+    // This might require passing that function down or accessing the context here.
   };
 
   return (

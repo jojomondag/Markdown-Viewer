@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { EditorState, EditorSelection, Text } from '@codemirror/state';
+import { EditorState, EditorSelection, Text, Compartment } from '@codemirror/state';
 import { 
   EditorView, 
   keymap, 
@@ -63,6 +63,9 @@ import SearchReplaceDialog from './SearchReplaceDialog';
 import { IconSearch } from '@tabler/icons-react';
 import { useAppState } from '../context/AppStateContext';
 
+// Create a compartment for the theme so it can be changed dynamically
+const themeCompartment = new Compartment();
+
 // Helper functions for folding
 const isHeadingLine = (line) => /^#{1,6}\s.+$/.test(line);
 const isCodeBlockStart = (line) => /^```\w*$/.test(line);
@@ -98,11 +101,35 @@ const MarkdownEditor = forwardRef(({
   const viewRef = useRef(null);
   const initializedRef = useRef(false);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
-  const { setCursorPosition: setAppCursorPosition } = useAppState();
+  const { 
+    state: appState, 
+    setCursorPosition: setAppCursorPosition, 
+    setEditorFontSize
+  } = useAppState();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
+  const fontSize = appState.editor.fontSize;
   
+  // Function to create the theme extension based on font size
+  const createThemeExtension = (currentFontSize) => {
+    return EditorView.theme({
+      "&": { height: "100%" },
+      ".cm-scroller": { overflow: "auto" },
+      ".cm-content": { 
+        whiteSpace: "pre-wrap",
+        caretColor: "white", // Make cursor visible
+        fontSize: `${currentFontSize}px` // Use dynamic font size
+      },
+      ".cm-cursor": {
+        borderLeftWidth: "2px",
+        borderLeftStyle: "solid",
+        borderLeftColor: "white"
+      },
+      "&.cm-editor.cm-focused": { outline: "none" }
+    });
+  };
+
   // Basic cursor position tracking
   const trackCursorPosition = useCallback((view) => {
     if (!view) return;
@@ -236,6 +263,12 @@ const MarkdownEditor = forwardRef(({
       if (viewRef.current) unfoldCode(viewRef.current);
     },
 
+    // Zoom functions
+    zoomIn: () => setEditorFontSize(prevSize => Math.min(prevSize + 1, 36)),
+    zoomOut: () => setEditorFontSize(prevSize => Math.max(prevSize - 1, 8)),
+    setFontSize: (newSize) => setEditorFontSize(Math.max(8, Math.min(newSize, 36))),
+    getFontSize: () => appState.editor.fontSize,
+
     // Undo/redo functions
     undo: () => undoCommand(viewRef.current),
     redo: () => redoCommand(viewRef.current),
@@ -356,6 +389,8 @@ const MarkdownEditor = forwardRef(({
       }
       
       // Create the editor with essential extensions
+      const initialTheme = createThemeExtension(appState.editor.fontSize); // Create initial theme
+      
       const view = new EditorView({
         state: EditorState.create({
           doc: content || '',
@@ -364,6 +399,14 @@ const MarkdownEditor = forwardRef(({
             keymap.of(defaultKeymap),
             keymap.of(historyKeymap),
             keymap.of([indentWithTab]),
+            keymap.of(foldKeymap), // Add fold keymap
+            keymap.of(searchKeymap), // Add search keymap
+            // Add zoom keymap
+            keymap.of([
+              { key: "Ctrl-=+", run: () => { setEditorFontSize(s => Math.min(s + 1, 36)); return true; } },
+              { key: "Ctrl--", run: () => { setEditorFontSize(s => Math.max(s - 1, 8)); return true; } },
+              { key: "Ctrl-0", run: () => { setEditorFontSize(14); return true; } }, // Reset zoom to default 14
+            ]),
             
             // Basic editor functionality
             history(),
@@ -374,22 +417,17 @@ const MarkdownEditor = forwardRef(({
             // Visual aids
             lineNumbers(),
             highlightActiveLine(),
+            highlightActiveLineGutter(), // Highlight active line in gutter
+            highlightSpecialChars(), // Show special characters
+            bracketMatching(), // Highlight matching brackets
+            rectangularSelection(), // Enable rectangular selection
+            crosshairCursor(), // Show crosshair cursor
+            codeFolding(), // Enable code folding
+            foldGutter(), // Add fold gutter
+            search({ top: true }), // Enable search panel at the top
             
-            // Basic styling
-            EditorView.theme({
-              "&": { height: "100%" },
-              ".cm-scroller": { overflow: "auto" },
-              ".cm-content": { 
-                whiteSpace: "pre-wrap",
-                caretColor: "white" // Make cursor visible
-              },
-              ".cm-cursor": {
-                borderLeftWidth: "2px",
-                borderLeftStyle: "solid",
-                borderLeftColor: "white"
-              },
-              "&.cm-editor.cm-focused": { outline: "none" }
-            }),
+            // Configure the theme compartment initially
+            themeCompartment.of(initialTheme), 
             
             // Listen for document and selection changes
             EditorView.updateListener.of((update) => {
@@ -488,7 +526,62 @@ const MarkdownEditor = forwardRef(({
       console.error('Error creating editor:', error);
       initializedRef.current = false;
     }
-  }, []); // Empty dependency array - only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Depend on initial context values indirectly via appState read
+
+  // Update editor theme when font size changes using the compartment
+  useEffect(() => {
+    if (!viewRef.current) return;
+
+    // Create the new theme extension
+    const newTheme = createThemeExtension(appState.editor.fontSize);
+
+    console.log(`[ThemeEffect] Font size changed to ${appState.editor.fontSize}. Dispatching theme reconfigure.`); // Log dispatch
+    // Dispatch the reconfiguration effect for the theme compartment
+    viewRef.current.dispatch({
+      effects: themeCompartment.reconfigure(newTheme)
+    });
+
+  }, [appState.editor.fontSize]); // Depend on context font size
+
+  // Add Ctrl+MouseWheel zoom listener
+  useEffect(() => {
+    const editorElement = viewRef.current?.dom;
+    if (!editorElement) return;
+    console.log('[WheelEffect] Setting up wheel listener.'); // Log setup
+
+    const handleWheel = (event) => {
+      if (event.ctrlKey) {
+        event.preventDefault();
+        const currentSize = appState.editor.fontSize; // Read current size from fresh state closure
+        
+        // Determine zoom direction
+        let newSize;
+        if (event.deltaY < 0) {
+          // Zoom In (wheel up)
+          newSize = Math.min(currentSize + 1, 36);
+        } else {
+          // Zoom Out (wheel down)
+          newSize = Math.max(currentSize - 1, 8);
+        }
+        
+        if (newSize !== currentSize) { // Only dispatch if size changes
+          console.log(`[WheelEvent] Ctrl+Wheel detected. Setting font size from ${currentSize} to ${newSize}`); // Log state update call
+          setEditorFontSize(newSize); // Call context setter
+        }
+      }
+    };
+
+    // Add listener with passive: false to allow preventDefault
+    editorElement.addEventListener('wheel', handleWheel, { passive: false });
+
+    // Cleanup listener on unmount or when view changes
+    return () => {
+      console.log('[WheelEffect] Cleaning up wheel listener.'); // Log cleanup
+      editorElement.removeEventListener('wheel', handleWheel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewRef.current, setEditorFontSize, appState.editor.fontSize]); // Add appState.editor.fontSize dependency
 
   // Update content when it changes externally
   useEffect(() => {

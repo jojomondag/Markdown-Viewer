@@ -34,6 +34,8 @@ const initialState = {
     scrollPosition: { top: 0, left: 0 },
     // Unsaved changes tracking
     unsavedChanges: false,
+    // Font size
+    fontSize: 14,
   },
   
   // Error state
@@ -71,6 +73,7 @@ const ActionTypes = {
   SET_SELECTIONS: 'SET_SELECTIONS',
   SET_SCROLL_POSITION: 'SET_SCROLL_POSITION',
   SET_UNSAVED_CHANGES: 'SET_UNSAVED_CHANGES',
+  SET_EDITOR_FONT_SIZE: 'SET_EDITOR_FONT_SIZE',
   
   // Error state actions
   ADD_ERROR: 'ADD_ERROR',
@@ -235,6 +238,17 @@ function appStateReducer(state, action) {
           unsavedChanges: action.payload,
         },
       };
+
+    case ActionTypes.SET_EDITOR_FONT_SIZE:
+      // Clamp font size between reasonable limits (e.g., 8px to 36px)
+      const newSize = Math.max(8, Math.min(action.payload, 36));
+      return {
+        ...state,
+        editor: {
+          ...state.editor,
+          fontSize: newSize,
+        },
+      };
     
     // Error state cases
     case ActionTypes.ADD_ERROR:
@@ -374,6 +388,11 @@ export const AppStateProvider = ({ children }) => {
     payload: hasUnsavedChanges 
   });
   
+  const setEditorFontSize = (size) => dispatch({ 
+    type: ActionTypes.SET_EDITOR_FONT_SIZE, 
+    payload: size 
+  });
+  
   const addError = (error) => dispatch({ 
     type: ActionTypes.ADD_ERROR, 
     payload: error 
@@ -416,6 +435,7 @@ export const AppStateProvider = ({ children }) => {
         setSelections,
         setScrollPosition,
         setUnsavedChanges,
+        setEditorFontSize,
         // Error actions
         addError,
         clearError,

@@ -13,11 +13,13 @@ import { Select } from './ui/select';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
-import { useSettings, DEFAULT_SETTINGS } from '../context/SettingsContext';
+import { useAppState } from '../context/AppStateContext';
+import { useSettings } from '../context/SettingsContext';
 import { setupFocusTrap, announceToScreenReader } from './AccessibilityHelper';
 
 const SettingsPanel = ({ isOpen, onClose }) => {
   const { settings, updateSetting, resetSettings } = useSettings();
+  const { state: appState, setEditorFontSize } = useAppState();
   const modalRef = useRef(null);
   
   // Focus trap and accessibility management
@@ -111,13 +113,13 @@ const SettingsPanel = ({ isOpen, onClose }) => {
                         min={10}
                         max={24}
                         step={1}
-                        value={[settings.editor.fontSize]}
-                        onValueChange={(value) => updateSetting('editor', 'fontSize', value[0])}
+                        value={[appState.editor.fontSize]}
+                        onValueChange={(value) => setEditorFontSize(value[0])}
                         aria-valuemin={10}
                         aria-valuemax={24}
-                        aria-valuenow={settings.editor.fontSize}
+                        aria-valuenow={appState.editor.fontSize}
                       />
-                      <span className="ml-2 text-sm">{settings.editor.fontSize}px</span>
+                      <span className="ml-2 text-sm">{appState.editor.fontSize}px</span>
                     </div>
                   </div>
                   
