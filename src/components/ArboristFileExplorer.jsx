@@ -28,7 +28,6 @@ const FileExplorer = ({
   onDeleteItem, // Added prop for delete handler
   onMoveItemProp, // Added prop for move handler from App.jsx
   itemOrder, // Added prop for explicit item order
-  onAddFolder, // Added prop for adding folders
   expandedNodes, // <-- Accept expandedNodes state from props
   onFolderToggle, // <-- Accept folder toggle handler from props
   // Add any other necessary props based on App.jsx usage
@@ -466,7 +465,7 @@ const FileExplorer = ({
   return (
     <div
       ref={explorerRef}
-      className="file-explorer h-full flex flex-col relative"
+      className="file-explorer h-full flex flex-col relative overflow-hidden"
       onClick={(e) => {
         // Prevent clicks inside the tree from deselecting
         if (e.target === explorerRef.current) {
@@ -475,15 +474,15 @@ const FileExplorer = ({
         }
       }}
     >
-      {/* Tree content area */}
-      <div className="file-explorer-content p-2 w-full flex-grow overflow-auto">
+      {/* Scrollable Content Area */}
+      <div className="flex-grow overflow-y-auto min-h-0 p-2">
         {treeData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-4 text-surface-500 dark:text-surface-400 text-sm text-center h-full">
             <IconFolderOff size={24} className="mb-2 opacity-50" />
             <p>No project folder open</p>
             <div className="mt-3 flex flex-col gap-2">
               <button
-                onClick={onAddFolder}
+                onClick={handleOpenFolder}
                 className="btn btn-primary px-4 py-2 text-sm"
               >
                 Open Folder
@@ -496,35 +495,24 @@ const FileExplorer = ({
               <TreeNode
                 key={node.path}
                 node={node}
-                level={0} // Start top-level nodes at level 0
-                onNodeSelect={handleNodeSelect} // Use the new selection handler
-                onFolderToggle={onFolderToggle} // Pass down the handler from props
+                level={0}
+                onNodeSelect={handleNodeSelect}
+                onFolderToggle={onFolderToggle}
                 expandedNodes={expandedNodes}
-                selectedNodePaths={selectedNodePaths} // Pass down the Set
-                renamingNodePath={renamingNodePath} // Pass renaming state
-                onRenameSubmit={handleRenameSubmit} // Pass rename submit handler
-                onRenameCancel={handleRenameCancel} // Pass rename cancel handler
-                currentFilePath={currentFilePath} // Pass down current file path
-                onContextMenu={handleContextMenu} // Pass down context menu handler
-                onMoveItem={handleMoveItem} // Pass down unified DnD handler
+                selectedNodePaths={selectedNodePaths}
+                renamingNodePath={renamingNodePath}
+                onRenameSubmit={handleRenameSubmit}
+                onRenameCancel={handleRenameCancel}
+                currentFilePath={currentFilePath}
+                onContextMenu={handleContextMenu}
+                onMoveItem={handleMoveItem}
                 isDragging={draggingPath === node.path}
                 dragOverPath={dragOverPath}
-                dragOverPosition={dragOverPosition} // Pass down drag over position directly
+                dragOverPosition={dragOverPosition}
               />
             ))}
           </div>
         )}
-      </div>
-
-      {/* Footer area for permanent buttons */}
-      <div className="p-2 border-t border-surface-200 dark:border-surface-700">
-        <button
-          onClick={onAddFolder}
-          className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
-        >
-          <IconFolderPlus size={16} />
-          Add Folder
-        </button>
       </div>
 
       {/* Context Menu Structure */}

@@ -71,7 +71,7 @@ const Tabs = ({
       >
         {tabsList}
       </div>
-      <div className="tab-content p-4 flex-grow">
+      <div className="tab-content p-4 flex-grow overflow-hidden">
         {activeContent}
       </div>
     </div>

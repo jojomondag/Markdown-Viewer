@@ -1985,61 +1985,72 @@ function App() {
             'flex-basis': `${gutterSize}px`,
           })}
         >
-          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-auto flex-shrink-0 ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar"> {/* Changed overflow-hidden to overflow-auto */}
-            <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
-              <SidebarTabs.Pane id="files">
-                <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
-                  {error && (
-                    <div className="p-4 text-sm text-error-500 bg-error-100 dark:bg-error-900/20 border-l-4 border-error-500 mb-2">
-                      Error: {error}
-                    </div>
-                  )}
-                  
-                  {/* Add file history */}
-                  {state.fileHistory.length > 0 && (
-                    <FileHistory onFileSelect={openFile} />
-                  )}
-                  
-                  {/* Always render FileExplorer and let it handle its empty state */}
-                  <FileExplorer 
-                    files={memoizedFiles} 
-                    folders={memoizedFolders}
-                    currentFolders={currentFolders}
-                    currentFilePath={currentFile?.path}
+          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 flex flex-col ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar"> {/* Added flex flex-col */}
+            {/* Make SidebarTabs grow */}
+            <div className="flex-grow min-h-0 overflow-y-auto"> {/* Allow tabs content to scroll if needed */} 
+              <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
+                <SidebarTabs.Pane id="files">
+                  {/* Wrap FileHistory and FileExplorer in a flex container that fills height */}
+                  <div className="flex flex-col h-full"> {/* This inner div ensures explorer fills the pane space */}
+                    <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
+                      {error && (
+                        <div className="p-4 text-sm text-error-500 bg-error-100 dark:bg-error-900/20 border-l-4 border-error-500 mb-2">
+                          Error: {error}
+                        </div>
+                      )}
+                      
+                      {/* Add file history (does not grow) */}
+                      {state.fileHistory.length > 0 && (
+                        <div className="flex-shrink-0">
+                          <FileHistory onFileSelect={openFile} />
+                        </div>
+                      )}
+                      
+                      {/* FileExplorer takes remaining space */}
+                      <div className="flex-grow min-h-0"> {/* Container allows explorer to grow/shrink */}
+                        <FileExplorer 
+                          files={memoizedFiles} 
+                          folders={memoizedFolders}
+                          currentFolders={currentFolders}
+                          currentFilePath={currentFile?.path}
+                          onFileSelect={openFile} 
+                          onDeleteFile={handleDeleteItem}
+                          onCreateFile={handleCreateFile}
+                          onCreateFolder={handleCreateFolder}
+                          onDeleteFolder={handleDeleteItem}
+                          onMoveItemProp={handleMoveItem}
+                          onScanFolder={scanFolder}
+                          onRenameItem={handleRenameItem}
+                          onDeleteItem={handleDeleteItem}
+                          itemOrder={itemOrder}
+                          // onAddFolder={openAndScanFolder} // REMOVED prop
+                          expandedNodes={expandedNodes} // <-- Pass state down
+                          onFolderToggle={handleFolderToggle} // <-- Pass handler down
+                        />
+                      </div>
+                    </LoadingOverlay>
+                  </div>
+                </SidebarTabs.Pane>
+                <SidebarTabs.Pane id="search">
+                  <FileSearch 
+                    files={files} 
+                    folders={folders} 
                     onFileSelect={openFile} 
-                    onDeleteFile={handleDeleteItem}
-                    onCreateFile={handleCreateFile}
-                    onCreateFolder={handleCreateFolder}
-                    onDeleteFolder={handleDeleteItem}
-                    onMoveItemProp={handleMoveItem}
-                    onScanFolder={scanFolder}
-                    onRenameItem={handleRenameItem}
-                    onDeleteItem={handleDeleteItem}
-                    itemOrder={itemOrder}
-                    onAddFolder={openAndScanFolder} // <-- Pass the handler down
-                    expandedNodes={expandedNodes} // <-- Pass state down
-                    onFolderToggle={handleFolderToggle} // <-- Pass handler down
                   />
-                  {/* Remove the conditional rendering logic that was here */}
-                  {/* 
-                  {memoizedFiles.length > 0 || memoizedFolders.length > 0 ? (
-                    <FileExplorer ... />
-                  ) : (
-                    <div className="text-sm text-surface-600 p-4">
-                      No files loaded. Click "Open Folder" to get started.
-                    </div>
-                  )}
-                  */}
-                </LoadingOverlay>
-              </SidebarTabs.Pane>
-              <SidebarTabs.Pane id="search">
-                <FileSearch 
-                  files={files} 
-                  folders={folders} 
-                  onFileSelect={openFile} 
-                />
-              </SidebarTabs.Pane>
-            </SidebarTabs>
+                </SidebarTabs.Pane>
+              </SidebarTabs>
+            </div>
+            
+            {/* Add Folder Button Footer (Outside SidebarTabs) */}
+            <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700">
+              <button
+                onClick={openAndScanFolder} // Use the existing handler from App
+                className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
+              >
+                <IconFolderPlus size={16} />
+                Add Folder
+              </button>
+            </div>
           </aside>
           
           <div className="flex-grow flex flex-col" role="region" aria-label="Content area">
