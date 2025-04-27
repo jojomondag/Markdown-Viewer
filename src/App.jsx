@@ -1899,79 +1899,65 @@ function App() {
       {/* <AccessibilityHelper /> */}
       
       <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
-        <div className="container mx-auto flex items-center justify-between gap-4"> {/* Added gap */} 
-          
-          {/* --- Left Section: Open/Save Button and Saved State Tabs --- */}          
-          <div className="flex items-center space-x-2 flex-shrink min-w-0"> {/* Allow shrinking */} 
-            {/* --- Open/Save Button --- */}
-            <button
-              onClick={isProjectOpen ? handleSaveProject : openAndScanFolder}
-              className={`btn btn-primary flex items-center gap-2 ${isProjectOpen ? 'flex-shrink-0' : 'w-full justify-center'}`} // Adjust width based on mode
-              title={isProjectOpen ? `Save Current Project State` : `Open Folder (Ctrl+O)`}
-              disabled={loading || (isProjectOpen && currentFolders.length === 0)}
-            >
-              {loading ? (
-                <>
-                  <LoadingSpinner size="sm" color="white" className="mr-1" />
-                  {!isMobile && (isProjectOpen ? "Saving..." : "Adding...")} {/* Conditional loading text */}
-                </>
-              ) : (
-                <>
-                  {isProjectOpen ? (
-                    <IconDeviceFloppy size={isMobile ? 16 : 18} className="mr-1" />
-                  ) : (
-                    <IconFolderOpen size={isMobile ? 16 : 18} className="mr-1" />
-                  )}
-                  {isMobile ? (isProjectOpen ? "Save" : "Open") : (isProjectOpen ? "Save State" : "Open Folder")} {/* Changed Save button text */}
-                </>
-              )}
-            </button>
-            
-            {/* --- Saved State Tabs (only if project is open and states exist) --- */}
-            {isProjectOpen && Object.keys(savedWorkspaceStates).length > 0 && (
-              <div className="flex items-center space-x-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 border-l border-surface-300 dark:border-surface-600 pl-2 ml-2"> {/* Add separator and scroll */} 
-                {Object.values(savedWorkspaceStates).map((stateData) => (
-                  <button
-                    key={stateData.name} // Use state name as unique key
-                    onClick={() => handleLoadWorkspaceState(stateData)}
-                    className="flex-shrink-0 px-3 py-1.5 border border-surface-300 dark:border-surface-600 rounded bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-sm whitespace-nowrap" // Basic tab style 
-                    title={`Load state: ${stateData.name}`}
-                  >
-                    {stateData.name} {/* Display the saved state name */}
-                  </button>
-                ))}
-              </div>
-            )}
-            
-            {/* Unsaved changes indicator (if applicable) */}            
-            {isProjectOpen && state.editor.unsavedChanges && (
-              <span className="ml-2 text-xs bg-warning-500 px-1.5 py-0.5 rounded flex-shrink-0">
-                Unsaved
-              </span>
-            )}
-          </div>
-          
-          {/* --- Center Section (Optional Title) --- */}          
-          <div className="flex justify-center flex-grow min-w-0 px-4">\n            {/* App title or logo could go here, ensure it doesn't get crushed */}
-            {isProjectOpen && currentFolders.length > 0 && (
-              <span className="text-sm font-medium truncate" title={currentFolders[0]}> { /* Show current project name */}
-                {getBasename(currentFolders[0])}
-              </span>
-            )}
-          </div>
-
-          {/* --- Right Section: Theme Toggle, Settings --- */}
-          <div className="flex items-center justify-end space-x-2 flex-shrink-0"> { /* No shrink */} 
-            <ThemeToggle />
-            <button 
-              className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
-              onClick={() => setIsSettingsOpen(true)}
-              title="Settings"
-            >
-              <IconSettings size={isMobile ? 16 : 18} />
-            </button>
-          </div>
-        </div>
+         {/* Use justify-between again to push elements apart */}
+         <div className="container mx-auto flex items-center justify-between gap-4"> 
+           
+           {/* --- Part 1: Open/Save Button (10%) --- */}
+           <div className="flex items-center w-[10%] flex-shrink-0"> {/* Fixed width, no shrink */}
+             <button
+               onClick={isProjectOpen ? handleSaveProject : openAndScanFolder}
+               className={`btn btn-primary flex items-center gap-2 w-full justify-center`} // Button takes full width of its container
+               title={isProjectOpen ? `Save Current Project State` : `Open Folder (Ctrl+O)`}
+               disabled={loading || (isProjectOpen && currentFolders.length === 0)}
+             >
+               {loading ? (
+                 <>
+                   <LoadingSpinner size="sm" color="white" className="mr-1" />
+                   {!isMobile && (isProjectOpen ? "Saving..." : "Adding...")} {/* Conditional loading text */}
+                 </>
+               ) : (
+                 <>
+                   {isProjectOpen ? (
+                     <IconDeviceFloppy size={isMobile ? 16 : 18} className="mr-1" />
+                   ) : (
+                     <IconFolderOpen size={isMobile ? 16 : 18} className="mr-1" />
+                   )}
+                   {isMobile ? (isProjectOpen ? "Save" : "Open") : (isProjectOpen ? "Save State" : "Open Folder")} {/* Changed Save button text */}
+                 </>
+               )}
+             </button>
+           </div>
+           
+           {/* --- Part 2: Saved State Tabs (80%) --- */}
+           <div className="flex items-center space-x-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 border-l border-r border-surface-300 dark:border-surface-600 px-2 min-h-[38px] w-[80%] flex-grow"> {/* Fixed width, allow grow if needed, added border-r */}
+             {Object.keys(savedWorkspaceStates).length > 0 ? (
+               Object.values(savedWorkspaceStates).map((stateData) => (
+                 <button
+                   key={stateData.name} // Use state name as unique key
+                   onClick={() => handleLoadWorkspaceState(stateData)}
+                   className="flex-shrink-0 px-3 py-1.5 border border-surface-300 dark:border-surface-600 rounded bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-sm whitespace-nowrap"
+                   title={`Load state: ${stateData.name}`}
+                 >
+                   {stateData.name} {/* Display the saved state name */}
+                 </button>
+               ))
+             ) : (
+               <span className="text-xs text-surface-500 dark:text-surface-400 italic px-2">No saved states</span> // Placeholder text
+             )}
+           </div>
+           
+           {/* --- Part 3: Settings (10%) --- */}
+           <div className="flex items-center justify-end space-x-2 w-[10%] flex-shrink-0"> {/* Fixed width, no shrink */}
+             <ThemeToggle />
+             <button 
+               className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
+               onClick={() => setIsSettingsOpen(true)}
+               title="Settings"
+             >
+               <IconSettings size={isMobile ? 16 : 18} />
+             </button>
+           </div>
+         </div>
       </header>
       
       <main id="main-content" className="flex-grow flex flex-col overflow-hidden" role="main">
