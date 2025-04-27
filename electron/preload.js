@@ -71,6 +71,16 @@ contextBridge.exposeInMainWorld(
         ipcRenderer.removeListener('file-change', subscription);
       };
     },
-    openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url)
+    openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
+
+    // --- File Explorer ---
+    showItemInFolder: (itemPath) => ipcRenderer.invoke('show-item-in-folder', itemPath),
+
+    // --- Other APIs (Add more as needed) ---
+    // Example: openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
+    // Example: readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+    // ... etc.
   }
 ); 
+
+console.log('[Preload] Script loaded and API exposed.'); 

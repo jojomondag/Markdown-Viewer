@@ -767,3 +767,13 @@ ipcMain.handle('deleteFile', async (event, filePath) => {
     return { success: false, error: error.message };
   }
 });
+
+// Handle 'show-item-in-folder' request from renderer
+ipcMain.handle('show-item-in-folder', (event, itemPath) => {
+  if (itemPath) {
+    console.log(`[IPC Main] Received request to show item: ${itemPath}`); // Optional logging
+    shell.showItemInFolder(itemPath);
+  } else {
+    console.error('[IPC Main] Received show-item-in-folder request without a path.');
+  }
+});

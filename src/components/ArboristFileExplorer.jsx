@@ -6,7 +6,8 @@ import {
   IconChevronRight,
   IconChevronDown,
   IconFolderPlus,
-  IconFolderOff
+  IconFolderOff,
+  IconExternalLink
 } from '@tabler/icons-react';
 import path from 'path-browserify';
 import { getBasename, getDirname } from '../utils/pathUtils'; // Assuming pathUtils exists
@@ -285,6 +286,22 @@ const FileExplorer = ({
     setRenamingNodePath(null);
   };
 
+  // --- START: New Handler for Show in Explorer ---
+  const handleShowInExplorer = (node) => {
+    setContextMenu(prev => ({ ...prev, visible: false })); // Close context menu
+    if (node && node.path) {
+      if (window.api && typeof window.api.showItemInFolder === 'function') {
+        window.api.showItemInFolder(node.path);
+      } else {
+        console.warn('window.api.showItemInFolder is not available.');
+        // Provide fallback or user feedback if needed
+      }
+    } else {
+      console.error('Cannot show item in explorer: Node or node path is missing.', node);
+    }
+  };
+  // --- END: New Handler for Show in Explorer ---
+
   // Handle open folder button click (Replaces existing content)
   const handleOpenFolder = useCallback(() => {
     if (window.api && window.api.openFolderDialog) {
@@ -529,6 +546,16 @@ const FileExplorer = ({
           ) : (
             <button onClick={() => handleDeleteItem(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Delete File</button>
           )}
+          {/* --- START: Add Show in Explorer option --- */}
+          <div className="context-menu-divider h-px my-1 bg-surface-200 dark:bg-surface-700"></div>
+          <button
+             onClick={() => handleShowInExplorer(contextMenu.node)}
+             className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2" // Added flex for icon
+           >
+             <IconExternalLink size={14} className="opacity-70" /> {/* Added icon */}
+             Show in Explorer
+           </button>
+          {/* --- END: Add Show in Explorer option --- */}
            {/* Add more context menu options here if needed */}
         </div>
       )}
