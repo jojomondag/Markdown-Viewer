@@ -1541,43 +1541,46 @@ function App() {
     const itemName = getBasename(itemPath);
     const itemType = isDirectory ? 'folder' : 'file';
     
-    // Confirmation dialog
-    const confirmed = window.confirm(`Are you sure you want to delete the ${itemType} "${itemName}"? This cannot be undone.`);
+    // Confirmation dialog - adjusted text for folders
+    const confirmMessage = isDirectory
+      ? `Are you sure you want to remove the folder "${itemName}" and its contents from the view? This will NOT delete files from your disk.`
+      : `Are you sure you want to delete the file "${itemName}"? This cannot be undone.`;
+      
+    const confirmed = window.confirm(confirmMessage);
     if (!confirmed) return;
 
-    console.log(`[App] Deleting ${itemType}: ${itemPath}`);
+    console.log(`[App] ${isDirectory ? 'Removing' : 'Deleting'} ${itemType}: ${itemPath}`);
     try {
       setLoading({ files: true }); // Indicate loading
       
-      let result;
-      if (isDirectory) {
-        result = await window.api.deleteFolder(itemPath);
-      } else {
+      let result = { success: true }; // Assume success for removal, as no API call
+      if (!isDirectory) { // Only call API for file deletion
         result = await window.api.deleteFile(itemPath);
       }
 
       if (!result || !result.success) {
+        // This error should now only trigger for file deletion failures
         throw new Error(result?.error || `Unknown error deleting ${itemType}`);
       }
 
-      // Update state after successful deletion
+      // Update state after successful deletion/removal
       if (isDirectory) {
         // Remove folder and all descendants from state
         const pathPrefix = itemPath.endsWith('/') ? itemPath : itemPath + '/';
         setFolders(prev => prev.filter(f => f.path !== itemPath && !f.path.startsWith(pathPrefix)));
         setFiles(prev => prev.filter(f => !f.path.startsWith(pathPrefix)));
         
-        // Close any open files that were inside the deleted folder
+        // Close any open files that were inside the removed folder
         const openFilesInFolder = openFiles.filter(f => f.path.startsWith(pathPrefix));
         openFilesInFolder.forEach(file => removeOpenFile(file));
         
-        // If the current file was in the deleted folder, clear it
+        // If the current file was in the removed folder, clear it
         if (currentFile?.path.startsWith(pathPrefix)) {
           setCurrentFile(null); 
           updateContent('');
         }
 
-      } else { // It's a file
+      } else { // It's a file (deletion logic remains the same)
         // Remove the file from state
         setFiles(prev => prev.filter(f => f.path !== itemPath));
         
@@ -1625,12 +1628,15 @@ function App() {
           return newOrderMap;
       });
 
-      showSuccess(`Deleted ${itemType}: ${itemName}`);
-      console.log(`[App] ${itemType} deleted successfully, state updated.`);
+      // Updated success message
+      const successMessage = isDirectory ? `Removed folder from view: ${itemName}` : `Deleted file: ${itemName}`;
+      showSuccess(successMessage);
+      console.log(`[App] ${itemType} ${isDirectory ? 'removed' : 'deleted'} successfully, state updated.`);
 
     } catch (error) {
-        console.error(`[App] Error deleting ${itemType}: ${error.message}`);
-        showError(`Failed to delete ${itemType}: ${error.message}`);
+        // Error message adjusted slightly as it primarily relates to file deletion now
+        console.error(`[App] Error ${isDirectory ? 'removing' : 'deleting'} ${itemType}: ${error.message}`);
+        showError(`Failed to ${isDirectory ? 'remove' : 'delete'} ${itemType}: ${error.message}`);
     } finally {
        setLoading({ files: false });
     }

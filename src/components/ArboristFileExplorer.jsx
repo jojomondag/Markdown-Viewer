@@ -461,19 +461,16 @@ const FileExplorer = ({
       {/* Tree content area */}
       <div className="file-explorer-content p-2 w-full flex-grow overflow-auto">
         {treeData.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-4 text-surface-500 dark:text-surface-400 text-sm text-center">
+          <div className="flex flex-col items-center justify-center py-4 text-surface-500 dark:text-surface-400 text-sm text-center h-full">
             <IconFolderOff size={24} className="mb-2 opacity-50" />
-            <p>No files loaded</p>
+            <p>No project folder open</p>
             <div className="mt-3 flex flex-col gap-2">
-              {/* Remove the Open Folder button from here */}
-              {/* 
               <button
-                onClick={handleOpenFolder}
-                className="px-3 py-1 bg-primary-500 hover:bg-primary-600 text-white rounded text-sm"
+                onClick={onAddFolder}
+                className="btn btn-primary px-4 py-2 text-sm"
               >
                 Open Folder
               </button>
-              */}
             </div>
           </div>
         ) : (
@@ -513,55 +510,28 @@ const FileExplorer = ({
         </button>
       </div>
 
-      {/* Context Menu */}
-      {contextMenu.visible && contextMenu.node ? (
+      {/* Context Menu Structure */}
+      {contextMenu.visible && (
         <div
-          className="absolute bg-white dark:bg-neutral-800 border border-surface-300 dark:border-surface-700 rounded shadow-lg py-1 z-50 text-sm"
-          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
-          onClick={(e) => e.stopPropagation()} // Prevent menu clicks from closing itself immediately
+          className="context-menu absolute z-50 bg-white dark:bg-surface-800 shadow-lg rounded-md py-1 border border-surface-300 dark:border-surface-700 w-40"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
         >
-          <ul>
-            {/* Rename Option */}
-            <li
-              className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
-              onClick={() => {
-                setContextMenu(prev => ({ ...prev, visible: false })); // Close menu first
-                handleRenameStart(contextMenu.node); // Initiate rename
-              }}
-            >
-              Rename
-            </li>
-            <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li>
-
-            {/* Folder Specific Options */}
-            {contextMenu.node.type === 'folder' && (
-              <>
-                <li
-                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
-                  onClick={() => handleNewFile(contextMenu.node)}
-                >
-                  New File
-                </li>
-                <li
-                  className="px-3 py-1 hover:bg-primary-500 hover:text-white cursor-pointer"
-                  onClick={() => handleNewFolder(contextMenu.node)}
-                >
-                  New Folder
-                </li>
-                <li className="border-t border-surface-200 dark:border-surface-700 my-1"></li>
-              </>
-            )}
-
-            {/* Delete Option */}
-            <li
-              className="px-3 py-1 text-error-500 hover:bg-error-500 hover:text-white cursor-pointer"
-              onClick={() => handleDeleteItem(contextMenu.node)}
-            >
-              Delete {contextMenu.node.type === 'folder' ? 'Folder' : 'File'}
-            </li>
-          </ul>
+          {contextMenu.node && contextMenu.node.type === 'folder' && (
+            <>
+              <button onClick={() => handleNewFile(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New File</button>
+              <button onClick={() => handleNewFolder(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New Folder</button>
+              <div className="context-menu-divider h-px my-1 bg-surface-200 dark:bg-surface-700"></div>
+            </>
+          )}
+          <button onClick={() => handleRenameStart(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Rename</button>
+          {contextMenu.node && contextMenu.node.type === 'folder' ? (
+            <button onClick={() => handleDeleteItem(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Remove Folder</button>
+          ) : (
+            <button onClick={() => handleDeleteItem(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Delete File</button>
+          )}
+           {/* Add more context menu options here if needed */}
         </div>
-      ) : null}
+      )}
     </div>
   );
 };
