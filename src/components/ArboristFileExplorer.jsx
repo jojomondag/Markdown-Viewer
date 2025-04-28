@@ -326,23 +326,43 @@ const FileExplorer = ({
   const handleContextMenu = useCallback((event, node) => {
     event.preventDefault();
     event.stopPropagation();
-    const bounds = explorerRef.current?.getBoundingClientRect();
-    const x = event.clientX - (bounds?.left ?? 0);
-    const y = event.clientY - (bounds?.top ?? 0);
+    
+    // --- Calculate position relative to viewport ---
+    let x = event.clientX;
+    let y = event.clientY;
+
+    // --- Prevent viewport overflow ---
+    // Estimate menu size (adjust if needed)
+    const menuWidth = 160; // Approx width in pixels
+    const menuHeight = 150; // Approx height in pixels (adjust based on items)
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    if (x + menuWidth > viewportWidth) {
+      x = viewportWidth - menuWidth - 10; // Adjust left position
+    }
+    if (y + menuHeight > viewportHeight) {
+      y = viewportHeight - menuHeight - 10; // Adjust top position
+    }
+    // --- End overflow prevention ---
+
     setSelectedNodePaths(new Set([node.path])); // Select node on right-click
     setContextMenu({ visible: true, x, y, node });
-  }, []);
+  }, []); // Removed explorerRef dependency
 
   const handleClickOutside = useCallback((event) => {
-    if (contextMenu.visible) {
-      setContextMenu(prev => ({ ...prev, visible: false }));
+    // Check if the click is outside the context menu itself
+    if (contextMenu.visible && !event.target.closest('.context-menu')) {
+        setContextMenu(prev => ({ ...prev, visible: false }));
     }
-  }, [contextMenu.visible]);
+}, [contextMenu.visible]);
 
   useEffect(() => {
-    document.addEventListener('click', handleClickOutside);
+    // Use capture phase for click outside to handle clicks on other elements potentially stopping propagation
+    document.addEventListener('click', handleClickOutside, true); 
     return () => {
-      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('click', handleClickOutside, true);
     };
   }, [handleClickOutside]);
 
@@ -518,8 +538,10 @@ const FileExplorer = ({
       {/* Context Menu Structure */}
       {contextMenu.visible && (
         <div
-          className="context-menu absolute z-50 bg-white dark:bg-surface-800 shadow-lg rounded-md py-1 border border-surface-300 dark:border-surface-700 w-40"
+          className="context-menu fixed z-50 bg-white dark:bg-surface-800 shadow-lg rounded-md py-1 border border-surface-300 dark:border-surface-700 w-40" // <-- Changed to position: fixed
           style={{ top: contextMenu.y, left: contextMenu.x }}
+          // Added ref/data-attribute to help handleClickOutside ignore clicks inside
+          data-context-menu="true" 
         >
           {contextMenu.node && contextMenu.node.type === 'folder' && (
             <>
