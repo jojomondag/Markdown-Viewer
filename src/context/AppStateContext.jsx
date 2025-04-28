@@ -61,6 +61,7 @@ const ActionTypes = {
   UPDATE_OPEN_FILE: 'UPDATE_OPEN_FILE',
   SET_FILE_DIRTY: 'SET_FILE_DIRTY',
   CLEAR_OPEN_FILES: 'CLEAR_OPEN_FILES',
+  REORDER_OPEN_FILES: 'REORDER_OPEN_FILES',
   
   // UI state actions
   TOGGLE_PANEL: 'TOGGLE_PANEL',
@@ -152,6 +153,19 @@ function appStateReducer(state, action) {
         ...state,
         openFiles: [],
       };
+    
+    case ActionTypes.REORDER_OPEN_FILES:
+      const { oldIndex, newIndex } = action.payload;
+      // Ensure indices are valid (basic check)
+      if (oldIndex < 0 || oldIndex >= state.openFiles.length || newIndex < 0 || newIndex >= state.openFiles.length) {
+        console.warn("[AppStateContext] Invalid indices for REORDER_OPEN_FILES:", oldIndex, newIndex);
+        return state;
+      }
+      // Manual array move implementation:
+      const filesToMove = [...state.openFiles];
+      const [movedItem] = filesToMove.splice(oldIndex, 1);
+      filesToMove.splice(newIndex, 0, movedItem);
+      return { ...state, openFiles: filesToMove };
     
     // UI state cases
     case ActionTypes.TOGGLE_PANEL:
@@ -412,6 +426,11 @@ export const AppStateProvider = ({ children }) => {
     type: ActionTypes.RESET_STATE 
   });
 
+  const reorderOpenFiles = (oldIndex, newIndex) => dispatch({ 
+    type: ActionTypes.REORDER_OPEN_FILES, 
+    payload: { oldIndex, newIndex } 
+  });
+
   return (
     <AppStateContext.Provider
       value={{
@@ -425,6 +444,7 @@ export const AppStateProvider = ({ children }) => {
         updateOpenFile,
         setFileDirty,
         clearOpenFiles,
+        reorderOpenFiles,
         // UI actions
         togglePanel,
         setPanel,

@@ -42,6 +42,7 @@ import FileSearch from './components/FileSearch';
 import SaveStateDialog from './components/SaveStateDialog'; // <-- Import the new dialog
 import path from 'path-browserify'; // Use browser-compatible path
 import { getDirname, getBasename } from './utils/pathUtils'; // Import path utils
+import { arrayMove } from '@dnd-kit/sortable'; // <-- Import arrayMove
 
 import WorkspaceStateTabs from './components/WorkspaceStateTabs'; // <-- Import the new component
 
@@ -80,14 +81,15 @@ function App() {
   } = useFiles();
   
   // Get the notification functions
-  const { showSuccess, showError, showInfo } = useNotification();
+  const { showSuccess, showError, showInfo, showWarning } = useNotification();
   
   // Get settings
-  const { settings } = useSettings();
+  const { settings, updateSetting } = useSettings();
   
   // Get app state
   const { 
     state,
+    dispatch,
     setLoading,
     setUnsavedChanges,
     setSidebarTab,
@@ -96,6 +98,7 @@ function App() {
     removeOpenFile,
     updateOpenFile,
     setFileDirty,
+    reorderOpenFiles, // <-- Get the new action creator
     updatePreferences
   } = useAppState();
   
@@ -1927,6 +1930,43 @@ function App() {
     }));
   }, []);
 
+  // --- NEW: Handler for Reordering Saved Workspace States ---
+  const handleStateReorder = useCallback((oldIndex, newIndex) => {
+    console.log(`[App] handleStateReorder called: ${oldIndex} -> ${newIndex}`);
+    
+    // We need to reorder based on the current visual order, which is derived from Object.values()
+    const orderedStates = Object.values(savedWorkspaceStates);
+    
+    // Perform the move on the ordered array
+    const reorderedArray = arrayMove(orderedStates, oldIndex, newIndex);
+    
+    // Convert the reordered array back into an object keyed by name
+    const newStatesObject = reorderedArray.reduce((acc, state) => {
+      acc[state.name] = state;
+      return acc;
+    }, {});
+    
+    // Update the state and localStorage
+    setSavedWorkspaceStates(newStatesObject);
+    try {
+      localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(newStatesObject));
+    } catch (error) {
+      console.error("Failed to save reordered workspace states to localStorage:", error);
+      showError("Failed to save the new state order.");
+      // Optionally revert state update if localStorage fails?
+      // setSavedWorkspaceStates(savedWorkspaceStates); 
+    }
+  }, [savedWorkspaceStates, showError]); // Dependency: need current states to reorder
+  // --- End New Handler ---
+
+  // --- NEW: Handler for Reordering Editor Tabs ---
+  const handleTabReorder = useCallback((oldIndex, newIndex) => {
+    console.log(`[App] handleTabReorder called: ${oldIndex} -> ${newIndex}`);
+    // Call the action creator from the context
+    reorderOpenFiles(oldIndex, newIndex);
+  }, [reorderOpenFiles]); // Dependency on the action creator function
+  // --- End New Handler ---
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       {/* <AccessibilityHelper /> */}
@@ -1940,6 +1980,7 @@ function App() {
              savedWorkspaceStates={savedWorkspaceStates}
              onLoadState={handleLoadWorkspaceState}
              onRemoveState={handleRemoveWorkspaceState} // <-- Pass the remove handler
+             onStateReorder={handleStateReorder} // <-- Pass the new handler
            />
 
            {/* 2. Settings Container (Takes required width) */}
@@ -2093,10 +2134,11 @@ function App() {
             <div className="editor-tabs-container flex-shrink-0"> {/* Ensure tabs don't grow */}
               <EditorTabs 
                 currentFile={currentFile}
-                openFiles={openFiles}
+                openFiles={openFiles} // This comes from useAppState
                 onTabChange={handleTabChange}
                 onTabClose={handleTabClose}
                 onNewTab={handleNewTab}
+                onTabReorder={handleTabReorder} // <-- Pass the new handler
               />
             </div>
             
