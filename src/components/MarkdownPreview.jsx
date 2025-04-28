@@ -488,7 +488,7 @@ const MarkdownPreview = forwardRef(({
     <>
       <div 
         ref={previewRef}
-        className="markdown-preview prose max-w-none w-full h-full flex-grow overflow-auto"
+        className="markdown-preview prose max-w-none w-full flex-grow"
         style={{ 
           zoom: currentZoom / 100,
           paddingBottom: "2rem",
@@ -497,6 +497,7 @@ const MarkdownPreview = forwardRef(({
         onScroll={handleScroll}
       >
         <div 
+          className="w-full overflow-x-auto"
           dangerouslySetInnerHTML={{ __html: html }}
         />
       </div>

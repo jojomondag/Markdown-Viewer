@@ -51,7 +51,7 @@ const LoadingOverlay = ({ isLoading, message, transparent = false, children, pre
   // If preserveChildren is true, we keep rendering children even during loading
   // This prevents the UI from "forgetting" the current state during loading
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full">
       {(preserveChildren || !showLoading) && children}
       
       {showLoading && (

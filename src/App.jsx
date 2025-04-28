@@ -523,26 +523,23 @@ function App() {
   
   // Calculate split sizes based on visibility and settings
   const getSplitSizes = () => {
-    if (!sidebarVisible) return [0, 100];
-    
-    // On mobile, sidebar takes up more space when open
-    if (isMobile) {
-      return [80, 20]; // Sidebar takes 80% on mobile when open
-    }
-    
-    return [settings.ui.sidebarWidth, 100 - settings.ui.sidebarWidth];
-  };
-  
-  const getEditorPreviewSizes = () => {
-    if (!previewVisible) return [100, 0];
-    if (!isEditorContainerVisible) return [0, 100]; // When editor is hidden, preview takes 100%
-    
-    // On mobile, stack editor and preview when both are visible
-    if (isMobile) {
-      return [50, 50]; // Equal sizing for vertical layout
-    }
-    
-    return [100 - settings.ui.previewWidth, settings.ui.previewWidth];
+    const sidebarW = settings.ui.sidebarWidth;
+    const remainingW = 100 - sidebarW;
+    // Default editor/preview split when both are visible (e.g., 50/50 of remaining space)
+    const editorW = remainingW / 2; 
+    const previewW = remainingW / 2;
+
+    if (!sidebarVisible && !isEditorContainerVisible && !previewVisible) return [0, 0, 0]; // Should not happen
+    if (!sidebarVisible && !isEditorContainerVisible) return [0, 0, 100]; // Only Preview
+    if (!sidebarVisible && !previewVisible) return [0, 100, 0]; // Only Editor
+    if (!isEditorContainerVisible && !previewVisible) return [100, 0, 0]; // Only Sidebar (adjust if needed)
+
+    if (!sidebarVisible) return [0, previewVisible ? 50 : 100, previewVisible ? 50 : 0]; // No Sidebar
+    if (!isEditorContainerVisible) return [sidebarW, 0, 100 - sidebarW]; // No Editor
+    if (!previewVisible) return [sidebarW, 100 - sidebarW, 0]; // No Preview
+
+    // All visible: Use calculated widths
+    return [sidebarW, editorW, previewW];
   };
 
   // Update loading states
@@ -1968,275 +1965,252 @@ function App() {
       
       <main id="main-content" className="flex-grow flex flex-col overflow-hidden" role="main">
         <Split 
-          className="flex-grow flex overflow-hidden"
+          className="flex-grow flex overflow-hidden" // Main Split now handles 3 panes
           sizes={getSplitSizes()}
-          minSize={sidebarVisible ? (isMobile ? 250 : 150) : 0}
+          minSize={
+             // Adjust min sizes based on visibility, rough example:
+             [
+               sidebarVisible ? (isMobile ? 150 : 150) : 0, // Sidebar Min
+               isEditorContainerVisible ? 200 : 0, // Editor Min
+               previewVisible ? 200 : 0 // Preview Min
+             ]
+          }
           expandToMin={true}
-          gutterSize={sidebarVisible ? 5 : 0}
+          gutterSize={5} // Use consistent gutter size
           gutterAlign="center"
           snapOffset={30}
           dragInterval={1}
           direction="horizontal"
           cursor="col-resize"
           elementStyle={(dimension, size, gutterSize) => ({
-            'flex-basis': `calc(${size}% - ${gutterSize}px)`,
+            'flex-basis': `calc(${size}% - ${gutterSize * 2 / 3}px)`, // Adjust gutter math for 3 panes
           })}
           gutterStyle={(dimension, gutterSize) => ({
             'flex-basis': `${gutterSize}px`,
           })}
+          // onDragEnd - maybe keep this for layout refresh?
+           onDragEnd={() => {
+             // Force layout recalculation after resize
+             window.dispatchEvent(new Event('resize'));
+           }}
         >
-          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 flex flex-col ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar"> {/* Added flex flex-col */}
-            {/* Make SidebarTabs grow */}
-            <div className="flex-grow min-h-0 overflow-y-auto"> {/* Allow tabs content to scroll if needed */} 
-              <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
-                <SidebarTabs.Pane id="files">
-                  {/* Wrap FileHistory and FileExplorer in a flex container that fills height */}
-                  <div className="flex flex-col h-full"> {/* This inner div ensures explorer fills the pane space */}
-                    <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
-                      {error && (
-                        <div className="p-4 text-sm text-error-500 bg-error-100 dark:bg-error-900/20 border-l-4 border-error-500 mb-2">
-                          Error: {error}
-                        </div>
-                      )}
-                      
-                      {/* Add file history (does not grow) */}
-                      {state.fileHistory.length > 0 && (
-                        <div className="flex-shrink-0">
-                          <FileHistory onFileSelect={openFile} />
-                        </div>
-                      )}
-                      
-                      {/* FileExplorer takes remaining space */}
-                      <div className="flex-grow min-h-0"> {/* Container allows explorer to grow/shrink */}
-                        <FileExplorer 
-                          files={memoizedFiles} 
-                          folders={memoizedFolders}
-                          currentFolders={currentFolders}
-                          currentFilePath={currentFile?.path}
-                          onFileSelect={openFile} 
-                          onDeleteFile={handleDeleteItem}
-                          onCreateFile={handleCreateFile}
-                          onCreateFolder={handleCreateFolder}
-                          onDeleteFolder={handleDeleteItem}
-                          onMoveItemProp={handleMoveItem}
-                          onScanFolder={scanFolder}
-                          onRenameItem={handleRenameItem}
-                          onDeleteItem={handleDeleteItem}
-                          itemOrder={itemOrder}
-                          // onAddFolder={openAndScanFolder} // REMOVED prop
-                          expandedNodes={expandedNodes} // <-- Pass state down
-                          onFolderToggle={handleFolderToggle} // <-- Pass handler down
-                        />
-                      </div>
-                    </LoadingOverlay>
-                  </div>
-                </SidebarTabs.Pane>
-                <SidebarTabs.Pane id="search">
-                  <FileSearch 
-                    files={files} 
-                    folders={folders} 
-                    onFileSelect={openFile} 
-                  />
-                </SidebarTabs.Pane>
-              </SidebarTabs>
-            </div>
-            
-            {/* Add Folder Button Footer (Outside SidebarTabs) */}
-            <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700">
-              <button
-                onClick={openAndScanFolder} // Use the existing handler from App
-                className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
-              >
-                <IconFolderPlus size={16} />
-                Add Folder
-              </button>
-            </div>
+          {/* Pane 1: Sidebar */}
+          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 flex flex-col ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
+            {/* ... Sidebar content remains the same ... */}
+             {/* Make SidebarTabs grow */}
+             <div className="flex-grow min-h-0 overflow-y-auto"> {/* Allow tabs content to scroll if needed */} 
+               <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
+                 <SidebarTabs.Pane id="files">
+                   {/* Wrap FileHistory and FileExplorer in a flex container that fills height */}
+                   <div className="flex flex-col h-full"> {/* This inner div ensures explorer fills the pane space */}
+                     <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
+                       {error && (
+                         <div className="p-4 text-sm text-error-500 bg-error-100 dark:bg-error-900/20 border-l-4 border-error-500 mb-2">
+                           Error: {error}
+                         </div>
+                       )}
+                       
+                       {/* Add file history (does not grow) */}
+                       {state.fileHistory.length > 0 && (
+                         <div className="flex-shrink-0">
+                           <FileHistory onFileSelect={openFile} />
+                         </div>
+                       )}
+                       
+                       {/* FileExplorer takes remaining space */}
+                       <div className="flex-grow min-h-0"> {/* Container allows explorer to grow/shrink */}
+                         <FileExplorer 
+                           files={memoizedFiles} 
+                           folders={memoizedFolders}
+                           currentFolders={currentFolders}
+                           currentFilePath={currentFile?.path}
+                           onFileSelect={openFile} 
+                           onDeleteFile={handleDeleteItem}
+                           onCreateFile={handleCreateFile}
+                           onCreateFolder={handleCreateFolder}
+                           onDeleteFolder={handleDeleteItem}
+                           onMoveItemProp={handleMoveItem}
+                           onScanFolder={scanFolder}
+                           onRenameItem={handleRenameItem}
+                           onDeleteItem={handleDeleteItem}
+                           itemOrder={itemOrder}
+                           // onAddFolder={openAndScanFolder} // REMOVED prop
+                           expandedNodes={expandedNodes} // <-- Pass state down
+                           onFolderToggle={handleFolderToggle} // <-- Pass handler down
+                         />
+                       </div>
+                     </LoadingOverlay>
+                   </div>
+                 </SidebarTabs.Pane>
+                 <SidebarTabs.Pane id="search">
+                   <FileSearch 
+                     files={files} 
+                     folders={folders} 
+                     onFileSelect={openFile} 
+                   />
+                 </SidebarTabs.Pane>
+               </SidebarTabs>
+             </div>
+             
+             {/* Add Folder Button Footer (Outside SidebarTabs) */}
+             <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700">
+               <button
+                 onClick={openAndScanFolder} // Use the existing handler from App
+                 className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
+               >
+                 <IconFolderPlus size={16} />
+                 Add Folder
+               </button>
+             </div>
           </aside>
           
-          <div className="flex-grow flex flex-col" role="region" aria-label="Content area">
-            <Split
-              key={`split-${isEditorContainerVisible ? 'editor' : 'no-editor'}-${previewVisible ? 'preview' : 'no-preview'}`}
-              className={`flex overflow-hidden h-full ${isMobile ? 'flex-col' : ''}`}
-              sizes={getEditorPreviewSizes()}
-              minSize={previewVisible ? (isMobile ? 150 : 200) : 0}
-              maxSize={!isEditorContainerVisible ? 0 : Infinity}
-              gutterSize={(previewVisible && isEditorContainerVisible) ? 5 : 0}
-              gutterAlign="center"
-              snapOffset={30}
-              dragInterval={1}
-              direction={isMobile ? "vertical" : "horizontal"}
-              cursor={isMobile ? "row-resize" : "col-resize"}
-              elementStyle={(dimension, size, gutterSize) => ({
-                'flex-basis': `calc(${size}% - ${gutterSize}px)`,
-              })}
-              gutterStyle={(dimension, gutterSize) => ({
-                'flex-basis': `${gutterSize}px`,
-              })}
-              onDragEnd={() => {
-                // Force layout recalculation after resize
-                window.dispatchEvent(new Event('resize'));
-              }}
+          {/* Pane 2: Editor - Moved from nested split */}
+          <div 
+             className={`editor-pane flex flex-col h-full overflow-auto ${!isEditorContainerVisible ? 'hidden' : ''}`} // ADDED overflow-auto
+             role="region" 
+             aria-label="Editor"
+          >
+            {/* Editor Tabs */}
+            <div className="editor-tabs-container flex-shrink-0"> {/* Ensure tabs don't grow */}
+              <EditorTabs 
+                currentFile={currentFile}
+                openFiles={openFiles}
+                onTabChange={handleTabChange}
+                onTabClose={handleTabClose}
+                onNewTab={handleNewTab}
+              />
+            </div>
+            
+            {/* Toolbar */}
+            <div className="toolbar-container flex-shrink-0"> {/* Ensure toolbar doesn't grow */}
+              <MarkdownToolbar 
+                onAction={handleToolbarAction} 
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                onToggleEditorVisibility={toggleEditorEye} // Might need adjustment
+                isEditorVisible={isEditorVisible}
+                onTogglePreviewVisibility={togglePreviewEye} // Might need adjustment
+                isPreviewVisible={previewVisible}
+                onSearch={handleSearch}
+                onReplace={handleReplace}
+                onReplaceAll={handleReplaceAll}
+              />
+            </div>
+            
+            {/* EDITOR Component Container */}
+            <div 
+              className={`editor-component-container flex-grow relative min-h-0 ${!isEditorVisible ? 'hidden' : ''}`} // Use flex-grow for editor itself
             >
-              <div className={`overflow-hidden flex flex-col h-full ${!isEditorContainerVisible ? 'hidden' : ''}`} role="region" aria-label="Editor">
-                {/* Add editor tabs */}
-                <div className="editor-tabs-container">
-                  <EditorTabs 
-                    currentFile={currentFile}
-                    openFiles={openFiles}
-                    onTabChange={handleTabChange}
-                    onTabClose={handleTabClose}
-                    onNewTab={handleNewTab}
-                  />
-                </div>
-                
-                <div className="toolbar-container">
-                  <MarkdownToolbar 
-                    onAction={handleToolbarAction} 
-                    onUndo={handleUndo}
-                    onRedo={handleRedo}
-                    onToggleEditorVisibility={toggleEditorEye}
-                    isEditorVisible={isEditorVisible}
-                    onTogglePreviewVisibility={togglePreviewEye}
-                    isPreviewVisible={previewVisible}
-                    onSearch={handleSearch}
-                    onReplace={handleReplace}
-                    onReplaceAll={handleReplaceAll}
-                  />
-                </div>
-                
-                {/* EDITOR CONTAINER: Restructured to ensure proper input handling */}
-                <div 
-                  className={`editor h-full flex-grow overflow-hidden ${!isEditorVisible ? 'hidden' : ''}`} 
-                  style={{ 
-                    position: "relative", 
-                    isolation: "isolate", // Create a stacking context
-                    pointerEvents: "auto", // Ensure it captures pointer events
-                    zIndex: 30, // Increase z-index to ensure it's above other elements
-                    display: isEditorVisible ? "flex" : "none",
-                    flexDirection: "column",
-                    minHeight: "0",
-                    width: "100%", // Ensure it takes full width of parent
-                    height: "100%" // Ensure it takes full height of parent
-                  }}
-                >
-                  {state.loading.content && !forcingScrollRef.current && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm z-50 pointer-events-none">
-                      <div className="pointer-events-none">
-                        <LoadingSpinner />
-                        <p className="mt-4 text-surface-700 dark:text-surface-300 font-medium">Loading content...</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Direct editor mount without unnecessary wrappers */}
-                  <MarkdownEditor
-                    ref={editorRef}
-                    content={content}
-                    onChange={handleContentChange}
-                    onCursorChange={handleCursorChange}
-                    onScroll={handleEditorScroll}
-                    inScrollSync={scrollSyncEnabled}
-                    scrollSource={scrollSource}
-                    className="w-full h-full"
-                  />
-                </div>
-              </div>
-              
-              <div 
-                className={`overflow-hidden flex flex-col h-full ${!previewVisible ? 'hidden' : ''}`} 
-                role="region" 
-                aria-label="Preview"
-                style={{
-                  flexGrow: !isEditorContainerVisible ? 1 : 'unset',
-                  width: !isEditorContainerVisible ? '100%' : 'unset',
-                  minHeight: "0", // Allow shrinking
-                  height: "100%" // Take full height
-                }}
-              >
-                <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800">
-                  <div className="flex items-center space-x-2">
-                    <button
-                      className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
-                      onClick={togglePreviewEye}
-                      title={isEditorContainerVisible ? "Hide Editor" : "Show Editor"}
-                    >
-                      {isEditorContainerVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-                    </button>
-                    <h3 className="text-sm font-medium">Preview</h3>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {/* Zoom Controls */}
-                    <div className="flex items-center space-x-1 mr-2">
-                      <button
-                        className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
-                        onClick={handleZoomOut}
-                        title="Zoom Out (Ctrl+-)"
-                      >
-                        <IconZoomOut size={16} />
-                      </button>
-                      <span className="text-xs text-surface-600 dark:text-surface-400 w-12 text-center">
-                        {previewZoom}%
-                      </span>
-                      <button
-                        className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
-                        onClick={handleZoomIn}
-                        title="Zoom In (Ctrl++)"
-                      >
-                        <IconZoomIn size={16} />
-                      </button>
-                      <button
-                        className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
-                        onClick={handleZoomReset}
-                        title="Reset Zoom (Ctrl+0)"
-                      >
-                        <IconZoomReset size={16} />
-                      </button>
-                    </div>
-                    
-                    {/* Print Button */}
-                    <button
-                      className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
-                      onClick={handlePrintPreview}
-                      title="Print Preview"
-                    >
-                      <IconPrinter size={16} />
-                    </button>
-                    
-                    {/* Scroll Sync Toggle */}
-                    <button
-                      className={`p-1 rounded ${
-                        scrollSyncEnabled
-                          ? 'text-primary-600 dark:text-primary-400 bg-primary-100 dark:bg-primary-900'
-                          : 'text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600'
-                      }`}
-                      onClick={toggleScrollSync}
-                      title={`${scrollSyncEnabled ? 'Disable' : 'Enable'} Scroll Sync`}
-                    >
-                      {scrollSyncEnabled ? <IconLink size={16} /> : <IconUnlink size={16} />}
-                    </button>
-                  </div>
-                </div>
-                <div 
-                  className="preview-container flex-grow overflow-auto h-full" // <-- Outer container
-                  style={{ minHeight: "0", height: "100%", backgroundColor: "transparent" }}
-                  onScroll={handlePreviewScroll} // <-- Keep existing onScroll
-                  onWheel={handlePreviewWheel} // <-- Add the wheel event listener HERE
-                >
-                  <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
-                     {/* The MarkdownPreview component is inside the LoadingOverlay */}
-                     <MarkdownPreview 
-                      ref={previewRef}
-                      content={content}
-                      onScroll={handlePreviewScroll}
-                      inScrollSync={scrollSyncEnabled}
-                      scrollSource={scrollSource}
-                      currentFilePath={currentFile?.path}
-                    />
-                  </LoadingOverlay>
-                </div>
-              </div>
-            </Split>
+              {state.loading.content && !forcingScrollRef.current && (
+                 <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm z-50 pointer-events-none">
+                   <div className="pointer-events-none">
+                     <LoadingSpinner />
+                     <p className="mt-4 text-surface-700 dark:text-surface-300 font-medium">Loading content...</p>
+                   </div>
+                 </div>
+               )}
+              <MarkdownEditor
+                ref={editorRef}
+                content={content}
+                onChange={handleContentChange}
+                onCursorChange={handleCursorChange}
+                onScroll={handleEditorScroll} // This scroll handler is now on the wrong element
+                inScrollSync={scrollSyncEnabled}
+                scrollSource={scrollSource}
+                className="w-full h-full absolute inset-0" // Make editor fill container
+              />
+            </div>
           </div>
+
+          {/* Pane 3: Preview - Moved from nested split */}
+          <div 
+            className={`preview-pane flex flex-col h-full overflow-auto ${!previewVisible ? 'hidden' : ''}`} // ADDED overflow-auto
+            role="region" 
+            aria-label="Preview"
+           >
+             {/* Preview Header */}
+             <div className="preview-header flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 flex-shrink-0 overflow-hidden"> {/* Keep header fixed */}
+               <div className="flex items-center space-x-2">
+                 <button
+                   className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                   onClick={togglePreviewEye} // Might need adjustment
+                   title={isEditorContainerVisible ? "Hide Editor" : "Show Editor"} // Title might be wrong now
+                 >
+                   {isEditorContainerVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                 </button>
+                 <h3 className="text-sm font-medium flex-shrink-0">Preview</h3>
+               </div>
+               <div className="flex items-center space-x-2 flex-shrink min-w-0"> 
+                 {/* Zoom Controls */}
+                 <div className="flex items-center space-x-1 mr-2 flex-shrink-0"> 
+                   <button
+                     className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                     onClick={handleZoomOut}
+                     title="Zoom Out (Ctrl+-)"
+                   >
+                     <IconZoomOut size={16} />
+                   </button>
+                   <span className="text-xs text-surface-600 dark:text-surface-400 w-12 text-center">
+                     {previewZoom}%
+                   </span>
+                   <button
+                     className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                     onClick={handleZoomIn}
+                     title="Zoom In (Ctrl++)"
+                   >
+                     <IconZoomIn size={16} />
+                   </button>
+                   <button
+                     className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded"
+                     onClick={handleZoomReset}
+                     title="Reset Zoom (Ctrl+0)"
+                   >
+                     <IconZoomReset size={16} />
+                   </button>
+                 </div>
+                 {/* Print Button */}
+                 <button
+                   className="p-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600 rounded flex-shrink-0"
+                   onClick={handlePrintPreview}
+                   title="Print Preview"
+                 >
+                   <IconPrinter size={16} />
+                 </button>
+                 {/* Scroll Sync Toggle */}
+                 <button
+                   className={`p-1 rounded flex-shrink-0 ${
+                     scrollSyncEnabled
+                       ? 'text-primary-600 dark:text-primary-400 bg-primary-100 dark:bg-primary-900'
+                       : 'text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600'
+                   }`}
+                   onClick={toggleScrollSync}
+                   title={`${scrollSyncEnabled ? 'Disable' : 'Enable'} Scroll Sync`}
+                 >
+                   {scrollSyncEnabled ? <IconLink size={16} /> : <IconUnlink size={16} />}
+                 </button>
+               </div>
+             </div>
+             {/* PREVIEW Component Container */}
+             <div 
+               className="preview-component-container flex-grow relative min-h-0" // Use flex-grow for preview itself
+               onScroll={handlePreviewScroll} // This scroll handler is now on the wrong element
+               onWheel={handlePreviewWheel} 
+             >
+               <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
+                  <MarkdownPreview 
+                   ref={previewRef}
+                   content={content}
+                  //  onScroll={handlePreviewScroll} // Removed scroll handler from here
+                   inScrollSync={scrollSyncEnabled}
+                   scrollSource={scrollSource}
+                   currentFilePath={currentFile?.path}
+                 />
+               </LoadingOverlay>
+             </div>
+          </div>
+
+          {/* REMOVED the wrapper div and the nested Split component */}
+          
         </Split>
       </main>
       
