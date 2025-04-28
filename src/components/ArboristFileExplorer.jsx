@@ -30,6 +30,7 @@ const FileExplorer = ({
   itemOrder, // Added prop for explicit item order
   expandedNodes, // <-- Accept expandedNodes state from props
   onFolderToggle, // <-- Accept folder toggle handler from props
+  onAddFolderProp, // <-- Accept the new prop from App.jsx
   // Add any other necessary props based on App.jsx usage
 }) => {
   const [treeData, setTreeData] = useState([]);
@@ -303,24 +304,13 @@ const FileExplorer = ({
 
   // Handle open folder button click (Replaces existing content)
   const handleOpenFolder = useCallback(() => {
-    if (window.api && window.api.openFolderDialog) {
-      window.api.openFolderDialog().then(folderPath => {
-        if (folderPath && onScanFolder) {
-          // Scan the selected folder, replacing existing content (addMode = false)
-          onScanFolder(folderPath, false).then(() => {
-            // Auto-expand the root folder
-            if (folderPath) {
-              // Normalize the path for consistency
-              const normalizedPath = path.normalize(folderPath).replace(/\\/g, '/');
-              setExpandedNodes({ [normalizedPath]: true }); // Reset and expand only this one
-            }
-          });
-        }
-      });
+    // Call the function passed down from App.jsx
+    if (onAddFolderProp) {
+      onAddFolderProp();
     } else {
-      console.error("API for opening folder dialog not available");
+      console.error("onAddFolderProp function is not available in FileExplorer");
     }
-  }, [onScanFolder]);
+  }, [onAddFolderProp]); // Depend on the new prop
 
   // Re-added context menu handlers and effects
   const handleContextMenu = useCallback((event, node) => {

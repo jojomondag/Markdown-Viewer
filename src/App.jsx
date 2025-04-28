@@ -58,6 +58,7 @@ function App() {
   const [isEditorContainerVisible, setIsEditorContainerVisible] = useState(true);
   const [isSaveStateDialogOpen, setIsSaveStateDialogOpen] = useState(false); // <-- Add state for the dialog
   const [expandedNodes, setExpandedNodes] = useState({}); // <-- State for expanded nodes
+  const [isProjectOpen, setIsProjectOpen] = useState(false); // <-- Initialize isProjectOpen state
   const {
     files,
     folders,
@@ -1736,9 +1737,6 @@ function App() {
     }
   }, [previewRef, setPreviewZoom]); // Dependency is the ref and setPreviewZoom
 
-  // State to track if a project (folder) is open
-  const [isProjectOpen, setIsProjectOpen] = useState(false); // <-- Add this state
-  
   // --- State for Saved Workspace States (keyed by user-provided name) ---
   const [savedWorkspaceStates, setSavedWorkspaceStates] = useState({});
   
@@ -1902,57 +1900,31 @@ function App() {
       {/* <AccessibilityHelper /> */}
       
       <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
-         {/* Use justify-between again to push elements apart */}
-         <div className="container mx-auto flex items-center justify-between gap-4"> 
-           
-           {/* --- Part 1: Open/Save Button (10%) --- */}
-           <div className="flex items-center w-[10%] flex-shrink-0"> {/* Fixed width, no shrink */}
-             <button
-               onClick={isProjectOpen ? handleSaveProject : openAndScanFolder}
-               className={`btn btn-primary flex items-center gap-2 w-full justify-center`} // Button takes full width of its container
-               title={isProjectOpen ? `Save Current Project State` : `Open Folder (Ctrl+O)`}
-               disabled={loading || (isProjectOpen && currentFolders.length === 0)}
-             >
-               {loading ? (
-                 <>
-                   <LoadingSpinner size="sm" color="white" className="mr-1" />
-                   {!isMobile && (isProjectOpen ? "Saving..." : "Adding...")} {/* Conditional loading text */}
-                 </>
-               ) : (
-                 <>
-                   {isProjectOpen ? (
-                     <IconDeviceFloppy size={isMobile ? 16 : 18} className="mr-1" />
-                   ) : (
-                     <IconFolderOpen size={isMobile ? 16 : 18} className="mr-1" />
-                   )}
-                   {isMobile ? (isProjectOpen ? "Save" : "Open") : (isProjectOpen ? "Save State" : "Open Folder")} {/* Changed Save button text */}
-                 </>
-               )}
-             </button>
-           </div>
-           
-           {/* --- Part 2: Saved State Tabs (80%) --- */}
-           <div className="flex items-center space-x-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 border-l border-r border-surface-300 dark:border-surface-600 px-2 min-h-[38px] w-[80%] flex-grow"> {/* Fixed width, allow grow if needed, added border-r */}
+         {/* Main flex container spanning full width, with responsive gap */}
+         <div className="w-full flex items-center justify-between gap-2 md:gap-4"> {/* Changed container to w-full, responsive gap */}
+
+           {/* 1. Saved State Tabs Container (Takes remaining space, scrolls) */}
+           <div className="min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 border-surface-300 dark:border-surface-600 pr-2 min-h-[38px]">
              {Object.keys(savedWorkspaceStates).length > 0 ? (
                Object.values(savedWorkspaceStates).map((stateData) => (
                  <button
-                   key={stateData.name} // Use state name as unique key
+                   key={stateData.name}
                    onClick={() => handleLoadWorkspaceState(stateData)}
-                   className="flex-shrink-0 px-3 py-1.5 border border-surface-300 dark:border-surface-600 rounded bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-sm whitespace-nowrap"
+                   className="flex-shrink-0 px-2 py-1.5 border border-surface-300 dark:border-surface-600 rounded bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-sm whitespace-nowrap" /* Reduced px further */
                    title={`Load state: ${stateData.name}`}
                  >
-                   {stateData.name} {/* Display the saved state name */}
+                   {stateData.name}
                  </button>
                ))
              ) : (
-               <span className="text-xs text-surface-500 dark:text-surface-400 italic px-2">No saved states</span> // Placeholder text
+               <span className="text-xs text-surface-500 dark:text-surface-400 italic px-2">No saved states</span>
              )}
            </div>
-           
-           {/* --- Part 3: Settings (10%) --- */}
-           <div className="flex items-center justify-end space-x-2 w-[10%] flex-shrink-0"> {/* Fixed width, no shrink */}
+
+           {/* 2. Settings Container (Takes required width) */}
+           <div className="flex-shrink-0 flex items-center justify-end space-x-2">
              <ThemeToggle />
-             <button 
+             <button
                className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
                onClick={() => setIsSettingsOpen(true)}
                title="Settings"
@@ -1960,6 +1932,7 @@ function App() {
                <IconSettings size={isMobile ? 16 : 18} />
              </button>
            </div>
+
          </div>
       </header>
       
@@ -1996,7 +1969,32 @@ function App() {
         >
           {/* Pane 1: Sidebar */}
           <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 flex flex-col ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
-            {/* ... Sidebar content remains the same ... */}
+            
+            {/* --- START: Add Save State Button to Sidebar Top --- */}
+            {isProjectOpen && (
+              <div className="flex-shrink-0 p-2 border-b border-surface-200 dark:border-surface-700"> {/* Container with padding and border */}
+                <button
+                  onClick={handleSaveProject} 
+                  className={`btn btn-primary flex items-center justify-center gap-2 w-full`} // Use full width of sidebar column 
+                  title={`Save Current Project State`}
+                  disabled={!isProjectOpen || currentFolders.length === 0 || loading} 
+                >
+                  {loading ? (
+                    <>
+                      <LoadingSpinner size="sm" color="white" className="mr-1" />
+                      {!isMobile && "Saving..."}
+                    </>
+                  ) : (
+                    <>
+                      <IconDeviceFloppy size={20} className="mr-1" /> 
+                      {isMobile ? "Save" : "Save State"} 
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+            {/* --- END: Add Save State Button --- */}
+            
              {/* Make SidebarTabs grow */}
              <div className="flex-grow min-h-0 overflow-y-auto"> {/* Allow tabs content to scroll if needed */} 
                <SidebarTabs activeTab={activeTab} onTabChange={handleSidebarTabChange}>
@@ -2030,11 +2028,11 @@ function App() {
                            onCreateFolder={handleCreateFolder}
                            onDeleteFolder={handleDeleteItem}
                            onMoveItemProp={handleMoveItem}
-                           onScanFolder={scanFolder}
+                           onScanFolder={scanFolder} // Keep this if TreeNode uses it directly for scanning subfolders? Recheck FileExplorer usage.
                            onRenameItem={handleRenameItem}
                            onDeleteItem={handleDeleteItem}
                            itemOrder={itemOrder}
-                           // onAddFolder={openAndScanFolder} // REMOVED prop
+                           onAddFolderProp={openAndScanFolder} // <-- Add this prop
                            expandedNodes={expandedNodes} // <-- Pass state down
                            onFolderToggle={handleFolderToggle} // <-- Pass handler down
                          />
@@ -2229,7 +2227,7 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
       />
       
-      {/* --- Add the Save State Dialog --- */}      
+      {/* --- Add the Save State Dialog --- */}
       <SaveStateDialog 
         isOpen={isSaveStateDialogOpen} 
         onClose={() => setIsSaveStateDialogOpen(false)} 
