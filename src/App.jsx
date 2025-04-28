@@ -43,6 +43,8 @@ import SaveStateDialog from './components/SaveStateDialog'; // <-- Import the ne
 import path from 'path-browserify'; // Use browser-compatible path
 import { getDirname, getBasename } from './utils/pathUtils'; // Import path utils
 
+import WorkspaceStateTabs from './components/WorkspaceStateTabs'; // <-- Import the new component
+
 function App() {
   console.log('[App] Component rendering');
   const editorRef = useRef(null);
@@ -1887,6 +1889,36 @@ function App() {
     }
   };
 
+  // --- NEW: Handler to Remove a Saved Workspace State ---
+  const handleRemoveWorkspaceState = (stateName) => {
+    console.log(`[App] handleRemoveWorkspaceState called for name: ${stateName}`);
+    if (!savedWorkspaceStates[stateName]) {
+      console.warn(`[App] Cannot remove state '\${stateName}\', it does not exist.`);
+      return;
+    }
+    
+    // Confirmation
+    const confirmed = window.confirm(`Are you sure you want to remove the saved state '\${stateName}\'?`);
+    if (!confirmed) return;
+    
+    try {
+      // Update state and localStorage
+      setSavedWorkspaceStates(prevStates => {
+        const newState = { ...prevStates };
+        delete newState[stateName];
+        localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(newState));
+        return newState;
+      });
+      
+      showSuccess(`Workspace state '\${stateName}\' removed.`);
+      
+    } catch (error) {
+      console.error(`Failed to remove project state '\${stateName}\' from localStorage:`, error);
+      showError(`Failed to remove workspace state '\${stateName}\'.`);
+    }
+  };
+  // --- End New Handler ---
+
   // Handler to toggle folder expansion state (passed down to explorer)
   const handleFolderToggle = useCallback((path) => {
     setExpandedNodes(prev => ({
@@ -1904,22 +1936,11 @@ function App() {
          <div className="w-full flex items-center justify-between gap-2 md:gap-4"> {/* Changed container to w-full, responsive gap */}
 
            {/* 1. Saved State Tabs Container (Takes remaining space, scrolls) */}
-           <div className="min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 border-surface-300 dark:border-surface-600 pr-2 min-h-[38px]">
-             {Object.keys(savedWorkspaceStates).length > 0 ? (
-               Object.values(savedWorkspaceStates).map((stateData) => (
-                 <button
-                   key={stateData.name}
-                   onClick={() => handleLoadWorkspaceState(stateData)}
-                   className="flex-shrink-0 px-2 py-1.5 border border-surface-300 dark:border-surface-600 rounded bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-sm whitespace-nowrap" /* Reduced px further */
-                   title={`Load state: ${stateData.name}`}
-                 >
-                   {stateData.name}
-                 </button>
-               ))
-             ) : (
-               <span className="text-xs text-surface-500 dark:text-surface-400 italic px-2">No saved states</span>
-             )}
-           </div>
+           <WorkspaceStateTabs
+             savedWorkspaceStates={savedWorkspaceStates}
+             onLoadState={handleLoadWorkspaceState}
+             onRemoveState={handleRemoveWorkspaceState} // <-- Pass the remove handler
+           />
 
            {/* 2. Settings Container (Takes required width) */}
            <div className="flex-shrink-0 flex items-center justify-end space-x-2">
