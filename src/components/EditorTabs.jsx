@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { IconX, IconPlus } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
 
@@ -83,70 +83,73 @@ const EditorTabs = ({
   };
   
   return (
-    <div className="editor-tabs flex items-center overflow-x-auto bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto p-2">
+    <div className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-2 min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto">
       {filteredOpenFiles.map((file) => {
         const isActive = currentFile && file.path === currentFile.path;
         const isDirty = file.isDirty;
         
         return (
-          <div 
-            key={file.path} 
+          <button
+            key={file.path}
             className={`
-              flex items-center min-w-[90px] max-w-[150px] px-2 py-1 cursor-pointer relative
-              border-r border-surface-300 dark:border-surface-700
-              ${isActive 
-                ? 'bg-white dark:bg-surface-900 text-primary-600 dark:text-primary-400' 
-                : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}
+              flex-shrink-0 px-2 py-1 border-b-2 text-xs whitespace-nowrap transition-colors duration-150 ease-in-out group relative flex items-center focus:outline-none
+              ${isActive
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent hover:border-surface-400 dark:hover:border-surface-500 text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100'}
             `}
+            style={{ paddingRight: isDirty ? '1.1rem' : '1.6rem' }}
             onClick={() => onTabChange(file)}
             onContextMenu={(e) => handleContextMenu(e, file)}
+            title={file.path}
           >
-            <span className="truncate flex-grow text-xs">{file.name}</span>
+            <span className="truncate flex-grow">{file.name}</span>
             
             {isDirty && (
-              <span className="ml-1 w-1.5 h-1.5 rounded-full bg-warning-500 flex-shrink-0" />
+              <span className="ml-1 mr-0.5 w-1.5 h-1.5 rounded-full bg-warning-500 flex-shrink-0" />
             )}
             
             <button
-              className="ml-1 p-0.5 rounded-full hover:bg-surface-300 dark:hover:bg-surface-600 text-surface-500 dark:text-surface-400 flex-shrink-0"
               onClick={(e) => handleCloseClick(e, file)}
-              title="Close tab"
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out flex-shrink-0 focus:outline-none"
+              title={`Close tab: ${file.name}`}
             >
               <IconX size={12} />
             </button>
-          </div>
+          </button>
         );
       })}
       
       {/* Context menu */}
       {contextMenu.visible && contextMenu.file && (
-        <div 
+        <div
           className="fixed z-50 rounded-md shadow-lg bg-white dark:bg-surface-800 ring-1 ring-black ring-opacity-5 focus:outline-none"
-          style={{ 
-            left: `${contextMenu.x}px`, 
+          style={{
+            left: `${contextMenu.x}px`,
             top: `${contextMenu.y}px`,
-            transform: 'translate(-50%, -100%)' // Position above cursor
+            // Position slightly above and potentially centered on the cursor
+            // transform: 'translateY(-100%)' // Simple above cursor
+            transform: 'translate(-20px, -100%)' // Move slightly left and above
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="py-1 px-1 flex flex-row space-x-2">
-            <button 
-              className="px-3 py-1 text-xs text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded"
+          <div className="py-1 px-1 flex flex-row gap-1">
+            <button
+              className="px-3 py-1 text-xs text-left text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded focus:outline-none"
               onClick={() => handleCloseOthers(contextMenu.file)}
             >
-              Close other
+              Close Others
             </button>
-            <button 
-              className="px-3 py-1 text-xs text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded"
+            <button
+              className="px-3 py-1 text-xs text-left text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded focus:outline-none"
               onClick={() => handleCloseRight(contextMenu.file)}
             >
-              Close right
+              Close to the Right
             </button>
-            <button 
-              className="px-3 py-1 text-xs text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded"
+            <button
+              className="px-3 py-1 text-xs text-left text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded focus:outline-none"
               onClick={handleCloseAll}
             >
-              Close all
+              Close All
             </button>
           </div>
         </div>
@@ -154,7 +157,7 @@ const EditorTabs = ({
       
       {/* New tab button */}
       <button
-        className="px-2 py-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center"
+        className="flex-shrink-0 px-1.5 py-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center rounded focus:outline-none"
         onClick={onNewTab}
         title="New tab"
       >

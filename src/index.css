@@ -172,7 +172,7 @@ main {
 
 /* High contrast focus styles */
 :focus-visible {
-  outline: 2px solid #0ea5e9;
+  outline: 2px solid #0ea5e9; /* Or your preferred focus color */
   outline-offset: 2px;
 }
 
@@ -236,4 +236,14 @@ textarea:focus {
 /* Focus trap for modals - prevent background interaction when modal is open */
 body.modal-open {
   overflow: hidden;
-} 
+}
+
+/* Add custom styles here */
+
+/* Remove focus outline from tab buttons */
+.editor-tabs button:focus,
+.workspace-state-tabs button:focus {
+  outline: none;
+}
+
+/* Add other custom styles below */ 
