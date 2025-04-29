@@ -92,6 +92,7 @@ const useFiles = () => {
 
   // Open a markdown file
   const openFile = useCallback(async (file) => {
+    console.log(`[useFiles] openFile called for: ${file?.path}`);
     try {
       setLoading(true);
       setError(null);
@@ -109,6 +110,7 @@ const useFiles = () => {
       // Ensure content is set to empty string if undefined/null
       setContent(fileContent || '');
       setCurrentFile(file);
+      console.log(`[useFiles] Successfully set content and currentFile for: ${file?.path}`);
     } catch (err) {
       setError(err.message || 'Failed to open file');
       console.error('Error opening file:', err);

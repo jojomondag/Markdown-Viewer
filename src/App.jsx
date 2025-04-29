@@ -795,14 +795,10 @@ function App() {
 
   // Handle tab change
   const handleTabChange = (file) => {
+    // Only proceed if the clicked tab's file is different from the current one
     if (file.path !== currentFile?.path) {
-      // If there are unsaved changes, confirm before switching
-      if (currentFile && openFiles.find(f => f.path === currentFile.path)?.isDirty) {
-        const confirmed = window.confirm(`You have unsaved changes in ${currentFile.name}. Continue?`);
-        if (!confirmed) return;
-      }
-      
-      // Open the selected file
+      // Directly open the selected file, bypassing the unsaved changes check for now
+      console.log(`[App] handleTabChange: Bypassing unsaved check, preparing to call originalOpenFile for ${file.path}`); // <-- Modify log
       originalOpenFile(file);
     }
   };
@@ -2175,7 +2171,7 @@ function App() {
                 content={content}
                 onChange={handleContentChange}
                 onCursorChange={handleCursorChange}
-                onScroll={handleEditorScroll} // This scroll handler is now on the wrong element
+                onScroll={handleEditorScroll} // This scroll handler is now on the correct element
                 inScrollSync={scrollSyncEnabled}
                 scrollSource={scrollSource}
                 className="w-full h-full absolute inset-0" // Make editor fill container
@@ -2254,14 +2250,14 @@ function App() {
              {/* PREVIEW Component Container */}
              <div 
                className="preview-component-container flex-grow relative min-h-0" // Use flex-grow for preview itself
-               onScroll={handlePreviewScroll} // This scroll handler is now on the wrong element
+               onScroll={handlePreviewScroll} // This scroll handler is now on the correct element
                onWheel={handlePreviewWheel} 
              >
                <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
                   <MarkdownPreview 
                    ref={previewRef}
                    content={content}
-                  //  onScroll={handlePreviewScroll} // Removed scroll handler from here
+                   onScroll={handlePreviewScroll} // This scroll handler is now on the correct element
                    inScrollSync={scrollSyncEnabled}
                    scrollSource={scrollSource}
                    currentFilePath={currentFile?.path}

@@ -35,10 +35,20 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      {...attributes} 
+      {...listeners} 
+      onClick={() => { 
+        console.log(`[SortableTab] onClick triggered for file: ${file.path}`);
+        onTabChange(file); 
+      }}
+      role="tab" 
+      aria-selected={isActive} 
+    >
       {/* Original Button structure inside the sortable div */}
       <button
-        // Removed style, ref, attributes, listeners from button itself
         key={file.path} // Keep key on the button for React lists if needed
         style={paddingStyle} // Apply padding style directly to the button
         className={`
@@ -47,7 +57,6 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
             ? 'border-primary-500 text-primary-600 dark:text-primary-400'
             : 'border-transparent hover:border-surface-400 dark:hover:border-surface-500 text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100'}
         `}
-        onClick={() => onTabChange(file)}
         onContextMenu={(e) => onContextMenu(e, file)}
         title={file.path}
       >
@@ -93,7 +102,11 @@ const EditorTabs = ({
 
   // Setup dnd-kit sensors
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
