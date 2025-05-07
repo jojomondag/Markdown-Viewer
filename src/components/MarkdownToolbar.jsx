@@ -12,8 +12,6 @@ import {
   IconPhoto,
   IconArrowBackUp,
   IconArrowForwardUp,
-  IconEye,
-  IconEyeOff,
   IconSearch
 } from '@tabler/icons-react';
 import { getShortcutTooltip } from '../utils/keyboardShortcuts';
@@ -23,10 +21,6 @@ const MarkdownToolbar = ({
   onAction, 
   onUndo, 
   onRedo, 
-  onToggleEditorVisibility, 
-  isEditorVisible = true,
-  onTogglePreviewVisibility,
-  isPreviewVisible = true, 
   onSearch, 
   onReplace, 
   onReplaceAll 
@@ -105,6 +99,7 @@ const MarkdownToolbar = ({
 
   return (
     <div className="markdown-toolbar flex items-center space-x-1 p-1 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 relative z-5">
+      {/* All items will now be in a single flex group, left-aligned by default */}
       <button
         title={`Undo ${getShortcutTooltip('UNDO')}`}
         onClick={onUndo}
@@ -143,15 +138,6 @@ const MarkdownToolbar = ({
         className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
       >
         <IconSearch size={18} />
-      </button>
-      
-      {/* Toggle Preview Visibility */}
-      <button
-        title={isPreviewVisible ? "Hide Preview" : "Show Preview"}
-        onClick={onToggleEditorVisibility}
-        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
-      >
-        {isPreviewVisible ? <IconEyeOff size={18} /> : <IconEye size={18} />}
       </button>
       
       {/* Search dialog */}

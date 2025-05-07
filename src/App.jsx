@@ -2135,6 +2135,8 @@ function App() {
                 onTabClose={handleTabClose}
                 onNewTab={handleNewTab}
                 onTabReorder={handleTabReorder} // <-- Pass the new handler
+                onToggleEditorVisibility={toggleEditorEye} // <-- ADDED: This controls preview
+                isPreviewVisible={previewVisible} // <-- ADDED: State for preview visibility
               />
             </div>
             
@@ -2144,10 +2146,7 @@ function App() {
                 onAction={handleToolbarAction} 
                 onUndo={handleUndo}
                 onRedo={handleRedo}
-                onToggleEditorVisibility={toggleEditorEye} // Might need adjustment
-                isEditorVisible={isEditorVisible}
-                onTogglePreviewVisibility={togglePreviewEye} // Might need adjustment
-                isPreviewVisible={previewVisible}
+                // onToggleEditorVisibility, isEditorVisible, onTogglePreviewVisibility, isPreviewVisible REMOVED
                 onSearch={handleSearch}
                 onReplace={handleReplace}
                 onReplaceAll={handleReplaceAll}

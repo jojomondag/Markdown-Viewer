@@ -15,7 +15,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { IconX, IconPlus } from '@tabler/icons-react';
+import { IconX, IconPlus, IconEye, IconEyeOff } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
 
 // New SortableTab component - Refactored structure
@@ -91,7 +91,9 @@ const EditorTabs = ({
   onTabChange,
   onTabClose,
   onNewTab,
-  onTabReorder // New prop for reordering
+  onTabReorder, // New prop for reordering
+  onToggleEditorVisibility, // Added prop
+  isPreviewVisible // Added prop
 }) => {
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, file: null });
   const { showInfo } = useNotification();
@@ -219,7 +221,28 @@ const EditorTabs = ({
           })}
         </SortableContext>
 
-        {/* Context menu (remains the same) */}
+        {/* New tab button - MOVED HERE, before the eye icon */}
+        <button
+          className="flex-shrink-0 px-1.5 py-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center rounded focus:outline-none ml-1" // Added ml-1 for spacing from tabs
+          onClick={onNewTab}
+          title="New tab"
+        >
+          <IconPlus size={14} />
+        </button>
+
+        {/* Toggle Preview Visibility Button - Now with ml-auto to push to far right */}
+        {typeof onToggleEditorVisibility === 'function' && (
+          <button
+            title={isPreviewVisible ? "Hide Preview" : "Show Preview"}
+            onClick={onToggleEditorVisibility}
+            className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 flex-shrink-0 ml-auto" // Changed ml-1 to ml-auto
+            aria-label={isPreviewVisible ? "Hide Preview" : "Show Preview"}
+          >
+            {isPreviewVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+          </button>
+        )}
+
+        {/* Context menu (its position in JSX doesn't affect this flex layout as it's absolutely positioned) */}
         {contextMenu.visible && contextMenu.file && (
            // ... context menu JSX ... (unchanged)
            <div
@@ -253,15 +276,6 @@ const EditorTabs = ({
              </div>
            </div>
         )}
-
-        {/* New tab button (remains the same) */}
-        <button
-          className="flex-shrink-0 px-1.5 py-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center rounded focus:outline-none"
-          onClick={onNewTab}
-          title="New tab"
-        >
-          <IconPlus size={14} />
-        </button>
       </div>
     </DndContext>
   );
