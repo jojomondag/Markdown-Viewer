@@ -26,11 +26,20 @@ const SortableStateTab = ({ id, stateData, onLoadState, onContextMenu, handleRem
     flexShrink: 0,
   };
 
+  const handleTabClick = () => {
+    console.log('[SortableStateTab] Clicked! stateData.name:', stateData ? stateData.name : 'undefined', 'Calling onLoadState.');
+    if (onLoadState && stateData) {
+      onLoadState(stateData);
+    } else {
+      console.error('[SortableStateTab] onLoadState or stateData is missing!', {onLoadStateExists: !!onLoadState, stateDataExists: !!stateData });
+    }
+  };
+
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <button
         key={stateData.name} // Keep key on button
-        onClick={() => onLoadState(stateData)}
+        onClick={handleTabClick}
         onContextMenu={(e) => onContextMenu(e, stateData)}
         className="flex-shrink-0 px-3 py-1.5 border-b-2 border-transparent hover:border-surface-400 dark:hover:border-surface-500 text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100 text-sm whitespace-nowrap transition-colors duration-150 ease-in-out group relative pr-7 focus:outline-none w-full h-full flex items-center" // Added flex items-center
         title={`Load state: ${stateData.name}`}
@@ -58,7 +67,12 @@ const WorkspaceStateTabs = ({ savedWorkspaceStates, onLoadState, onRemoveState, 
   const stateNames = states.map(s => s.name);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 5,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })

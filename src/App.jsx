@@ -98,6 +98,7 @@ function App() {
     removeOpenFile,
     updateOpenFile,
     setFileDirty,
+    clearOpenFiles, // <-- ADDED clearOpenFiles HERE
     reorderOpenFiles, // <-- Get the new action creator
     updatePreferences
   } = useAppState();
@@ -1824,67 +1825,111 @@ function App() {
   
   // Placeholder for loading a saved workspace state
   const handleLoadWorkspaceState = async (stateData) => { // Renamed, takes full state data
-    console.log(`[App] handleLoadWorkspaceState called with:`, stateData);
+    console.log('[App] handleLoadWorkspaceState CALLED. Received stateData:', JSON.stringify(stateData, null, 2)); // <-- ADD THIS LOG
+    if (!stateData || typeof stateData !== 'object') {
+      console.error('[App] handleLoadWorkspaceState: Invalid or null stateData received. Aborting.', stateData);
+      showError('Failed to load state: Invalid data received.');
+      return;
+    }
+
     const { name, rootFolders = [], expandedNodes: loadedExpandedNodes = {}, openFiles: loadedOpenFiles = [] } = stateData;
+
+    if (!name) {
+      console.error('[App] handleLoadWorkspaceState: stateData is missing a name. Aborting.', stateData);
+      showError('Failed to load state: State data is missing a name.');
+      return;
+    }
+
+    console.log(`[App] Attempting to load workspace: '${name}'. Folders: ${rootFolders.length}, Files: ${loadedOpenFiles.length}`);
 
     showInfo(`Loading workspace state \'${name}\'...`);
     
-    // 1. Clear current workspace state (implementation depends on context/hooks)
-    // TODO: Need a way to properly clear/reset state managed by useFiles and AppStateProvider
-    // Example (Conceptual - needs actual implementation):
-    // closeAllTabs(); // Dispatch action to close all editor tabs
-    // setCurrentFile(null); // Clear current file
-    // updateContent(\'\'); // Clear editor content
-    // originalClearFolders(); // Clear folders in useFiles hook (if exposed)
-    // setFiles([]); // Clear files state
-    // setFolders([]); // Clear folders state
-    // setCurrentFolders([]); // Clear root folders
-    // setExpandedNodes({}); // Clear expanded nodes
-    console.warn("[App] Workspace clearing logic is not fully implemented!");
+    // 1. Clear current workspace state
+    console.log("[App] Clearing current workspace state...");
+    clearOpenFiles(); // Clear tabs from AppStateContext
 
-    // --- TEMPORARY: Simple Reset --- 
-    setCurrentFolders([]);
-    setFiles([]);
-    setFolders([]);
-    setExpandedNodes({});
-    // closeAllTabs(); // Assuming a function/dispatch exists
-    // --- End Temporary Reset ---
+    // originalClearFolders from useFiles hook resets its internal states:
+    // directories, folders, files, currentFile, content
+    if (originalClearFolders) { 
+      originalClearFolders(); 
+    } else {
+      // Fallback if originalClearFolders is somehow not available,
+      // though it should be destructured from useFiles.
+      // This directly calls setters from useFiles hook.
+      setCurrentFile(null); 
+      updateContent('');
+      setFiles([]);      // This is setFiles from useFiles hook
+      setFolders([]);    // This is setFolders from useFiles hook
+      // setDirectories([]); // No direct setDirectories exposed by useFiles to App.jsx
+      console.warn("[App] originalClearFolders was not available. Used individual setters.");
+    }
+
+    // Resetting App.jsx specific local states related to workspace structure
+    setCurrentFolders([]); // For root folder paths managed in App.jsx
+    setExpandedNodes({});  // For UI tree expansion state managed in App.jsx
+    
+    // The warning below can be adjusted or removed if originalClearFolders proves robust.
+    // For now, keeping it to highlight that the overall reset strategy depends on originalClearFolders's completeness.
+    console.warn("[App] Workspace clearing logic relies on originalClearFolders. Review if issues persist.");
 
     // 2. Set state from loaded data
-    setCurrentFolders(rootFolders);
-    setExpandedNodes(loadedExpandedNodes);
+    setCurrentFolders(rootFolders); // Set App.jsx local state for root folders
+    setExpandedNodes(loadedExpandedNodes); // Set App.jsx local state for expanded nodes
     setIsProjectOpen(rootFolders.length > 0);
 
     // 3. Scan all folders from the loaded state
     if (rootFolders.length > 0) {
-      setLoading({ files: true });
+      setLoading({ files: true }); // Use the setLoading from AppStateContext for UI feedback
+      // let newScannedFiles = []; // Not strictly needed if scanFolder updates useFiles' state directly
       try {
-        const scanPromises = rootFolders.map(folderPath => scanFolder(folderPath, true));
-        await Promise.all(scanPromises);
+        for (const folderPath of rootFolders) {
+          // scanFolder is expected to update the files and folders state within the useFiles hook.
+          // The 'addMode = true' ensures it appends to existing (now cleared) state.
+          await scanFolder(folderPath, true); 
+        }
         console.log("[App] Finished scanning all folders for loaded state.");
-
+        
         // 4. Re-open files after scan is complete
-        // Need to find the full file objects from the newly scanned files list
-        const filesToOpen = loadedOpenFiles.map(filePath => files.find(f => f.path === filePath)).filter(Boolean);
-        console.log("[App] Attempting to re-open files:", filesToOpen);
-        // TODO: Implement logic to open these files (e.g., using addOpenFile, originalOpenFile?)
-        // filesToOpen.forEach(file => openFile(file)); // This might trigger multiple loads
-        console.warn("[App] File re-opening logic is not fully implemented!");
+        if (loadedOpenFiles.length > 0) {
+          console.log("[App] Attempting to re-open files from saved state:", loadedOpenFiles);
+          // files state from useFiles() should now be populated by scanFolder calls
+          const currentScannedFiles = files; 
+          const filesToOpenObjects = loadedOpenFiles.map(filePath => {
+            return currentScannedFiles.find(f => f.path === filePath);
+          }).filter(Boolean);
+
+          console.log("[App] Found file objects to re-open:", filesToOpenObjects);
+
+          if (filesToOpenObjects.length > 0) {
+            filesToOpenObjects.forEach(fileToOpen => {
+              console.log(`[App] Calling openFile for:`, fileToOpen);
+              openFile(fileToOpen); 
+            });
+          } else {
+            console.warn("[App] No valid file objects found to re-open from saved state, though paths were provided.");
+          }
+        }
 
         showSuccess(`Workspace state \'${name}\' loaded.`);
       } catch (error) {
+        console.error(`[App] Error loading workspace state '${name}':`, error);
         showError(`Error loading workspace state \'${name}\': ${error.message}`);
-        // Attempt to revert to a clean state?
+        // Attempt to revert to a clean state on error
+        if (originalClearFolders) originalClearFolders();
+        clearOpenFiles(); 
         setCurrentFolders([]);
-        setFiles([]);
-        setFolders([]);
         setExpandedNodes({});
         setIsProjectOpen(false);
       } finally {
-        setLoading({ files: false });
+        setLoading({ files: false }); // Clear loading state
       }
     } else {
        showSuccess(`Loaded empty workspace state \'${name}\'`);
+       setIsProjectOpen(false); 
+       clearOpenFiles(); // Clear any existing tabs if loading an empty state
+       if (originalClearFolders) originalClearFolders(); // Ensure useFiles is also cleared
+       setCurrentFolders([]);
+       setExpandedNodes({});
     }
   };
 
