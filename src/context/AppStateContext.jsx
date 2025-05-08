@@ -57,6 +57,8 @@ const initialState = {
 
   // Used to trigger and manage the loading process of a named workspace state
   pendingWorkspaceLoad: null, // Will hold the data of the state to be loaded
+
+  activeNamedWorkspaceName: null, // <-- NEW: Tracks the currently loaded named workspace
 };
 
 // Define action types
@@ -116,6 +118,10 @@ const ActionTypes = {
   REMOVE_NAMED_WORKSPACE: 'REMOVE_NAMED_WORKSPACE',
   SET_PENDING_WORKSPACE_LOAD: 'SET_PENDING_WORKSPACE_LOAD',
   CLEAR_PENDING_WORKSPACE_LOAD: 'CLEAR_PENDING_WORKSPACE_LOAD',
+
+  // Active Named Workspace Actions <-- NEW
+  SET_ACTIVE_NAMED_WORKSPACE: 'SET_ACTIVE_NAMED_WORKSPACE',
+  CLEAR_ACTIVE_NAMED_WORKSPACE: 'CLEAR_ACTIVE_NAMED_WORKSPACE',
 };
 
 // Reducer function to handle state updates
@@ -461,6 +467,19 @@ function appStateReducer(state, action) {
       };
     // --- END: Named Workspace State cases ---
 
+    // --- BEGIN: Active Named Workspace cases --- <-- NEW
+    case ActionTypes.SET_ACTIVE_NAMED_WORKSPACE:
+      return {
+        ...state,
+        activeNamedWorkspaceName: action.payload, // Payload is the name of the active workspace
+      };
+    case ActionTypes.CLEAR_ACTIVE_NAMED_WORKSPACE:
+      return {
+        ...state,
+        activeNamedWorkspaceName: null,
+      };
+    // --- END: Active Named Workspace cases ---
+
     default:
       return state;
   }
@@ -708,6 +727,16 @@ export const AppStateProvider = ({ children }) => {
     type: ActionTypes.CLEAR_PENDING_WORKSPACE_LOAD,
   });
 
+  // --- NEW: Action creators for active named workspace ---
+  const setActiveNamedWorkspace = (workspaceName) => dispatch({
+    type: ActionTypes.SET_ACTIVE_NAMED_WORKSPACE,
+    payload: workspaceName,
+  });
+
+  const clearActiveNamedWorkspace = () => dispatch({
+    type: ActionTypes.CLEAR_ACTIVE_NAMED_WORKSPACE,
+  });
+
   return (
     <AppStateContext.Provider
       value={{
@@ -757,6 +786,9 @@ export const AppStateProvider = ({ children }) => {
         removeNamedWorkspace,
         loadNamedWorkspace,
         clearPendingWorkspaceLoad,
+        // Active Named Workspace <-- NEW
+        setActiveNamedWorkspace,
+        clearActiveNamedWorkspace,
       }}
     >
       {children}

@@ -114,6 +114,9 @@ function App() {
     removeRootFolder,         // For removing a single root folder
     toggleExpandedNode,       // For tree view interaction
     setExplorerSort,          // For sort changes
+    // Active named workspace actions <-- NEW
+    setActiveNamedWorkspace,
+    clearActiveNamedWorkspace,
   } = useAppState();
   
   // Get open files from app state for convenience
@@ -1697,7 +1700,8 @@ function App() {
   // Get savedWorkspaceStates and related actions from context
   const { 
     savedWorkspaceStates, 
-    pendingWorkspaceLoad 
+    pendingWorkspaceLoad,
+    activeNamedWorkspaceName // <-- NEW: Get current active named workspace name
   } = state; // Get state parts
   const { 
     saveNamedWorkspace, 
@@ -1830,7 +1834,8 @@ function App() {
       openFiles: openFiles.map(file => file.path), 
       itemOrder: itemOrder, 
       explorerSortBy: explorerSortBy, 
-      explorerSortDirection: explorerSortDirection 
+      explorerSortDirection: explorerSortDirection,
+      activeFilePath: currentFile?.path // <-- NEW: Save the active file's path
     };
     
     console.log('[App] Saving workspace state via context:', projectData);
@@ -1848,9 +1853,60 @@ function App() {
     }
   };
   
+  // --- NEW: Function to auto-save the current workspace state ---
+  const autoSaveWorkspace = (workspaceNameToSave) => {
+    console.log(`[App] autoSaveWorkspace called for name: ${workspaceNameToSave}`);
+    
+    if (!workspaceNameToSave) {
+      console.warn("[App] autoSaveWorkspace called without a workspace name. Aborting.");
+      return;
+    }
+
+    // Ensure there's something to save (active root folders)
+    // This check uses the current state.ui.activeRootFolders from context
+    if (state.ui.activeRootFolders.length === 0) {
+      console.warn("[App] autoSaveWorkspace: No active root folders to save. Aborting.");
+      // Optionally, we could remove the named state if it becomes empty.
+      // For now, just don't save an empty state over a potentially valid one.
+      return;
+    }
+
+    const projectData = {
+      name: workspaceNameToSave, // Use the provided name
+      timestamp: Date.now(),
+      // Gather current state from context for saving
+      rootFolders: state.ui.activeRootFolders, 
+      expandedNodes: state.ui.activeExpandedNodes, 
+      openFiles: state.openFiles.map(file => file.path), // Use state.openFiles from context
+      itemOrder: state.ui.itemOrder, 
+      explorerSortBy: state.ui.preferences.explorerSortBy, 
+      explorerSortDirection: state.ui.preferences.explorerSortDirection,
+      activeFilePath: currentFile?.path // <-- NEW: Save the active file's path (currentFile from useFiles)
+    };
+    
+    console.log('[App] Auto-saving workspace state via context:', projectData);
+    
+    try {
+      // Dispatch action to save the named workspace state in context
+      saveNamedWorkspace(workspaceNameToSave, projectData); // saveNamedWorkspace is from useAppState()
+      showInfo(`Workspace '${workspaceNameToSave}' auto-saved.`); // Use showInfo for less intrusive notification
+    } catch (error) {
+      console.error(`[App] Failed to dispatch auto-save for workspace state '${workspaceNameToSave}':`, error);
+      showError(`Failed to auto-save workspace state '${workspaceNameToSave}'.`);
+    }
+  };
+  // --- END: autoSaveWorkspace ---
+  
   // Function to trigger loading a saved workspace state via context action
   const triggerLoadWorkspaceState = (stateNameToLoad) => {
     console.log(`[App] triggerLoadWorkspaceState called for: '${stateNameToLoad}'`);
+
+    // Auto-save the current active named workspace before switching, if applicable
+    if (activeNamedWorkspaceName && activeNamedWorkspaceName !== stateNameToLoad) {
+      console.log(`[App] Auto-saving current workspace '${activeNamedWorkspaceName}' before switching to '${stateNameToLoad}'.`);
+      autoSaveWorkspace(activeNamedWorkspaceName);
+    }
+
     const stateData = savedWorkspaceStates[stateNameToLoad];
     if (!stateData) {
       showError(`Workspace state "${stateNameToLoad}" not found.`);
@@ -1888,6 +1944,7 @@ function App() {
         setActiveRootFolders([]);
         setActiveExpandedNodes({});
         setItemOrder({});
+        clearActiveNamedWorkspace(); // <-- NEW: Clear active named workspace
 
         // 2. Set state from loaded data (dispatch actions using data from pendingWorkspaceLoad)
         const { 
@@ -1897,10 +1954,11 @@ function App() {
           openFiles: loadedOpenFilesPaths = [],
           itemOrder: loadedItemOrder = {}, 
           explorerSortBy: loadedSortBy = 'name', 
-          explorerSortDirection: loadedSortDir = 'asc' 
+          explorerSortDirection: loadedSortDir = 'asc',
+          activeFilePath: loadedActiveFilePath = null // <-- NEW: Get the saved active file path
         } = pendingWorkspaceLoad;
 
-        console.log(`[App Load Effect] Setting state for workspace: '${loadedName}'. Folders: ${loadedRootFolders.length}, Files: ${loadedOpenFilesPaths.length}`);
+        console.log(`[App Load Effect] Setting state for workspace: '${loadedName}'. Folders: ${loadedRootFolders.length}, Files: ${loadedOpenFilesPaths.length}, ActiveFile: ${loadedActiveFilePath}`);
         setActiveRootFolders(loadedRootFolders);
         setActiveExpandedNodes(loadedExpandedNodes);
         setItemOrder(loadedItemOrder);
@@ -1910,35 +1968,62 @@ function App() {
         // 3. Scan all folders from the loaded state
         if (loadedRootFolders.length > 0) {
           console.log("[App Load Effect] Scanning folders for loaded state...");
-          let scannedFoldersData = { files: [], folders: [] };
+          let allScannedFiles = []; // Accumulate all files scanned from all roots
           for (const folderPath of loadedRootFolders) {
-            // scanFolder updates useFiles state internally
-            await scanFolder(folderPath, true); 
+            try {
+              const scanResult = await scanFolder(folderPath, true); 
+              if (scanResult && scanResult.files) {
+                allScannedFiles = allScannedFiles.concat(scanResult.files);
+              }
+            } catch (scanError) {
+              console.error(`[App Load Effect] Error scanning folder ${folderPath}:`, scanError);
+              showError(`Error scanning folder ${folderPath} while loading workspace.`);
+              // Decide if we should continue or abort if a folder scan fails
+            }
           }
-          console.log("[App Load Effect] Finished scanning all folders for loaded state.");
+          // Deduplicate allScannedFiles in case of overlapping scans or identical files from different roots
+          // This simple deduplication assumes file paths are unique identifiers.
+          const uniqueScannedFilesMap = new Map();
+          allScannedFiles.forEach(file => uniqueScannedFilesMap.set(file.path, file));
+          const uniqueScannedFiles = Array.from(uniqueScannedFilesMap.values());
+
+          console.log("[App Load Effect] Finished scanning all folders. Total unique files found:", uniqueScannedFiles.length);
           
           // 4. Re-open files after scan is complete
           if (loadedOpenFilesPaths.length > 0) {
             console.log("[App Load Effect] Attempting to re-open files:", loadedOpenFilesPaths);
-            // We need the *current* files state from useFiles *after* scanning
-            // It's tricky because useFiles state updates might not be synchronous with await scanFolder
-            // A small delay or a more robust way to get updated files might be needed.
-            // For now, assume `files` (from useFiles hook) is reasonably up-to-date. 
-            const currentScannedFiles = files; // Get latest from useFiles()
             
             const filesToOpenObjects = loadedOpenFilesPaths.map(filePath => 
-              currentScannedFiles.find(f => f.path === filePath)
-            ).filter(Boolean); // Filter out any files not found after scan
+              uniqueScannedFiles.find(f => f.path === filePath)
+            ).filter(Boolean); 
 
             console.log("[App Load Effect] Found file objects to re-open:", filesToOpenObjects);
 
             if (filesToOpenObjects.length > 0) {
               // Add files to openFiles state in context first
               filesToOpenObjects.forEach(fileObj => addOpenFile(fileObj));
-              // Then, set the last one (or first?) as the current file to load content
-              const fileToMakeCurrent = filesToOpenObjects[filesToOpenObjects.length - 1]; 
-              console.log("[App Load Effect] Setting current file to load content:", fileToMakeCurrent);
-              originalOpenFile(fileToMakeCurrent); // Load content
+              
+              // Determine which file to make current
+              let fileToMakeCurrent = null;
+              if (loadedActiveFilePath) {
+                fileToMakeCurrent = filesToOpenObjects.find(f => f.path === loadedActiveFilePath);
+              }
+              
+              // Fallback if the specific active file wasn't found or not specified
+              if (!fileToMakeCurrent && filesToOpenObjects.length > 0) {
+                fileToMakeCurrent = filesToOpenObjects[0]; // Fallback to the first available tab
+                console.log("[App Load Effect] Saved active file not found or not specified, falling back to first tab:", fileToMakeCurrent);
+              }
+
+              if (fileToMakeCurrent) {
+                console.log("[App Load Effect] Setting current file to load content:", fileToMakeCurrent);
+                originalOpenFile(fileToMakeCurrent); // Load content
+              } else {
+                console.warn("[App Load Effect] No file found to make current after attempting to restore active/fallback.");
+                // If no files are to be made current, ensure editor is clear
+                setCurrentFile(null);
+                updateContent('');
+              }
             } else {
               console.warn("[App Load Effect] No valid file objects found to re-open from saved state.");
             }
@@ -1951,6 +2036,7 @@ function App() {
         }
 
         showSuccess(`Workspace state '${loadedName}' loaded.`);
+        setActiveNamedWorkspace(loadedName); // <-- NEW: Set active named workspace
         // Store this loaded state as the last active one
         try {
           localStorage.setItem('lastActiveMdViewerWorkspaceName', loadedName);
@@ -1968,6 +2054,7 @@ function App() {
         setActiveExpandedNodes({});
         setItemOrder({});
         setExplorerSort('name', 'asc');
+        clearActiveNamedWorkspace(); // <-- NEW: Clear active named workspace on error too
       } finally {
         // 5. Clear the pending state regardless of success or failure
         console.log("[App Load Effect] Clearing pending workspace load state.");
@@ -1995,7 +2082,8 @@ function App() {
       setAppLoading, 
       showInfo, 
       showSuccess, 
-      showError 
+      showError,
+      clearActiveNamedWorkspace,
   ]);
   // --- END: useEffect to handle the actual loading process ---
 

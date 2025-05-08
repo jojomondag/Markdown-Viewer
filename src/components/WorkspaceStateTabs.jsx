@@ -28,10 +28,10 @@ const SortableStateTab = ({ id, stateData, onLoadState, onContextMenu, handleRem
 
   const handleTabClick = () => {
     console.log('[SortableStateTab] Clicked! stateData.name:', stateData ? stateData.name : 'undefined', 'Calling onLoadState.');
-    if (onLoadState && stateData) {
-      onLoadState(stateData);
+    if (onLoadState && stateData && stateData.name) {
+      onLoadState(stateData.name);
     } else {
-      console.error('[SortableStateTab] onLoadState or stateData is missing!', {onLoadStateExists: !!onLoadState, stateDataExists: !!stateData });
+      console.error('[SortableStateTab] onLoadState, stateData, or stateData.name is missing!', {onLoadStateExists: !!onLoadState, stateDataExists: !!stateData, nameExists: !!(stateData && stateData.name) });
     }
   };
 
