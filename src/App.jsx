@@ -54,14 +54,17 @@ function App() {
   const previousContentRef = useRef('');
   const prevLoadingRef = useRef(false);
   const prevCurrentFileRef = useRef(null);
+  const initialLoadPerformedRef = useRef(false); // <-- ADDED: Ref to track initial auto-load attempt
+
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [previewVisible, setPreviewVisible] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isEditorContainerVisible, setIsEditorContainerVisible] = useState(true);
-  const [isSaveStateDialogOpen, setIsSaveStateDialogOpen] = useState(false); // <-- Add state for the dialog
-  const [expandedNodes, setExpandedNodes] = useState({}); // <-- State for expanded nodes
-  const [isProjectOpen, setIsProjectOpen] = useState(false); // <-- Initialize isProjectOpen state
+  const [isSaveStateDialogOpen, setIsSaveStateDialogOpen] = useState(false);
+  // isProjectOpen will be derived from context state later
+  const [isProjectOpen, setIsProjectOpen] = useState(false); 
+
   const {
     files,
     folders,
@@ -86,11 +89,11 @@ function App() {
   // Get settings
   const { settings, updateSetting } = useSettings();
   
-  // Get app state
+  // Get app state (THIS MUST COME BEFORE useState hooks that depend on `state.ui`)
   const { 
     state,
     dispatch,
-    setLoading,
+    setLoading: setAppLoading, // This is app state loading, distinct from useFiles loading
     setUnsavedChanges,
     setSidebarTab,
     addToHistory,
@@ -98,27 +101,35 @@ function App() {
     removeOpenFile,
     updateOpenFile,
     setFileDirty,
-    clearOpenFiles, // <-- ADDED clearOpenFiles HERE
-    reorderOpenFiles, // <-- Get the new action creator
-    updatePreferences
+    clearOpenFiles, 
+    reorderOpenFiles, 
+    updatePreferences, // Keep this for general preferences if any are left
+    // Action creators for state now managed by context
+    setActiveRootFolders,     // For bulk setting (e.g., loading workspace)
+    setActiveExpandedNodes,   // For bulk setting
+    setItemOrder,             // For bulk setting or initializing
+    updateItemOrderForParent, // For specific DND updates
+    removeFromItemOrder,      // For deletions
+    addRootFolder,            // For adding a single root folder
+    removeRootFolder,         // For removing a single root folder
+    toggleExpandedNode,       // For tree view interaction
+    setExplorerSort,          // For sort changes
   } = useAppState();
   
-  // Get open files from app state
+  // Get open files from app state for convenience
   const openFiles = state.openFiles;
-  
-  // Track the current folder path
-  const [currentFolders, setCurrentFolders] = useState([]);
-  
+  // Get explorer-related UI state from context
+  const { 
+    activeRootFolders, 
+    activeExpandedNodes, 
+    itemOrder, 
+    preferences: { explorerSortBy, explorerSortDirection }
+  } = state.ui;
+
   // Ref to track previous file loading state for order initialization
-  const prevFileLoadingRef = useRef(true); 
-  const [isOrderInitialized, setIsOrderInitialized] = useState(false); // <-- Add state to track initialization
+  const prevFileLoadingRef = useRef(true);
+  const [isOrderInitialized, setIsOrderInitialized] = useState(false);
   
-  // *** NEW: State to manage explicit item order within folders ***
-  const [itemOrder, setItemOrder] = useState({});
-  
-  // Add state for file explorer sort settings
-  const [explorerSortBy, setExplorerSortBy] = useState(state.ui.preferences.explorerSortBy || 'name');
-  const [explorerSortDirection, setExplorerSortDirection] = useState(state.ui.preferences.explorerSortDirection || 'asc');
   
   // Update sidebar and preview visibility from settings
   useEffect(() => {
@@ -193,34 +204,19 @@ function App() {
       if (result && result.folderPaths && result.folderPaths.length > 0) {
         console.log('[App] Folders selected:', result.folderPaths);
         
-        // Update the list of root folders
-        setCurrentFolders(prev => { 
-          console.log('[App] setCurrentFolders: Previous state:', prev);
-          const newFolders = [...prev];
-          result.folderPaths.forEach(folderPath => {
-            const normalizedPath = folderPath.replace(/\\/g, '/');
-            const alreadyExists = newFolders.some(
-              existingPath => existingPath.replace(/\\/g, '/') === normalizedPath
-            );
-            if (!alreadyExists) {
-              console.log(`[App] setCurrentFolders: Adding new path: ${folderPath}`);
-              newFolders.push(normalizedPath);
-            }
-          });
-          console.log('[App] setCurrentFolders: New state:', newFolders); 
-          return newFolders; 
-        });
-        
-        // --- Auto-expand newly added root folders ---
-        const rootPathsToExpand = {};
+        // Update the list of root folders in context
         result.folderPaths.forEach(folderPath => {
           const normalizedPath = folderPath.replace(/\\/g, '/');
-          rootPathsToExpand[normalizedPath] = true;
+          // Dispatch action to add each new root folder
+          addRootFolder(normalizedPath); 
+          // Auto-expand newly added root folders (dispatching for each)
+          // NOTE: setActiveExpandedNodes might be better if adding many, but toggle is fine for one-by-one
+          if (!activeExpandedNodes[normalizedPath]) {
+             toggleExpandedNode(normalizedPath);
+          }
         });
-        setExpandedNodes(prev => ({ ...prev, ...rootPathsToExpand }));
-        // --- End Auto-expand ---
         
-        // --- Scan each added folder --- 
+        // Scan each added folder 
         console.log('[App] Calling scanFolder for each added path...');
         for (const folderPath of result.folderPaths) {
           await scanFolder(folderPath, true); // Call scanFolder in add mode
@@ -228,7 +224,7 @@ function App() {
         console.log('[App] Finished calling scanFolder for all added paths.');
         // --- End Scan --- 
         
-        setIsProjectOpen(true); // <-- Set project open state to true
+        // isProjectOpen will be updated by useEffect hook watching activeRootFolders
         
         return result; // Keep returning the result
       } else {
@@ -245,7 +241,7 @@ function App() {
     try {
       if (!folderPath) return;
       
-      setLoading({ files: true });
+      setAppLoading({ files: true });
       
       // Use the utility function from fileSystem.js to scan the directory
       const { scanDirectory } = await import('./utils/fileSystem');
@@ -333,14 +329,14 @@ function App() {
             // Filter out duplicates based on path for subfolders ONLY
             const uniqueSubFolders = processedFolders.filter(newFolder => 
               newFolder.path !== normalizedRootPath && // Exclude the root folder from duplicate check
-              !prevFolders.some(existingFolder => existingFolder.path === newFolder.path)
+              !prevFolders.some(existingFolder => existingFolder.path === newFolder.path) // Use prevFolders here
             );
             console.log('[scanFolder] setFolders: Adding root folder:', rootFolder); // Log root folder to add
             console.log('[scanFolder] setFolders: Adding unique subfolders:', uniqueSubFolders); // Log unique subfolders to add
             // Always include the root folder + unique subfolders
-            const newState = [...prevFolders, rootFolder, ...uniqueSubFolders]; 
-            console.log('[scanFolder] setFolders: New state count:', newState.length); // Log new folders count
-            return newState;
+            const newFoldersState = [...prevFolders, rootFolder, ...uniqueSubFolders]; 
+            console.log('[scanFolder] setFolders: New state count:', newFoldersState.length); // Log new folders count
+            return newFoldersState;
           });
         } else {
           console.log('[scanFolder] Entering replace/refresh mode'); // Log entering replace mode
@@ -372,7 +368,7 @@ function App() {
       console.error(`[scanFolder] Error: ${error.message}`); // Log errors
       showError(`Failed to scan folder: ${error.message}`);
     } finally {
-      setLoading({ files: false });
+      setAppLoading({ files: false });
       console.log('[scanFolder] Finished.'); // Log finish
     }
   };
@@ -470,10 +466,11 @@ function App() {
       TOGGLE_SIDEBAR: () => setSidebarVisible(prev => !prev),
       TOGGLE_PREVIEW: () => setPreviewVisible(prev => !prev),
       
-      // Explorer operations
+      // Explorer operations: Now dispatches to context
       TOGGLE_SORT_DIRECTION: () => {
         const newDirection = explorerSortDirection === 'asc' ? 'desc' : 'asc';
-        handleExplorerSortChange(explorerSortBy, newDirection);
+        // Dispatch action to update sort settings in context
+        setExplorerSort(explorerSortBy, newDirection);
       },
 
       // Add Undo/Redo shortcuts
@@ -489,7 +486,7 @@ function App() {
     openAndScanFolder, 
     explorerSortBy, 
     explorerSortDirection, 
-    handleExplorerSortChange,
+    setExplorerSort,
     handleUndo,
     handleRedo
   ]);
@@ -559,13 +556,13 @@ function App() {
     // Always update app state when loading changes from true to false (loading complete)
     // Only conditionally update when loading starts to prevent losing selection
     if (!loading || !currentFile || (loading && !prevLoadingRef.current)) {
-      setLoading('files', loading);
-      setLoading('content', loading && !!currentFile);
+      setAppLoading('files', loading);
+      setAppLoading('content', loading && !!currentFile);
     }
     
     prevCurrentFileRef.current = currentFile;
     prevLoadingRef.current = loading;
-  }, [loading, currentFile, setLoading]);
+  }, [loading, currentFile, setAppLoading]);
   
   // Track unsaved changes in app state
   useEffect(() => {
@@ -873,7 +870,7 @@ function App() {
 
     console.log(`[App] handleMoveItem called for ${sourceItems.length} items.`);
 
-    setLoading({ files: true }); // Indicate loading for the whole operation
+    setAppLoading({ files: true }); // Indicate loading for the whole operation
 
     // Determine the actual target folder based on drop position
     let effectiveTargetFolder;
@@ -886,7 +883,7 @@ function App() {
         if (!effectiveTargetFolder) {
             // This might happen if dropping relative to a root item
             // For now, let's find the root folder object if the parent path matches a root
-             effectiveTargetFolder = folders.find(f => f.path === parentPath && currentFolders.includes(f.path));
+             effectiveTargetFolder = folders.find(f => f.path === parentPath && activeRootFolders.includes(f.path));
              if (!effectiveTargetFolder) {
                  console.error(`[App] Could not find parent folder object for path: ${parentPath}`);
                  showError("Cannot determine target folder for drop.");
@@ -940,7 +937,7 @@ function App() {
         });
 
         showSuccess(`Reordered ${sourceItems.length} items`);
-        setLoading({ files: false }); // Turn off loading
+        setAppLoading({ files: false }); // Turn off loading
         return; // End execution here for multi-reorder
     }
 
@@ -1165,7 +1162,7 @@ function App() {
         // No moves happened (e.g., invalid drop)
     }
 
-    setLoading({ files: false }); // Turn off loading indicator
+    setAppLoading({ files: false }); // Turn off loading indicator
   };
 
   // Add handler for creating new folders
@@ -1177,47 +1174,46 @@ function App() {
       let counter = 0;
       let baseName = "New Folder";
       let potentialName = baseName;
-      newFolderPath = path.join(parentFolderPath, potentialName);
+      // Ensure parentFolderPath is valid; if creating in a root, it might be a root path itself
+      const effectiveParentPath = parentFolderPath || '.'; // Use '.' if parent is effectively the list of roots
+      newFolderPath = path.join(effectiveParentPath, potentialName);
 
-      // Check existing folders in the specific parent folder
-      const siblingFolders = folders.filter(f => getDirname(f.path) === parentFolderPath);
+      // Check existing folders (from useFiles state, which is the source of truth for actual FS items)
+      const siblingFolders = folders.filter(f => (getDirname(f.path) || '.') === effectiveParentPath);
       
       while (siblingFolders.some(f => f.name === potentialName)) {
         counter++;
         potentialName = `${baseName} (${counter})`;
-        newFolderPath = path.join(parentFolderPath, potentialName);
+        newFolderPath = path.join(effectiveParentPath, potentialName);
       }
 
       console.log(`[App] Attempting to create folder at: ${newFolderPath}`);
-      // Call API to create the folder
       const createdFolder = await window.api.createFolder(newFolderPath);
 
       if (!createdFolder || !createdFolder.path) {
           throw new Error('Folder creation API did not return a valid folder object.');
       }
       
-      console.log('[App] Folder created successfully via API:', createdFolder);
-      // Ensure path uses forward slashes before adding to state
       const normalizedPath = createdFolder.path.replace(/\\/g, '/');
-      // Add to folder state
-      setFolders(prev => [...prev, { ...createdFolder, path: normalizedPath, name: getBasename(normalizedPath), type: 'folder' }]);
-      showSuccess(`Created folder: ${getBasename(createdFolder.path)}`);
+      const newFolderObject = { ...createdFolder, path: normalizedPath, name: getBasename(normalizedPath), type: 'folder' };
       
-      // Add to itemOrder state (append to parent, initialize empty order for new folder)
-      const parentDir = getDirname(normalizedPath) || '.';
-      setItemOrder(prevOrder => ({
-          ...prevOrder,
-          [parentDir]: [...(prevOrder[parentDir] || []), normalizedPath],
-          [normalizedPath]: [] // Initialize order for the new folder itself
-      }));
+      // Update useFiles state (source of truth for FS items)
+      setFolders(prev => [...prev, newFolderObject]); 
+      showSuccess(`Created folder: ${getBasename(normalizedPath)}`);
+      
+      // Update itemOrder in context
+      const parentDirForOrder = getDirname(normalizedPath) || '.';
+      const currentOrderForParent = itemOrder[parentDirForOrder] || [];
+      updateItemOrderForParent(parentDirForOrder, [...currentOrderForParent, normalizedPath]);
+      // Also initialize an empty order for the new folder itself in context
+      updateItemOrderForParent(normalizedPath, []);
 
-      // Return the path of the new folder to initiate rename
       return normalizedPath;
 
     } catch (error) {
         console.error(`[App] Error creating folder: ${error.message}`);
         showError(`Failed to create folder: ${error.message}`);
-        return null; // Indicate failure
+        return null; 
     }
   };
 
@@ -1226,70 +1222,63 @@ function App() {
     console.log(`[App] Creating new file in: ${parentFolderPath}`);
     let newFilePath = null;
     try {
-      // Determine a unique filename
       let counter = 0;
       let baseName = "Untitled";
       const extension = ".md";
       let potentialName = `${baseName}${extension}`;
-      newFilePath = path.join(parentFolderPath, potentialName);
+      const effectiveParentPath = parentFolderPath || '.';
+      newFilePath = path.join(effectiveParentPath, potentialName);
       
-      // Check existing files in the specific parent folder
-      const siblingFiles = files.filter(f => getDirname(f.path) === parentFolderPath);
+      const siblingFiles = files.filter(f => (getDirname(f.path) || '.') === effectiveParentPath);
 
       while (siblingFiles.some(f => f.name === potentialName)) {
         counter++;
         potentialName = `${baseName} (${counter})${extension}`;
-        newFilePath = path.join(parentFolderPath, potentialName);
+        newFilePath = path.join(effectiveParentPath, potentialName);
       }
       
-      console.log(`[App] Attempting to create file at: ${newFilePath}`);
-      // Call API to create the file (empty content by default)
       const createdFile = await window.api.createFile(newFilePath);
       
       if (!createdFile || !createdFile.path) {
         throw new Error('File creation API did not return a valid file object.');
       }
       
-      console.log('[App] File created successfully via API:', createdFile);
-      // Ensure path uses forward slashes before adding to state
       const normalizedPath = createdFile.path.replace(/\\/g, '/');
-      // Add to file state
-      setFiles(prev => [...prev, { ...createdFile, path: normalizedPath, name: getBasename(normalizedPath), type: 'file' }]);
-      showSuccess(`Created file: ${getBasename(createdFile.path)}`);
-      
-      // Add to itemOrder state (append to parent)
-      const parentDir = getDirname(normalizedPath) || '.';
-      setItemOrder(prevOrder => ({
-          ...prevOrder,
-          [parentDir]: [...(prevOrder[parentDir] || []), normalizedPath]
-      }));
+      const newFileObject = { ...createdFile, path: normalizedPath, name: getBasename(normalizedPath), type: 'file' };
 
-      // Return the path of the new file to initiate rename
+      // Update useFiles state
+      setFiles(prev => [...prev, newFileObject]);
+      showSuccess(`Created file: ${getBasename(normalizedPath)}`);
+      
+      // Update itemOrder in context
+      const parentDirForOrder = getDirname(normalizedPath) || '.';
+      const currentOrderForParent = itemOrder[parentDirForOrder] || [];
+      updateItemOrderForParent(parentDirForOrder, [...currentOrderForParent, normalizedPath]);
+
       return normalizedPath;
       
     } catch (error) {
       console.error(`[App] Error creating file: ${error.message}`);
       showError(`Failed to create file: ${error.message}`);
-      return null; // Indicate failure
+      return null; 
     }
   };
 
   // Add handler for sort changes - memoize it with useCallback to prevent infinite loop
   const handleExplorerSortChange = useCallback((sortBy, direction) => {
-    setExplorerSortBy(sortBy);
-    setExplorerSortDirection(direction);
-    
-    // Save to preferences
-    updatePreferences({
-      explorerSortBy: sortBy,
-      explorerSortDirection: direction
-    });
-  }, [updatePreferences]);
+    // Dispatch to context
+    setExplorerSort(sortBy, direction);
+    // updatePreferences from context is still used for persisting this to localStorage via the context's useEffect
+    // However, we are now directly using explorerSortBy, explorerSortDirection from context state for the FileExplorer
+  }, [setExplorerSort]);
 
   // Add a wrapper for clearFolders
   const clearAllFolders = () => {
-    originalClearFolders();
-    setCurrentFolders([]);
+    originalClearFolders(); // From useFiles
+    // Dispatch actions to clear relevant context state
+    setActiveRootFolders([]);
+    setActiveExpandedNodes({});
+    setItemOrder({});
   };
 
   // Add a new state for editor visibility
@@ -1344,14 +1333,14 @@ function App() {
       
       if (!confirmed) return;
       
-      setLoading(true);
+      setAppLoading(true);
       const result = await window.api.deleteFolder(path);
       
       if (result.success) {
         showSuccess(`Folder deleted: ${folderName}`);
         
         // Refresh folders
-        const refreshResult = await window.api.listFolders(currentFolders);
+        const refreshResult = await window.api.listFolders(activeRootFolders);
         if (refreshResult.success) {
           setFolders(refreshResult.folders);
         }
@@ -1362,7 +1351,7 @@ function App() {
       console.error('Error deleting folder:', error);
       showError(`Error deleting folder: ${error.message}`);
     } finally {
-      setLoading(false);
+      setAppLoading(false);
     }
   };
   
@@ -1370,7 +1359,7 @@ function App() {
     try {
       if (!targetPath) return;
       
-      setLoading(true);
+      setAppLoading(true);
       const result = await window.api.moveFolder(sourcePath, targetPath);
       
       if (result.success) {
@@ -1378,13 +1367,13 @@ function App() {
         showSuccess(`Folder moved: ${folderName}`);
         
         // Refresh folders
-        const refreshResult = await window.api.listFolders(currentFolders);
+        const refreshResult = await window.api.listFolders(activeRootFolders);
         if (refreshResult.success) {
           setFolders(refreshResult.folders);
         }
         
         // Refresh files
-        const filesResult = await window.api.listFiles(currentFolders);
+        const filesResult = await window.api.listFiles(activeRootFolders);
         if (filesResult.success) {
           setFiles(filesResult.files);
         }
@@ -1395,13 +1384,13 @@ function App() {
       console.error('Error moving folder:', error);
       showError(`Error moving folder: ${error.message}`);
     } finally {
-      setLoading(false);
+      setAppLoading(false);
     }
   };
   
   const handleCopyFile = async (path) => {
     try {
-      setLoading(true);
+      setAppLoading(true);
       const result = await window.api.copyFile(path);
       
       if (result.success) {
@@ -1409,7 +1398,7 @@ function App() {
         showSuccess(`File copied: ${fileName}`);
         
         // Refresh files
-        const filesResult = await window.api.listFiles(currentFolders);
+        const filesResult = await window.api.listFiles(activeRootFolders);
         if (filesResult.success) {
           setFiles(filesResult.files);
         }
@@ -1420,13 +1409,13 @@ function App() {
       console.error('Error copying file:', error);
       showError(`Error copying file: ${error.message}`);
     } finally {
-      setLoading(false);
+      setAppLoading(false);
     }
   };
   
   const handleCopyFolder = async (path) => {
     try {
-      setLoading(true);
+      setAppLoading(true);
       const result = await window.api.copyFolder(path);
       
       if (result.success) {
@@ -1434,13 +1423,13 @@ function App() {
         showSuccess(`Folder copied: ${folderName}`);
         
         // Refresh folders
-        const refreshResult = await window.api.listFolders(currentFolders);
+        const refreshResult = await window.api.listFolders(activeRootFolders);
         if (refreshResult.success) {
           setFolders(refreshResult.folders);
         }
         
         // Refresh files
-        const filesResult = await window.api.listFiles(currentFolders);
+        const filesResult = await window.api.listFiles(activeRootFolders);
         if (filesResult.success) {
           setFiles(filesResult.files);
         }
@@ -1451,88 +1440,115 @@ function App() {
       console.error('Error copying folder:', error);
       showError(`Error copying folder: ${error.message}`);
     } finally {
-      setLoading(false);
+      setAppLoading(false);
     }
   };
 
   // *** NEW: Handler for renaming files/folders ***
   const handleRenameItem = async (oldPath, newPath, isDirectory) => {
     console.log(`[App] Renaming item: ${oldPath} -> ${newPath}, isDirectory: ${isDirectory}`);
+    setAppLoading({ files: true });
     try {
-      // Use the existing moveItem API which handles both files and folders
-      // Note: main.js implements moveItem as copy+delete, not fs.rename directly
       const result = await window.api.moveItem(oldPath, newPath, isDirectory);
-      
       if (!result || !result.success) {
         throw new Error(result?.message || 'Unknown error during rename/move');
       }
 
-      // Update state
+      const newName = getBasename(newPath);
+      const oldParentPath = getDirname(oldPath) || '.';
+      const newParentPath = getDirname(newPath) || '.';
+
+      // 1. Update useFiles state (source of truth for file system items)
       if (isDirectory) {
-        // Update the specific folder
-        setFolders(prev => prev.map(f => f.path === oldPath ? { ...f, path: newPath, name: getBasename(newPath) } : f));
-        // TODO: Need to recursively update paths of children folders and files if backend doesn't provide them
-        // This might require re-scanning the parent directory or handling recursion here.
-        // For now, just updating the main folder path.
+        setFolders(prev => prev.map(f => f.path === oldPath ? { ...f, path: newPath, name: newName } : f));
+        // TODO: If backend doesn't update children paths, we might need to rescan or manually update children in useFiles state.
+        // For now, assuming backend handles children if it's a true rename/move, or we rescan parent later.
       } else {
-        // Update the specific file
-        setFiles(prev => prev.map(f => f.path === oldPath ? { ...f, path: newPath, name: getBasename(newPath) } : f));
-        
-        // Update open file tabs if the renamed file was open
+        setFiles(prev => prev.map(f => f.path === oldPath ? { ...f, path: newPath, name: newName } : f));
+      }
+
+      // 2. Update open file tabs if the renamed file was open
+      if (!isDirectory) {
         const openFileIndex = openFiles.findIndex(f => f.path === oldPath);
         if (openFileIndex > -1) {
-          // Prepare just the updates needed
-          const updates = { path: newPath, name: getBasename(newPath) };
-          updateOpenFile(oldPath, updates); // Pass only the updates
-          
-          // If the renamed file was the *current* file, update that too
+          updateOpenFile(oldPath, { path: newPath, name: newName }); // Dispatch to context
           if (currentFile?.path === oldPath) {
-             // Need the full object to set currentFile
-             const updatedOpenFileForCurrent = { ...openFiles[openFileIndex], ...updates }; 
-             setCurrentFile(updatedOpenFileForCurrent);
+            setCurrentFile({ ...openFiles[openFileIndex], path: newPath, name: newName }); // This is useFiles setCurrentFile
           }
         }
       }
-      
-      // --- Update itemOrder state --- 
-      const parentPath = getDirname(oldPath) || '.';
-      const newName = getBasename(newPath);
-      setItemOrder(prevOrder => {
-          const newOrderMap = { ...prevOrder };
- 
-          // 1. Update the item in its parent's order array
-          if (newOrderMap[parentPath]) {
-              newOrderMap[parentPath] = newOrderMap[parentPath].map(p => p === oldPath ? newPath : p);
-          }
- 
-          // 2. If it's a folder, recursively update keys and child paths
-          if (isDirectory) {
-              const keysToUpdate = Object.keys(newOrderMap).filter(key => key === oldPath || key.startsWith(oldPath + '/'));
-              keysToUpdate.forEach(oldKey => {
-                  const relativeKeyPath = oldKey.substring(oldPath.length); 
-                  const newKey = newPath + relativeKeyPath;
-                  console.log(`[App] Renaming itemOrder key: ${oldKey} -> ${newKey}`);
- 
-                  const updatedChildPaths = (newOrderMap[oldKey] || []).map(childPath => {
-                      const relativeChildPath = childPath.substring(oldKey.length);
-                      return newKey + relativeChildPath;
-                  });
-                  newOrderMap[newKey] = updatedChildPaths; 
-                  if (oldKey !== newKey) { // Avoid deleting if path didn't actually change key
-                     delete newOrderMap[oldKey]; 
-                  }
-              });
-          }
-          return newOrderMap;
-      });
+      // If a folder is renamed and it's an open file's ancestor, its path in openFiles also needs update (more complex).
+      // For simplicity, we are not handling recursive path updates in openFiles for renamed folders here yet.
 
-      showSuccess(`Renamed to ${getBasename(newPath)}`);
-      console.log('[App] Rename successful, state updated.');
-      
+      // 3. Update itemOrder in context (this is the tricky part)
+      const newOrderMap = { ...(itemOrder || {}) }; // Get current itemOrder from context state
+
+      // If parent changed (move between different folders)
+      if (oldParentPath !== newParentPath) {
+        // Remove from old parent's order
+        if (newOrderMap[oldParentPath]) {
+          newOrderMap[oldParentPath] = newOrderMap[oldParentPath].filter(p => p !== oldPath);
+          if (newOrderMap[oldParentPath].length === 0) delete newOrderMap[oldParentPath];
+        }
+        // Add to new parent's order (append for now, could be smarter)
+        newOrderMap[newParentPath] = [...(newOrderMap[newParentPath] || []), newPath];
+      } else { // Renamed within the same parent
+        if (newOrderMap[oldParentPath]) {
+          newOrderMap[oldParentPath] = newOrderMap[oldParentPath].map(p => p === oldPath ? newPath : p);
+        }
+      }
+
+      if (isDirectory) {
+        // If a folder is renamed, its key in itemOrder and paths of its children must be updated.
+        const keysToUpdate = Object.keys(newOrderMap).filter(key => key === oldPath || key.startsWith(oldPath + '/'));
+        const updatesToBatch = {};
+        keysToUpdate.forEach(currentKey => {
+          const relativeKeyPath = currentKey.substring(oldPath.length);
+          const newKeyForMap = newPath + relativeKeyPath;
+          updatesToBatch[newKeyForMap] = (newOrderMap[currentKey] || []).map(childPath => {
+            const relativeChildPath = childPath.substring(currentKey.length);
+            return newKeyForMap + relativeChildPath;
+          });
+          if (currentKey !== newKeyForMap) delete newOrderMap[currentKey]; // remove old key before adding new
+        });
+        // Apply batched updates for renamed folder and its children orders
+        for (const key in updatesToBatch) {
+          newOrderMap[key] = updatesToBatch[key];
+        }
+      }
+      setItemOrder(newOrderMap); // Dispatch bulk update to context
+
+      // 4. Update activeRootFolders if a root folder was renamed
+      if (activeRootFolders.includes(oldPath)) {
+        removeRootFolder(oldPath); // Dispatch
+        addRootFolder(newPath);    // Dispatch
+      }
+
+      // 5. Update activeExpandedNodes if a renamed folder (or its ancestor) was expanded
+      const newExpandedNodes = { ...activeExpandedNodes };
+      let changedExpansion = false;
+      Object.keys(activeExpandedNodes).forEach(expandedPath => {
+        if (expandedPath === oldPath) {
+          delete newExpandedNodes[expandedPath];
+          newExpandedNodes[newPath] = true;
+          changedExpansion = true;
+        } else if (expandedPath.startsWith(oldPath + '/')) {
+          delete newExpandedNodes[expandedPath];
+          const relative = expandedPath.substring(oldPath.length);
+          newExpandedNodes[newPath + relative] = true;
+          changedExpansion = true;
+        }
+      });
+      if (changedExpansion) {
+        setActiveExpandedNodes(newExpandedNodes); // Dispatch bulk update
+      }
+
+      showSuccess(`Renamed to ${newName}`);
     } catch (error) {
       console.error(`[App] Error renaming item: ${error.message}`);
       showError(`Failed to rename: ${error.message}`);
-      // Optionally, trigger a rescan or revert state changes if needed
+    } finally {
+      setAppLoading({ files: false });
     }
   };
 
@@ -1541,7 +1557,6 @@ function App() {
     const itemName = getBasename(itemPath);
     const itemType = isDirectory ? 'folder' : 'file';
     
-    // Confirmation dialog - adjusted text for folders
     const confirmMessage = isDirectory
       ? `Are you sure you want to remove the folder "${itemName}" and its contents from the view? This will NOT delete files from your disk.`
       : `Are you sure you want to delete the file "${itemName}"? This cannot be undone.`;
@@ -1549,168 +1564,102 @@ function App() {
     const confirmed = window.confirm(confirmMessage);
     if (!confirmed) return;
 
-    console.log(`[App] ${isDirectory ? 'Removing' : 'Deleting'} ${itemType}: ${itemPath}`);
+    setAppLoading({ files: true });
     try {
-      setLoading({ files: true }); // Indicate loading
-      
-      let result = { success: true }; // Assume success for removal, as no API call
-      if (!isDirectory) { // Only call API for file deletion
-        result = await window.api.deleteFile(itemPath);
-      }
-
-      if (!result || !result.success) {
-        // This error should now only trigger for file deletion failures
-        throw new Error(result?.error || `Unknown error deleting ${itemType}`);
-      }
-
-      // Update state after successful deletion/removal
-      if (isDirectory) {
-        // Remove folder and all descendants from state
+      if (!isDirectory) { // File deletion (API call)
+        const result = await window.api.deleteFile(itemPath);
+        if (!result || !result.success) {
+          throw new Error(result?.error || `Unknown error deleting ${itemType}`);
+        }
+        // Update useFiles state
+        setFiles(prev => prev.filter(f => f.path !== itemPath));
+      } else { // Folder removal (from view only)
         const pathPrefix = itemPath.endsWith('/') ? itemPath : itemPath + '/';
+        // Update useFiles state
         setFolders(prev => prev.filter(f => f.path !== itemPath && !f.path.startsWith(pathPrefix)));
         setFiles(prev => prev.filter(f => !f.path.startsWith(pathPrefix)));
-        
-        // Close any open files that were inside the removed folder
-        const openFilesInFolder = openFiles.filter(f => f.path.startsWith(pathPrefix));
-        openFilesInFolder.forEach(file => removeOpenFile(file));
-        
-        // If the current file was in the removed folder, clear it
-        if (currentFile?.path.startsWith(pathPrefix)) {
-          setCurrentFile(null); 
-          updateContent('');
-        }
 
-      } else { // It's a file (deletion logic remains the same)
-        // Remove the file from state
-        setFiles(prev => prev.filter(f => f.path !== itemPath));
-        
-        // Close the tab if it was open
-        const openFileIndex = openFiles.findIndex(f => f.path === itemPath);
-        if (openFileIndex > -1) {
-          removeOpenFile(openFiles[openFileIndex]);
-        }
-        
-        // If it was the current file, clear the editor (or switch tab if others open)
-        if (currentFile?.path === itemPath) {
-          const remainingOpen = openFiles.filter(f => f.path !== itemPath);
-          if (remainingOpen.length > 0) {
-             // Open the previous/next tab logic
-             const currentIndex = openFiles.findIndex(f => f.path === itemPath);
-             const nextIndex = currentIndex > 0 ? currentIndex - 1 : 0;
-             originalOpenFile(remainingOpen[nextIndex]);
-          } else {
-            setCurrentFile(null);
-            updateContent('');
-          }
+        // If the removed folder was a root folder, update context
+        if (activeRootFolders.includes(itemPath)) {
+          removeRootFolder(itemPath); // Dispatch to context
         }
       }
 
-      // --- Update itemOrder state --- 
-      const parentPath = getDirname(itemPath) || '.';
-      setItemOrder(prevOrder => {
-          const newOrderMap = { ...prevOrder };
- 
-          // 1. Remove item from parent order
-          if (newOrderMap[parentPath]) {
-              newOrderMap[parentPath] = newOrderMap[parentPath].filter(p => p !== itemPath);
-              if (newOrderMap[parentPath].length === 0) {
-                  delete newOrderMap[parentPath];
-              }
+      // Update itemOrder in context
+      const parentDirForOrder = getDirname(itemPath) || '.';
+      removeFromItemOrder(itemPath, parentDirForOrder, isDirectory); // Dispatch to context
+      
+      // Close tabs for deleted/removed items
+      const pathPrefixToRemove = itemPath + (isDirectory ? '/' : '');
+      const openFilesToRemove = openFiles.filter(f => 
+        isDirectory ? f.path.startsWith(pathPrefixToRemove) : f.path === itemPath
+      );
+      openFilesToRemove.forEach(file => removeOpenFile(file)); // removeOpenFile is from AppStateContext
+      
+      if (currentFile && (isDirectory ? currentFile.path.startsWith(pathPrefixToRemove) : currentFile.path === itemPath)) {
+        const remainingOpen = openFiles.filter(f => !openFilesToRemove.some(removed => removed.path === f.path));
+        if (remainingOpen.length > 0) {
+          const currentIndex = openFiles.findIndex(f => f.path === currentFile.path); // Original index
+          let nextFileToOpen = null;
+          if (currentIndex > 0 && remainingOpen.find(f => f.path === openFiles[currentIndex -1]?.path)) {
+            nextFileToOpen = openFiles[currentIndex - 1];
+          } else if (remainingOpen.length > 0) {
+            nextFileToOpen = remainingOpen[0];
           }
- 
-          // 2. If it's a folder, remove its key and descendant keys
-          if (isDirectory) {
-              const keysToRemove = Object.keys(newOrderMap).filter(key => key === itemPath || key.startsWith(itemPath + '/'));
-              keysToRemove.forEach(key => {
-                  delete newOrderMap[key];
-              });
+          if (nextFileToOpen) originalOpenFile(nextFileToOpen);
+          else {
+            setCurrentFile(null); updateContent('');
           }
-          return newOrderMap;
-      });
+        } else {
+          setCurrentFile(null); updateContent('');
+        }
+      }
 
-      // Updated success message
       const successMessage = isDirectory ? `Removed folder from view: ${itemName}` : `Deleted file: ${itemName}`;
       showSuccess(successMessage);
-      console.log(`[App] ${itemType} ${isDirectory ? 'removed' : 'deleted'} successfully, state updated.`);
 
     } catch (error) {
-        // Error message adjusted slightly as it primarily relates to file deletion now
         console.error(`[App] Error ${isDirectory ? 'removing' : 'deleting'} ${itemType}: ${error.message}`);
         showError(`Failed to ${isDirectory ? 'remove' : 'delete'} ${itemType}: ${error.message}`);
     } finally {
-       setLoading({ files: false });
+       setAppLoading({ files: false });
     }
   };
 
-  // Helper function to initialize or update item order based on current files/folders
-  const initializeOrUpdateOrder = useCallback(() => {
-    const newOrderMap = {};
-    const allItems = [...folders, ...files];
-
-    // Group items by parent directory
-    const itemsByParent = allItems.reduce((acc, item) => {
-      const parentPath = getDirname(item.path) || '.'; // Use '.' for root items if needed
-      if (!acc[parentPath]) {
-        acc[parentPath] = [];
-      }
-      acc[parentPath].push(item);
-      return acc;
-    }, {});
-
-    // Sort items within each group and store the order
-    for (const parentPath in itemsByParent) {
-      const children = itemsByParent[parentPath];
-      // Apply default sort (folders first, then alpha)
-      children.sort((a, b) => {
-          if (a.type === 'folder' && b.type !== 'folder') return -1;
-          if (a.type !== 'folder' && b.type === 'folder') return 1;
-          return a.name.localeCompare(b.name);
-      });
-      // Store the ordered paths
-      newOrderMap[parentPath] = children.map(child => child.path);
-    }
-
-    // TODO: Merge with existing order intelligently if needed?
-    // For now, just set the newly calculated order.
-    setItemOrder(newOrderMap);
-    console.log('[App] Initialized/Updated itemOrder:', newOrderMap);
-
-  }, [files, folders]); // Re-run when files/folders change
-
-  // Initialize order AFTER initial file scan completes, but not on subsequent changes
+  // Effect to initialize itemOrder after initial file/folder loading if not already populated in context
   useEffect(() => {
-    // Check if loading just finished, order hasn't been initialized yet, AND we have some files/folders
-    if (prevFileLoadingRef.current && !state.loading.files && !isOrderInitialized && (files.length > 0 || folders.length > 0)) { // <-- Added check for files/folders length
-      console.log('[App itemOrder Effect] Initial file loading finished AND files/folders exist. Initializing order for the first time.');
+    if (!state.loading.files && !isOrderInitialized && (files.length > 0 || folders.length > 0)) {
+      // Check if itemOrder in context is empty or only has empty arrays (which can happen from new folder creation)
+      const contextItemOrder = state.ui.itemOrder || {};
+      const isContextOrderEffectivelyEmpty = Object.keys(contextItemOrder).length === 0 || 
+                                            Object.values(contextItemOrder).every(arr => arr.length === 0);
 
-      // Calculate the initial order based on current files/folders
-      const initialOrderMap = {};
-      const allItems = [...files, ...folders]; // Use files/folders directly from useFiles hook
-      const itemsByParent = allItems.reduce((acc, item) => {
-        const parentPath = getDirname(item.path) || '.'; 
-        if (!acc[parentPath]) acc[parentPath] = [];
-        acc[parentPath].push(item);
-        return acc;
-      }, {});
-      for (const parentPath in itemsByParent) {
-        const children = itemsByParent[parentPath];
-        // Apply default sort (folders first, then alpha)
-        children.sort((a, b) => {
+      if (isContextOrderEffectivelyEmpty) {
+        console.log('[App itemOrder Effect] Context itemOrder is empty. Initializing based on current files/folders.');
+        const initialOrderMap = {};
+        const allItems = [...files, ...folders];
+        const itemsByParent = allItems.reduce((acc, item) => {
+          const parentPath = getDirname(item.path) || '.';
+          if (!acc[parentPath]) acc[parentPath] = [];
+          acc[parentPath].push(item);
+          return acc;
+        }, {});
+
+        for (const parentPath in itemsByParent) {
+          const children = itemsByParent[parentPath];
+          children.sort((a, b) => {
             if (a.type === 'folder' && b.type !== 'folder') return -1;
             if (a.type !== 'folder' && b.type === 'folder') return 1;
             return a.name.localeCompare(b.name);
-        });
-        // Store the ordered paths
-        initialOrderMap[parentPath] = children.map(child => child.path);
+          });
+          initialOrderMap[parentPath] = children.map(child => child.path);
+        }
+        setItemOrder(initialOrderMap); // Dispatch to context
       }
-
-      setItemOrder(initialOrderMap); // Set the calculated initial order
-      setIsOrderInitialized(true);    // Mark as initialized
-      console.log('[App itemOrder Effect] Set initial itemOrder:', initialOrderMap);
+      setIsOrderInitialized(true); // Mark App.jsx's local init flag
     }
-    // Update the loading ref for the next render
-    prevFileLoadingRef.current = state.loading.files;
-  }, [state.loading.files, isOrderInitialized, files, folders]); // Dependencies: loading state, init flag, and the data needed for initial calc
+    prevFileLoadingRef.current = state.loading.files; // Keep tracking loading state
+  }, [state.loading.files, state.ui.itemOrder, isOrderInitialized, files, folders, setItemOrder]);
 
   // Memoize files and folders arrays to prevent unnecessary re-renders of FileExplorer
   const memoizedFiles = useMemo(() => files, [files]);
@@ -1739,35 +1688,115 @@ function App() {
     }
   }, [previewRef, setPreviewZoom]); // Dependency is the ref and setPreviewZoom
 
-  // --- State for Saved Workspace States (keyed by user-provided name) ---
-  const [savedWorkspaceStates, setSavedWorkspaceStates] = useState({});
+  // --- State for Saved Workspace States is now managed by AppStateContext ---
+  // const [savedWorkspaceStates, setSavedWorkspaceStates] = useState({}); 
   
-  // Load saved projects from localStorage on mount
+  // Load saved projects from localStorage on mount - Now handled by AppStateProvider
+  // useEffect(() => { ... }); 
+
+  // Get savedWorkspaceStates and related actions from context
+  const { 
+    savedWorkspaceStates, 
+    pendingWorkspaceLoad 
+  } = state; // Get state parts
+  const { 
+    saveNamedWorkspace, 
+    removeNamedWorkspace, 
+    loadNamedWorkspace, 
+    clearPendingWorkspaceLoad
+  } = useAppState(); // Get action creators
+
+  // --- BEGIN: useEffect to load last active workspace state on startup (REVISED) ---
   useEffect(() => {
-    const storedStates = localStorage.getItem('savedMdViewerWorkspaceStates'); // <-- Updated key
-    if (storedStates) {
-      try {
-        const parsedStates = JSON.parse(storedStates);
-        // Basic validation: check if it's an object
-        if (typeof parsedStates === 'object' && parsedStates !== null && !Array.isArray(parsedStates)) {
-          setSavedWorkspaceStates(parsedStates);
+    if (!initialLoadPerformedRef.current) {
+      initialLoadPerformedRef.current = true;
+
+      const performInitialScan = async (foldersToScan) => {
+        if (foldersToScan && foldersToScan.length > 0) {
+          console.log("[App Startup] Performing initial scan for restored folders:", foldersToScan);
+          setAppLoading({ files: true }); // Indicate loading
+          try {
+            for (const folderPath of foldersToScan) {
+              await scanFolder(folderPath, true); // Use addMode = true to populate files/folders state
+            }
+            console.log("[App Startup] Initial scan complete for AppState-restored folders.");
+            // File re-opening is handled by AppStateProvider restoring state.openFiles and currentFile
+          } catch (error) {
+            console.error("[App Startup] Error during initial scan of AppState-restored folders:", error);
+            showError(`Error during initial scan: ${error.message}`);
+          } finally {
+            setAppLoading({ files: false });
+          }
+        }
+      };
+
+      const loadLastSession = async () => {
+        if (state.ui.activeRootFolders && state.ui.activeRootFolders.length > 0) {
+          console.log("[App Startup] AppStateProvider restored session with root folders. Prioritizing this session:", state.ui.activeRootFolders);
+          await performInitialScan(state.ui.activeRootFolders);
+
+          // After scanning, if AppStateProvider restored a currentFile, try to open it.
+          if (state.currentFile && state.currentFile.path) {
+            console.log("[App Startup] AppStateProvider restored currentFile. Attempting to load its content directly:", state.currentFile);
+            // originalOpenFile loads content and sets currentFile in useFiles hook.
+            // EditorTabs component will use state.currentFile from AppStateContext for active tab.
+            originalOpenFile(state.currentFile);
+          } else if (state.openFiles && state.openFiles.length > 0 && state.openFiles[0]?.path) {
+            // Fallback: If no currentFile, but openFiles were restored, open the first one.
+            // Assuming state.openFiles[0] is a complete file object if it exists.
+            const firstRestoredOpenFile = state.openFiles[0];
+            console.log("[App Startup] No currentFile restored by AppState. Attempting to open first of restored openFiles:", firstRestoredOpenFile);
+            originalOpenFile(firstRestoredOpenFile);
+          } else {
+            console.log("[App Startup] No currentFile or openFiles with paths restored by AppStateProvider to auto-open after folder scan.");
+          }
         } else {
-          console.warn("Invalid format for saved project states in localStorage. Resetting.");
-          localStorage.removeItem('savedMdViewerWorkspaceStates'); // <-- Updated key
-        } 
-      } catch (e) {
-        console.error("Failed to parse saved project states from localStorage:", e);
-        localStorage.removeItem('savedMdViewerWorkspaceStates'); // <-- Updated key
-      }
+          // If no root folders were restored by AppStateProvider (e.g., fresh session or cleared state),
+          // then try to load the "last active named workspace state" as a fallback.
+          const lastActiveStateName = localStorage.getItem('lastActiveMdViewerWorkspaceName');
+          if (lastActiveStateName && savedWorkspaceStates && savedWorkspaceStates[lastActiveStateName]) {
+            console.log(`[App Startup] No session folders from AppState. Found last active NAMED workspace: '${lastActiveStateName}'. Attempting to load.`);
+            // Dispatch action to load this workspace state
+            loadNamedWorkspace(savedWorkspaceStates[lastActiveStateName]); // Dispatch action
+          } else if (lastActiveStateName) {
+            console.log(`[App Startup] Last active NAMED workspace '${lastActiveStateName}' not found or invalid. Clearing from localStorage.`);
+            localStorage.removeItem('lastActiveMdViewerWorkspaceName');
+          } else {
+            console.log("[App Startup] No active session from AppState or last named workspace found. Starting fresh or with empty state.");
+          }
+        }
+      };
+
+      loadLastSession();
     }
-  }, []);
-  // --- End New State ---
+    // Dependencies ensure this runs when the necessary data is available and on initial mount.
+  }, [
+    state.ui.activeRootFolders, 
+    state.currentFile, // React to restored currentFile from AppState
+    state.openFiles,   // React to restored openFiles for fallback
+    savedWorkspaceStates, 
+    loadNamedWorkspace, // Added: Effect logic uses this action creator
+    scanFolder, 
+    setAppLoading, 
+    showError, 
+    originalOpenFile 
+  ]);
+  // --- END: useEffect to load last active workspace state on startup (REVISED) ---
+
+  // --- BEGIN: useEffects to sync App.jsx local convenience state (like isProjectOpen) --- 
+  // --- These were previously syncing local state *to* context, now App.jsx primarily *reads* from context --- 
+
+  // Effect to update isProjectOpen when activeRootFolders from context changes
+  useEffect(() => {
+    setIsProjectOpen(activeRootFolders.length > 0);
+  }, [activeRootFolders]);
 
   // Placeholder for Save Project functionality - now just opens the dialog
   const handleSaveProject = async () => {
     console.log('[App] handleSaveProject called - opening dialog');
     
-    if (currentFolders.length === 0) {
+    // Use activeRootFolders from context for check
+    if (activeRootFolders.length === 0) { 
       showError("Cannot save project state: No folder is open.");
       return;
     }
@@ -1786,7 +1815,7 @@ function App() {
     }
     
     // Get project path (should still be available)
-    if (currentFolders.length === 0) {
+    if (activeRootFolders.length === 0) {
       showError("Cannot save project state: Folder context lost.");
       return;
     }
@@ -1795,181 +1824,211 @@ function App() {
     const projectData = {
       name: stateName, // Use the user-provided name from the dialog parameter
       timestamp: Date.now(), // Use timestamp to identify this state
-      rootFolders: currentFolders, // <-- Save ALL current root folders
-      expandedNodes: expandedNodes, // <-- Save current expanded nodes state
-      openFiles: openFiles.map(file => file.path) // <-- Save paths of currently open files
-      // Future: save sidebar state, split sizes, etc.
+      // Gather current state from context for saving
+      rootFolders: activeRootFolders, 
+      expandedNodes: activeExpandedNodes, 
+      openFiles: openFiles.map(file => file.path), 
+      itemOrder: itemOrder, 
+      explorerSortBy: explorerSortBy, 
+      explorerSortDirection: explorerSortDirection 
     };
     
-    console.log('[App] Saving workspace state:', projectData);
+    console.log('[App] Saving workspace state via context:', projectData);
     
     try {
-      // Update state and localStorage
-      setSavedWorkspaceStates(prevStates => {
-        // Use the user-provided name as the key
-        // This will overwrite if the name already exists. 
-        // Consider adding a confirmation if prevStates[stateName] exists.
-        const newState = { ...prevStates, [stateName]: projectData };
-        localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(newState)); // <-- Updated key
-        return newState;
-      });
+      // Dispatch action to save the named workspace state in context
+      saveNamedWorkspace(stateName, projectData);
       
       // No longer switching header mode
       showSuccess(`Workspace state \'${stateName}\' saved!`); 
       
     } catch (error) {
-      console.error("Failed to save project state to localStorage:", error);
+      console.error("Failed to dispatch save workspace state:", error); // Error likely in dispatch/reducer
       showError("Failed to save project state.");
     }
   };
   
-  // Placeholder for loading a saved workspace state
-  const handleLoadWorkspaceState = async (stateData) => { // Renamed, takes full state data
-    console.log('[App] handleLoadWorkspaceState CALLED. Received stateData:', JSON.stringify(stateData, null, 2)); // <-- ADD THIS LOG
-    if (!stateData || typeof stateData !== 'object') {
-      console.error('[App] handleLoadWorkspaceState: Invalid or null stateData received. Aborting.', stateData);
-      showError('Failed to load state: Invalid data received.');
+  // Function to trigger loading a saved workspace state via context action
+  const triggerLoadWorkspaceState = (stateNameToLoad) => {
+    console.log(`[App] triggerLoadWorkspaceState called for: '${stateNameToLoad}'`);
+    const stateData = savedWorkspaceStates[stateNameToLoad];
+    if (!stateData) {
+      showError(`Workspace state "${stateNameToLoad}" not found.`);
+      console.error(`[App] Could not find state data for name: ${stateNameToLoad}`);
       return;
     }
+    // Dispatch the action to signal the intent to load this state
+    // The actual loading process will be handled by the useEffect watching pendingWorkspaceLoad
+    loadNamedWorkspace(stateData);
+  };
+  
+  // --- BEGIN: useEffect to handle the actual loading process for a named workspace ---
+  useEffect(() => {
+    if (!pendingWorkspaceLoad) return; // Do nothing if no state is pending load
 
-    const { name, rootFolders = [], expandedNodes: loadedExpandedNodes = {}, openFiles: loadedOpenFiles = [] } = stateData;
+    const performLoad = async () => {
+      console.log('[App Load Effect] Starting load for pending workspace:', pendingWorkspaceLoad.name);
+      showInfo(`Loading workspace state '${pendingWorkspaceLoad.name}'...`);
+      setAppLoading(true); // Use the specific key if available, e.g., { workspace: true }
 
-    if (!name) {
-      console.error('[App] handleLoadWorkspaceState: stateData is missing a name. Aborting.', stateData);
-      showError('Failed to load state: State data is missing a name.');
-      return;
-    }
-
-    console.log(`[App] Attempting to load workspace: '${name}'. Folders: ${rootFolders.length}, Files: ${loadedOpenFiles.length}`);
-
-    showInfo(`Loading workspace state \'${name}\'...`);
-    
-    // 1. Clear current workspace state
-    console.log("[App] Clearing current workspace state...");
-    clearOpenFiles(); // Clear tabs from AppStateContext
-
-    // originalClearFolders from useFiles hook resets its internal states:
-    // directories, folders, files, currentFile, content
-    if (originalClearFolders) { 
-      originalClearFolders(); 
-    } else {
-      // Fallback if originalClearFolders is somehow not available,
-      // though it should be destructured from useFiles.
-      // This directly calls setters from useFiles hook.
-      setCurrentFile(null); 
-      updateContent('');
-      setFiles([]);      // This is setFiles from useFiles hook
-      setFolders([]);    // This is setFolders from useFiles hook
-      // setDirectories([]); // No direct setDirectories exposed by useFiles to App.jsx
-      console.warn("[App] originalClearFolders was not available. Used individual setters.");
-    }
-
-    // Resetting App.jsx specific local states related to workspace structure
-    setCurrentFolders([]); // For root folder paths managed in App.jsx
-    setExpandedNodes({});  // For UI tree expansion state managed in App.jsx
-    
-    // The warning below can be adjusted or removed if originalClearFolders proves robust.
-    // For now, keeping it to highlight that the overall reset strategy depends on originalClearFolders's completeness.
-    console.warn("[App] Workspace clearing logic relies on originalClearFolders. Review if issues persist.");
-
-    // 2. Set state from loaded data
-    setCurrentFolders(rootFolders); // Set App.jsx local state for root folders
-    setExpandedNodes(loadedExpandedNodes); // Set App.jsx local state for expanded nodes
-    setIsProjectOpen(rootFolders.length > 0);
-
-    // 3. Scan all folders from the loaded state
-    if (rootFolders.length > 0) {
-      setLoading({ files: true }); // Use the setLoading from AppStateContext for UI feedback
-      // let newScannedFiles = []; // Not strictly needed if scanFolder updates useFiles' state directly
       try {
-        for (const folderPath of rootFolders) {
-          // scanFolder is expected to update the files and folders state within the useFiles hook.
-          // The 'addMode = true' ensures it appends to existing (now cleared) state.
-          await scanFolder(folderPath, true); 
+        // 1. Clear current workspace state (dispatch actions, call useFiles clear)
+        console.log("[App Load Effect] Clearing current workspace state...");
+        clearOpenFiles(); 
+        if (originalClearFolders) { 
+          originalClearFolders(); 
+        } else {
+          setCurrentFile(null); 
+          updateContent('');
+          setFiles([]);
+          setFolders([]);
+          console.warn("[App Load Effect] originalClearFolders was not available. Used individual setters.");
         }
-        console.log("[App] Finished scanning all folders for loaded state.");
-        
-        // 4. Re-open files after scan is complete
-        if (loadedOpenFiles.length > 0) {
-          console.log("[App] Attempting to re-open files from saved state:", loadedOpenFiles);
-          // files state from useFiles() should now be populated by scanFolder calls
-          const currentScannedFiles = files; 
-          const filesToOpenObjects = loadedOpenFiles.map(filePath => {
-            return currentScannedFiles.find(f => f.path === filePath);
-          }).filter(Boolean);
+        // Clear context states related to structure (bulk actions)
+        setActiveRootFolders([]);
+        setActiveExpandedNodes({});
+        setItemOrder({});
 
-          console.log("[App] Found file objects to re-open:", filesToOpenObjects);
+        // 2. Set state from loaded data (dispatch actions using data from pendingWorkspaceLoad)
+        const { 
+          name: loadedName, 
+          rootFolders: loadedRootFolders = [], 
+          expandedNodes: loadedExpandedNodes = {}, 
+          openFiles: loadedOpenFilesPaths = [],
+          itemOrder: loadedItemOrder = {}, 
+          explorerSortBy: loadedSortBy = 'name', 
+          explorerSortDirection: loadedSortDir = 'asc' 
+        } = pendingWorkspaceLoad;
 
-          if (filesToOpenObjects.length > 0) {
-            filesToOpenObjects.forEach(fileToOpen => {
-              console.log(`[App] Calling openFile for:`, fileToOpen);
-              openFile(fileToOpen); 
-            });
-          } else {
-            console.warn("[App] No valid file objects found to re-open from saved state, though paths were provided.");
+        console.log(`[App Load Effect] Setting state for workspace: '${loadedName}'. Folders: ${loadedRootFolders.length}, Files: ${loadedOpenFilesPaths.length}`);
+        setActiveRootFolders(loadedRootFolders);
+        setActiveExpandedNodes(loadedExpandedNodes);
+        setItemOrder(loadedItemOrder);
+        setExplorerSort(loadedSortBy, loadedSortDir);
+        // isProjectOpen will update via its own useEffect
+
+        // 3. Scan all folders from the loaded state
+        if (loadedRootFolders.length > 0) {
+          console.log("[App Load Effect] Scanning folders for loaded state...");
+          let scannedFoldersData = { files: [], folders: [] };
+          for (const folderPath of loadedRootFolders) {
+            // scanFolder updates useFiles state internally
+            await scanFolder(folderPath, true); 
           }
+          console.log("[App Load Effect] Finished scanning all folders for loaded state.");
+          
+          // 4. Re-open files after scan is complete
+          if (loadedOpenFilesPaths.length > 0) {
+            console.log("[App Load Effect] Attempting to re-open files:", loadedOpenFilesPaths);
+            // We need the *current* files state from useFiles *after* scanning
+            // It's tricky because useFiles state updates might not be synchronous with await scanFolder
+            // A small delay or a more robust way to get updated files might be needed.
+            // For now, assume `files` (from useFiles hook) is reasonably up-to-date. 
+            const currentScannedFiles = files; // Get latest from useFiles()
+            
+            const filesToOpenObjects = loadedOpenFilesPaths.map(filePath => 
+              currentScannedFiles.find(f => f.path === filePath)
+            ).filter(Boolean); // Filter out any files not found after scan
+
+            console.log("[App Load Effect] Found file objects to re-open:", filesToOpenObjects);
+
+            if (filesToOpenObjects.length > 0) {
+              // Add files to openFiles state in context first
+              filesToOpenObjects.forEach(fileObj => addOpenFile(fileObj));
+              // Then, set the last one (or first?) as the current file to load content
+              const fileToMakeCurrent = filesToOpenObjects[filesToOpenObjects.length - 1]; 
+              console.log("[App Load Effect] Setting current file to load content:", fileToMakeCurrent);
+              originalOpenFile(fileToMakeCurrent); // Load content
+            } else {
+              console.warn("[App Load Effect] No valid file objects found to re-open from saved state.");
+            }
+          }
+        } else {
+           console.log("[App Load Effect] Loaded workspace has no root folders.");
+           // Ensure editor is cleared if loading an empty workspace
+           setCurrentFile(null);
+           updateContent('');
         }
 
-        showSuccess(`Workspace state \'${name}\' loaded.`);
+        showSuccess(`Workspace state '${loadedName}' loaded.`);
+        // Store this loaded state as the last active one
+        try {
+          localStorage.setItem('lastActiveMdViewerWorkspaceName', loadedName);
+        } catch (e) {
+          console.error("[App Load Effect] Failed to save last active workspace name:", e);
+        }
+
       } catch (error) {
-        console.error(`[App] Error loading workspace state '${name}':`, error);
-        showError(`Error loading workspace state \'${name}\': ${error.message}`);
-        // Attempt to revert to a clean state on error
+        console.error(`[App Load Effect] Error loading workspace state '${pendingWorkspaceLoad?.name}':`, error);
+        showError(`Error loading workspace state '${pendingWorkspaceLoad?.name}': ${error.message}`);
+        // Attempt to revert to a clean state on error?
         if (originalClearFolders) originalClearFolders();
         clearOpenFiles(); 
-        setCurrentFolders([]);
-        setExpandedNodes({});
-        setIsProjectOpen(false);
+        setActiveRootFolders([]);
+        setActiveExpandedNodes({});
+        setItemOrder({});
+        setExplorerSort('name', 'asc');
       } finally {
-        setLoading({ files: false }); // Clear loading state
+        // 5. Clear the pending state regardless of success or failure
+        console.log("[App Load Effect] Clearing pending workspace load state.");
+        clearPendingWorkspaceLoad(); // Dispatch action to clear the trigger
+        setAppLoading(false); // Clear general loading indicator
       }
-    } else {
-       showSuccess(`Loaded empty workspace state \'${name}\'`);
-       setIsProjectOpen(false); 
-       clearOpenFiles(); // Clear any existing tabs if loading an empty state
-       if (originalClearFolders) originalClearFolders(); // Ensure useFiles is also cleared
-       setCurrentFolders([]);
-       setExpandedNodes({});
-    }
-  };
+    };
 
-  // --- NEW: Handler to Remove a Saved Workspace State ---
+    performLoad();
+  }, [ 
+      pendingWorkspaceLoad, 
+      // Include dependencies needed for the loading process
+      clearOpenFiles, 
+      originalClearFolders, 
+      setActiveRootFolders, 
+      setActiveExpandedNodes, 
+      setItemOrder, 
+      setExplorerSort, 
+      scanFolder, 
+      addOpenFile,
+      originalOpenFile, 
+      files, // Need current files list to find objects to re-open
+      setCurrentFile, updateContent, setFiles, setFolders, // For fallback clearing
+      clearPendingWorkspaceLoad,
+      setAppLoading, 
+      showInfo, 
+      showSuccess, 
+      showError 
+  ]);
+  // --- END: useEffect to handle the actual loading process ---
+
+  // Placeholder for loading a saved workspace state (REMOVED - Replaced by triggerLoadWorkspaceState and useEffect)
+  // const handleLoadWorkspaceState = async (stateData) => { ... };
+
+  // --- NEW: Handler to Remove a Saved Workspace State (uses context action) ---
   const handleRemoveWorkspaceState = (stateName) => {
     console.log(`[App] handleRemoveWorkspaceState called for name: ${stateName}`);
     if (!savedWorkspaceStates[stateName]) {
-      console.warn(`[App] Cannot remove state '\${stateName}\', it does not exist.`);
+      console.warn(`[App] Cannot remove state '${stateName}', it does not exist.`);
       return;
     }
     
-    // Confirmation
-    const confirmed = window.confirm(`Are you sure you want to remove the saved state '\${stateName}\'?`);
+    const confirmed = window.confirm(`Are you sure you want to remove the saved state '${stateName}'?`);
     if (!confirmed) return;
     
     try {
-      // Update state and localStorage
-      setSavedWorkspaceStates(prevStates => {
-        const newState = { ...prevStates };
-        delete newState[stateName];
-        localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(newState));
-        return newState;
-      });
-      
-      showSuccess(`Workspace state '\${stateName}\' removed.`);
-      
+      // Dispatch action to remove the state from context
+      removeNamedWorkspace(stateName);
+      showSuccess(`Workspace state '${stateName}' removed.`);
     } catch (error) {
-      console.error(`Failed to remove project state '\${stateName}\' from localStorage:`, error);
-      showError(`Failed to remove workspace state '\${stateName}\'.`);
+      console.error(`Failed to dispatch remove workspace state '${stateName}':`, error);
+      showError(`Failed to remove workspace state '${stateName}'.`);
     }
   };
   // --- End New Handler ---
 
   // Handler to toggle folder expansion state (passed down to explorer)
   const handleFolderToggle = useCallback((path) => {
-    setExpandedNodes(prev => ({
-      ...prev,
-      [path]: !prev[path]
-    }));
-  }, []);
+    // Dispatch action to context
+    toggleExpandedNode(path);
+  }, [toggleExpandedNode]);
 
   // --- NEW: Handler for Reordering Saved Workspace States ---
   const handleStateReorder = useCallback((oldIndex, newIndex) => {
@@ -2018,9 +2077,9 @@ function App() {
 
            {/* 1. Saved State Tabs Container (Takes remaining space, scrolls) */}
            <WorkspaceStateTabs
-             savedWorkspaceStates={savedWorkspaceStates}
-             onLoadState={handleLoadWorkspaceState}
-             onRemoveState={handleRemoveWorkspaceState} // <-- Pass the remove handler
+             savedWorkspaceStates={savedWorkspaceStates} // Pass from context state
+             onLoadState={triggerLoadWorkspaceState} // Pass the trigger function
+             onRemoveState={handleRemoveWorkspaceState} // Pass the context-dispatching handler
              onStateReorder={handleStateReorder} // <-- Pass the new handler
            />
 
@@ -2080,7 +2139,7 @@ function App() {
                   onClick={handleSaveProject} 
                   className={`btn btn-primary flex items-center justify-center gap-2 w-full`} // Use full width of sidebar column 
                   title={`Save Current Project State`}
-                  disabled={!isProjectOpen || currentFolders.length === 0 || loading} 
+                  disabled={!isProjectOpen || activeRootFolders.length === 0 || loading} 
                 >
                   {loading ? (
                     <>
@@ -2123,21 +2182,23 @@ function App() {
                          <FileExplorer 
                            files={memoizedFiles} 
                            folders={memoizedFolders}
-                           currentFolders={currentFolders}
+                           currentFolders={activeRootFolders} // <-- Use from context
                            currentFilePath={currentFile?.path}
                            onFileSelect={openFile} 
-                           onDeleteFile={handleDeleteItem}
+                           onDeleteItem={handleDeleteItem} 
                            onCreateFile={handleCreateFile}
                            onCreateFolder={handleCreateFolder}
-                           onDeleteFolder={handleDeleteItem}
                            onMoveItemProp={handleMoveItem}
-                           onScanFolder={scanFolder} // Keep this if TreeNode uses it directly for scanning subfolders? Recheck FileExplorer usage.
+                           onScanFolder={scanFolder} 
                            onRenameItem={handleRenameItem}
-                           onDeleteItem={handleDeleteItem}
-                           itemOrder={itemOrder}
-                           onAddFolderProp={openAndScanFolder} // <-- Add this prop
-                           expandedNodes={expandedNodes} // <-- Pass state down
-                           onFolderToggle={handleFolderToggle} // <-- Pass handler down
+                           // Pass itemOrder from context
+                           itemOrder={itemOrder} 
+                           // Pass expandedNodes from context
+                           expandedNodes={activeExpandedNodes} 
+                           // Pass onFolderToggle (which now dispatches to context)
+                           onFolderToggle={handleFolderToggle} 
+                           // Pass addRootFolder (which now dispatches to context) directly
+                           onAddFolderProp={openAndScanFolder} 
                          />
                        </div>
                      </LoadingOverlay>

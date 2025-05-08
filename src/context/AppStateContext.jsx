@@ -22,6 +22,10 @@ const initialState = {
       explorerSortBy: 'name',
       explorerSortDirection: 'asc',
     },
+    // Session-specific UI state for explorer
+    activeRootFolders: [],       // <-- NEW: For currently open root folders
+    activeExpandedNodes: {},     // <-- NEW: For currently expanded nodes in explorer
+    itemOrder: {},               // <-- ADDED: For custom item order in explorer
   },
   
   // Editor state
@@ -47,6 +51,12 @@ const initialState = {
     folders: false,
     content: false,
   },
+  
+  // Holds the collection of explicitly saved named workspace states
+  savedWorkspaceStates: {},
+
+  // Used to trigger and manage the loading process of a named workspace state
+  pendingWorkspaceLoad: null, // Will hold the data of the state to be loaded
 };
 
 // Define action types
@@ -68,6 +78,21 @@ const ActionTypes = {
   SET_PANEL: 'SET_PANEL',
   SET_SIDEBAR_TAB: 'SET_SIDEBAR_TAB',
   UPDATE_PREFERENCES: 'UPDATE_PREFERENCES',
+  SET_ACTIVE_ROOT_FOLDERS: 'SET_ACTIVE_ROOT_FOLDERS',     // <-- NEW
+  SET_ACTIVE_EXPANDED_NODES: 'SET_ACTIVE_EXPANDED_NODES', // <-- NEW
+  
+  // Item Order Actions
+  SET_ITEM_ORDER: 'SET_ITEM_ORDER',
+  UPDATE_ITEM_ORDER_FOR_PARENT: 'UPDATE_ITEM_ORDER_FOR_PARENT',
+  REMOVE_FROM_ITEM_ORDER: 'REMOVE_FROM_ITEM_ORDER',
+
+  // More granular root folder and expanded nodes actions
+  ADD_ROOT_FOLDER: 'ADD_ROOT_FOLDER',
+  REMOVE_ROOT_FOLDER: 'REMOVE_ROOT_FOLDER',
+  TOGGLE_EXPANDED_NODE: 'TOGGLE_EXPANDED_NODE',
+
+  // Explorer Sort Action
+  SET_EXPLORER_SORT: 'SET_EXPLORER_SORT',
   
   // Editor state actions
   SET_CURSOR_POSITION: 'SET_CURSOR_POSITION',
@@ -85,6 +110,12 @@ const ActionTypes = {
   
   // Reset all state
   RESET_STATE: 'RESET_STATE',
+
+  // Named Workspace State Actions
+  SAVE_NAMED_WORKSPACE: 'SAVE_NAMED_WORKSPACE',
+  REMOVE_NAMED_WORKSPACE: 'REMOVE_NAMED_WORKSPACE',
+  SET_PENDING_WORKSPACE_LOAD: 'SET_PENDING_WORKSPACE_LOAD',
+  CLEAR_PENDING_WORKSPACE_LOAD: 'CLEAR_PENDING_WORKSPACE_LOAD',
 };
 
 // Reducer function to handle state updates
@@ -216,6 +247,116 @@ function appStateReducer(state, action) {
         },
       };
     
+    // --- NEW: Explorer UI state cases ---
+    case ActionTypes.SET_ACTIVE_ROOT_FOLDERS:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          activeRootFolders: action.payload,
+        },
+      };
+    case ActionTypes.SET_ACTIVE_EXPANDED_NODES:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          activeExpandedNodes: action.payload,
+        },
+      };
+    // --- END: Explorer UI state cases ---
+
+    // --- BEGIN: Item Order cases ---
+    case ActionTypes.SET_ITEM_ORDER:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          itemOrder: action.payload,
+        },
+      };
+    case ActionTypes.UPDATE_ITEM_ORDER_FOR_PARENT:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          itemOrder: {
+            ...state.ui.itemOrder,
+            [action.payload.parentPath]: action.payload.orderedPaths,
+          },
+        },
+      };
+    case ActionTypes.REMOVE_FROM_ITEM_ORDER:
+      const newItemOrder = { ...state.ui.itemOrder };
+      const { itemPath: pathToRemove, parentPath, isDirectory } = action.payload;
+
+      if (newItemOrder[parentPath]) {
+        newItemOrder[parentPath] = newItemOrder[parentPath].filter(
+          p => p !== pathToRemove
+        );
+        if (newItemOrder[parentPath].length === 0) {
+          delete newItemOrder[parentPath];
+        }
+      }
+      // If it's a directory, also remove its own order key and potentially descendant keys
+      if (isDirectory) {
+        const keysToDelete = Object.keys(newItemOrder).filter(
+          key => key === pathToRemove || key.startsWith(pathToRemove + '/')
+        );
+        keysToDelete.forEach(key => delete newItemOrder[key]);
+      }
+      return { ...state, ui: { ...state.ui, itemOrder: newItemOrder } };
+    // --- END: Item Order cases ---
+
+    // --- BEGIN: Granular Root Folder & Expanded Nodes cases ---
+    case ActionTypes.ADD_ROOT_FOLDER:
+      // Avoid duplicates
+      if (state.ui.activeRootFolders.includes(action.payload)) {
+        return state;
+      }
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          activeRootFolders: [...state.ui.activeRootFolders, action.payload],
+        },
+      };
+    case ActionTypes.REMOVE_ROOT_FOLDER:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          activeRootFolders: state.ui.activeRootFolders.filter(p => p !== action.payload),
+        },
+      };
+    case ActionTypes.TOGGLE_EXPANDED_NODE:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          activeExpandedNodes: {
+            ...state.ui.activeExpandedNodes,
+            [action.payload]: !state.ui.activeExpandedNodes[action.payload],
+          },
+        },
+      };
+    // --- END: Granular Root Folder & Expanded Nodes cases ---
+    
+    // --- BEGIN: Explorer Sort case ---
+    case ActionTypes.SET_EXPLORER_SORT:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          preferences: {
+            ...state.ui.preferences,
+            explorerSortBy: action.payload.sortBy,
+            explorerSortDirection: action.payload.direction,
+          },
+        },
+      };
+    // --- END: Explorer Sort case ---
+    
     // Editor state cases
     case ActionTypes.SET_CURSOR_POSITION:
       return {
@@ -289,8 +430,37 @@ function appStateReducer(state, action) {
     
     // Reset all state
     case ActionTypes.RESET_STATE:
-      return initialState;
-      
+      // Keep saved workspace states when resetting the rest
+      return { ...initialState, savedWorkspaceStates: state.savedWorkspaceStates };
+
+    // --- BEGIN: Named Workspace State cases ---
+    case ActionTypes.SAVE_NAMED_WORKSPACE:
+      return {
+        ...state,
+        savedWorkspaceStates: {
+          ...state.savedWorkspaceStates,
+          [action.payload.name]: action.payload.data,
+        },
+      };
+    case ActionTypes.REMOVE_NAMED_WORKSPACE:
+      const newSavedStates = { ...state.savedWorkspaceStates };
+      delete newSavedStates[action.payload]; // Payload is the name of the state to remove
+      return {
+        ...state,
+        savedWorkspaceStates: newSavedStates,
+      };
+    case ActionTypes.SET_PENDING_WORKSPACE_LOAD:
+      return {
+        ...state,
+        pendingWorkspaceLoad: action.payload, // Payload is the state data to load
+      };
+    case ActionTypes.CLEAR_PENDING_WORKSPACE_LOAD:
+      return {
+        ...state,
+        pendingWorkspaceLoad: null,
+      };
+    // --- END: Named Workspace State cases ---
+
     default:
       return state;
   }
@@ -303,19 +473,57 @@ const AppStateContext = createContext();
 export const AppStateProvider = ({ children }) => {
   // Initialize state from localStorage or use defaults
   const [state, dispatch] = useReducer(appStateReducer, initialState, (initial) => {
+    let loadedState = { ...initial };
     try {
-      const savedState = localStorage.getItem('markdown-viewer-app-state');
-      return savedState ? JSON.parse(savedState) : initial;
+      // Load main app state
+      const savedAppState = localStorage.getItem('markdown-viewer-app-state');
+      if (savedAppState) {
+        const parsedAppState = JSON.parse(savedAppState);
+        // Merge carefully, avoid overwriting nested objects completely if structure changes
+        loadedState = { 
+          ...initial, 
+          ...parsedAppState, 
+          ui: { ...initial.ui, ...(parsedAppState.ui || {}) }, 
+          editor: { ...initial.editor, ...(parsedAppState.editor || {}) },
+          loading: { ...initial.loading, ...(parsedAppState.loading || {}) }
+          // Exclude savedWorkspaceStates and pendingWorkspaceLoad from this merge
+        };
+      }
+
+      // Load saved workspace states separately
+      const savedWorkspaces = localStorage.getItem('savedMdViewerWorkspaceStates');
+      if (savedWorkspaces) {
+        const parsedWorkspaces = JSON.parse(savedWorkspaces);
+        // Basic validation
+        if (typeof parsedWorkspaces === 'object' && parsedWorkspaces !== null && !Array.isArray(parsedWorkspaces)) {
+            loadedState.savedWorkspaceStates = parsedWorkspaces;
+        } else {
+            console.warn("Invalid format for saved workspace states in localStorage. Ignoring.");
+        }
+      }
+      
     } catch (error) {
-      console.error('Failed to load app state from localStorage:', error);
+      console.error('Failed to load state from localStorage:', error);
+      // Return initial state in case of error during parsing
       return initial;
     }
+    // Ensure pending load is always null on initial load
+    loadedState.pendingWorkspaceLoad = null; 
+    return loadedState;
   });
 
   // Save state to localStorage when it changes
   useEffect(() => {
     try {
-      localStorage.setItem('markdown-viewer-app-state', JSON.stringify(state));
+      // Separate main state from saved workspaces for persistence
+      const { savedWorkspaceStates, pendingWorkspaceLoad, ...stateToSave } = state;
+      
+      // Save main application state
+      localStorage.setItem('markdown-viewer-app-state', JSON.stringify(stateToSave));
+      
+      // Save the collection of named workspace states separately
+      localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(savedWorkspaceStates || {}));
+
     } catch (error) {
       console.error('Failed to save app state to localStorage:', error);
     }
@@ -431,6 +639,75 @@ export const AppStateProvider = ({ children }) => {
     payload: { oldIndex, newIndex } 
   });
 
+  // --- NEW: Action creators for explorer UI state ---
+  const setActiveRootFolders = (folderPaths) => dispatch({
+    type: ActionTypes.SET_ACTIVE_ROOT_FOLDERS,
+    payload: folderPaths
+  });
+
+  const setActiveExpandedNodes = (nodes) => dispatch({
+    type: ActionTypes.SET_ACTIVE_EXPANDED_NODES,
+    payload: nodes
+  });
+
+  // Item Order Action Creators
+  const setItemOrder = (itemOrderMap) => dispatch({
+    type: ActionTypes.SET_ITEM_ORDER,
+    payload: itemOrderMap,
+  });
+
+  const updateItemOrderForParent = (parentPath, orderedPaths) => dispatch({
+    type: ActionTypes.UPDATE_ITEM_ORDER_FOR_PARENT,
+    payload: { parentPath, orderedPaths },
+  });
+
+  const removeFromItemOrder = (itemPath, parentPath, isDirectory) => dispatch({
+    type: ActionTypes.REMOVE_FROM_ITEM_ORDER,
+    payload: { itemPath, parentPath, isDirectory },
+  });
+
+  // Granular Root Folder & Expanded Nodes Action Creators
+  const addRootFolder = (folderPath) => dispatch({
+    type: ActionTypes.ADD_ROOT_FOLDER,
+    payload: folderPath,
+  });
+
+  const removeRootFolder = (folderPath) => dispatch({
+    type: ActionTypes.REMOVE_ROOT_FOLDER,
+    payload: folderPath,
+  });
+
+  const toggleExpandedNode = (nodePath) => dispatch({
+    type: ActionTypes.TOGGLE_EXPANDED_NODE,
+    payload: nodePath,
+  });
+  
+  // Explorer Sort Action Creator
+  const setExplorerSort = (sortBy, direction) => dispatch({
+    type: ActionTypes.SET_EXPLORER_SORT,
+    payload: { sortBy, direction },
+  });
+
+  // Named Workspace Action Creators
+  const saveNamedWorkspace = (workspaceName, workspaceData) => dispatch({
+    type: ActionTypes.SAVE_NAMED_WORKSPACE,
+    payload: { name: workspaceName, data: workspaceData },
+  });
+
+  const removeNamedWorkspace = (workspaceName) => dispatch({
+    type: ActionTypes.REMOVE_NAMED_WORKSPACE,
+    payload: workspaceName,
+  });
+
+  const loadNamedWorkspace = (workspaceData) => dispatch({ // Takes the data to load
+    type: ActionTypes.SET_PENDING_WORKSPACE_LOAD,
+    payload: workspaceData,
+  });
+
+  const clearPendingWorkspaceLoad = () => dispatch({
+    type: ActionTypes.CLEAR_PENDING_WORKSPACE_LOAD,
+  });
+
   return (
     <AppStateContext.Provider
       value={{
@@ -450,6 +727,18 @@ export const AppStateProvider = ({ children }) => {
         setPanel,
         setSidebarTab,
         updatePreferences,
+        setActiveRootFolders,
+        setActiveExpandedNodes,
+        // Item Order
+        setItemOrder,
+        updateItemOrderForParent,
+        removeFromItemOrder,
+        // Granular Root/Expanded
+        addRootFolder,
+        removeRootFolder,
+        toggleExpandedNode,
+        // Explorer Sort
+        setExplorerSort,
         // Editor actions
         setCursorPosition,
         setSelections,
@@ -463,6 +752,11 @@ export const AppStateProvider = ({ children }) => {
         setLoading,
         // Reset
         resetState,
+        // Named Workspaces
+        saveNamedWorkspace,
+        removeNamedWorkspace,
+        loadNamedWorkspace,
+        clearPendingWorkspaceLoad,
       }}
     >
       {children}
