@@ -475,7 +475,9 @@ const FileExplorer = ({
   return (
     <div
       ref={explorerRef}
-      className="file-explorer h-full flex flex-col relative overflow-hidden"
+      className={`file-explorer h-full flex flex-col relative overflow-hidden ${
+        treeData.length === 0 ? 'items-center justify-center' : ''
+      }`}
       onClick={(e) => {
         // Prevent clicks inside the tree from deselecting
         if (e.target === explorerRef.current) {
@@ -484,22 +486,17 @@ const FileExplorer = ({
         }
       }}
     >
-      {/* Scrollable Content Area */}
-      <div className="flex-grow overflow-y-auto min-h-0 p-2">
-        {treeData.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-4 text-surface-500 dark:text-surface-400 text-sm text-center h-full">
-            <IconFolderOff size={24} className="mb-2 opacity-50" />
-            <p>No project folder open</p>
-            <div className="mt-3 flex flex-col gap-2">
-              <button
-                onClick={handleOpenFolder}
-                className="btn btn-primary px-4 py-2 text-sm"
-              >
-                Open Folder
-              </button>
-            </div>
-          </div>
-        ) : (
+      {treeData.length === 0 ? (
+        <button
+          onClick={handleOpenFolder}
+          className="btn btn-primary px-4 py-2 text-sm flex flex-col items-center"
+        >
+          <IconFolderPlus size={24} className="mb-1 opacity-75" />
+          open workspace
+        </button>
+      ) : (
+        // Scrollable Content Area for the tree
+        <div className="w-full flex-grow overflow-y-auto min-h-0 p-2">
           <div className="text-sm">
             {treeData.map(node => (
               <TreeNode
@@ -522,8 +519,8 @@ const FileExplorer = ({
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Context Menu Structure */}
       {contextMenu.visible && (
