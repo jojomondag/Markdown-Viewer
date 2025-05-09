@@ -447,6 +447,7 @@ function appStateReducer(state, action) {
           ...state.savedWorkspaceStates,
           [action.payload.name]: action.payload.data,
         },
+        activeNamedWorkspaceName: action.payload.name, // <-- Ensure the active workspace is set
       };
     case ActionTypes.REMOVE_NAMED_WORKSPACE:
       const newSavedStates = { ...state.savedWorkspaceStates };

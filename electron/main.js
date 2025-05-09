@@ -91,6 +91,11 @@ ipcMain.handle('open-file', async (event, filePath) => {
 
 ipcMain.handle('save-file', async (event, filePath, content) => {
   try {
+    // Ensure the directory exists before writing the file
+    const dirPath = path.dirname(filePath);
+    if (!fs.existsSync(dirPath)) {
+      await fs.promises.mkdir(dirPath, { recursive: true });
+    }
     await fs.promises.writeFile(filePath, content, 'utf8');
     return true;
   } catch (error) {

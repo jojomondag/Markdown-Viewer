@@ -1708,7 +1708,12 @@ function App() {
     saveNamedWorkspace, 
     removeNamedWorkspace, 
     loadNamedWorkspace, 
-    clearPendingWorkspaceLoad
+    clearPendingWorkspaceLoad,
+    // setActiveNamedWorkspace, // Removed: Already destructured from useAppState later
+    // clearActiveNamedWorkspace // Removed: Already destructured from useAppState later
+    // Ensure useAppState() below correctly provides these:
+    // setActiveNamedWorkspace, 
+    // clearActiveNamedWorkspace 
   } = useAppState(); // Get action creators
 
   // --- BEGIN: useEffect to load last active workspace state on startup (REVISED) ---
@@ -2266,20 +2271,25 @@ function App() {
             {isProjectOpen && (
               <div className="flex-shrink-0 p-2 border-b border-surface-200 dark:border-surface-700"> {/* Container with padding and border */}
                 <button
-                  onClick={handleSaveProject} 
-                  className={`btn btn-primary flex items-center justify-center gap-2 w-full`} // Use full width of sidebar column 
-                  title={`Save Current Project State`}
-                  disabled={!isProjectOpen || activeRootFolders.length === 0 || loading} 
+                  onClick={activeNamedWorkspaceName ? handleClearWorkspace : handleSaveProject}
+                  className={`btn btn-primary flex items-center justify-center gap-2 w-full`} 
+                  title={activeNamedWorkspaceName ? "Clear Current Workspace (New Workspace)" : "Save Current Project Workspace"}
+                  disabled={loading || (!activeNamedWorkspaceName && (!isProjectOpen || activeRootFolders.length === 0))}
                 >
-                  {loading ? (
+                  {loading && !activeNamedWorkspaceName ? ( 
                     <>
                       <LoadingSpinner size="sm" color="white" className="mr-1" />
                       {!isMobile && "Saving..."}
                     </>
+                  ) : activeNamedWorkspaceName ? (
+                    <>
+                      <IconEraser size={20} className="mr-1" />
+                      {isMobile ? "New" : "New Workspace"}
+                    </>
                   ) : (
                     <>
-                      <IconDeviceFloppy size={20} className="mr-1" /> 
-                      {isMobile ? "Save" : "Save State"} 
+                      <IconDeviceFloppy size={20} className="mr-1" />
+                      {isMobile ? "Save" : "Save Workspace"}
                     </>
                   )}
                 </button>
@@ -2346,14 +2356,7 @@ function App() {
              
              {/* Add Folder Button Footer (Outside SidebarTabs) */}
              <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700 space-y-2">
-               <button
-                 onClick={handleClearWorkspace} // Attach handler
-                 className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-error-100 dark:hover:bg-error-700 text-error-700 dark:text-error-300 flex items-center justify-center gap-2"
-                 title="Clear Current Workspace"
-               >
-                 <IconEraser size={16} />
-                 New Workspace
-               </button>
+               {/* The New Workspace button that was here has been removed. Its functionality is merged with the Save Workspace button at the top of the sidebar. */}
                <button
                  onClick={openAndScanFolder} // Use the existing handler from App
                  className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
