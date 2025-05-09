@@ -16,7 +16,8 @@ import {
   IconZoomIn, // <-- Add IconZoomIn
   IconZoomOut,// <-- Add IconZoomOut
   IconZoomReset, // <-- Add IconZoomReset
-  IconPrinter // <-- Add IconPrinter
+  IconPrinter, // <-- Add IconPrinter
+  IconEraser // <-- NEW: Icon for Clear Workspace
 } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
@@ -2155,6 +2156,47 @@ function App() {
   }, [reorderOpenFiles]); // Dependency on the action creator function
   // --- End New Handler ---
 
+  // --- NEW: Handler to clear the current workspace ---
+  const handleClearWorkspace = () => {
+    console.log("[App] handleClearWorkspace called.");
+
+    // Auto-save the current active named workspace before clearing, if applicable
+    if (activeNamedWorkspaceName) {
+      console.log(`[App] Auto-saving current workspace '${activeNamedWorkspaceName}' before clearing.`);
+      autoSaveWorkspace(activeNamedWorkspaceName);
+    }
+
+    // Clear open files in context and editor content
+    clearOpenFiles(); // From AppStateContext
+    setCurrentFile(null); // From useFiles
+    updateContent('');    // From useFiles
+
+    // Clear folders from useFiles and context
+    if (originalClearFolders) {
+      originalClearFolders(); // From useFiles (clears files, folders, currentFile, content)
+    } else {
+      // Fallback if originalClearFolders is not available (should be, but good practice)
+      setFiles([]);
+      setFolders([]);
+    }
+    setActiveRootFolders([]);   // From AppStateContext
+    setActiveExpandedNodes({}); // From AppStateContext
+    setItemOrder({});           // From AppStateContext
+
+    // Clear any active named workspace context
+    clearActiveNamedWorkspace(); // From AppStateContext
+
+    // Clear file history in context
+    // Consider if this is desired for a "clean" state. Let's include it for now.
+    if (dispatch) { // Ensure dispatch is available (it should be if useAppState is used)
+        dispatch({ type: 'CLEAR_HISTORY' }); // Assuming 'CLEAR_HISTORY' is an existing ActionType
+    }
+
+    showSuccess("Workspace cleared. Ready for a fresh start!");
+    setIsProjectOpen(false); // Explicitly set project as not open
+  };
+  // --- END: handleClearWorkspace ---
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       {/* <AccessibilityHelper /> */}
@@ -2303,7 +2345,15 @@ function App() {
              </div>
              
              {/* Add Folder Button Footer (Outside SidebarTabs) */}
-             <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700">
+             <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700 space-y-2">
+               <button
+                 onClick={handleClearWorkspace} // Attach handler
+                 className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-error-100 dark:hover:bg-error-700 text-error-700 dark:text-error-300 flex items-center justify-center gap-2"
+                 title="Clear Current Workspace"
+               >
+                 <IconEraser size={16} />
+                 New Workspace
+               </button>
                <button
                  onClick={openAndScanFolder} // Use the existing handler from App
                  className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
