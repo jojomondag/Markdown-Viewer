@@ -118,6 +118,11 @@ function App() {
     // Active named workspace actions <-- NEW
     setActiveNamedWorkspace,
     clearActiveNamedWorkspace,
+    saveNamedWorkspace,      // Ensure saveNamedWorkspace is from useAppState()
+    removeNamedWorkspace,    // Ensure removeNamedWorkspace is from useAppState()
+    loadNamedWorkspace,       // Ensure loadNamedWorkspace is from useAppState()
+    clearPendingWorkspaceLoad, // <-- ENSURE THIS IS PRESENT HERE
+    renameWorkspace,          // NEW: Add renameWorkspace action creator
   } = useAppState();
   
   // Get open files from app state for convenience
@@ -1698,23 +1703,22 @@ function App() {
   // Load saved projects from localStorage on mount - Now handled by AppStateProvider
   // useEffect(() => { ... }); 
 
-  // Get savedWorkspaceStates and related actions from context
+  // --- Get relevant parts from the main state object (around line 1700s) ---
   const { 
+    // ONLY actual state properties here:
     savedWorkspaceStates, 
     pendingWorkspaceLoad,
-    activeNamedWorkspaceName // <-- NEW: Get current active named workspace name
-  } = state; // Get state parts
-  const { 
-    saveNamedWorkspace, 
-    removeNamedWorkspace, 
-    loadNamedWorkspace, 
-    clearPendingWorkspaceLoad,
-    // setActiveNamedWorkspace, // Removed: Already destructured from useAppState later
-    // clearActiveNamedWorkspace // Removed: Already destructured from useAppState later
-    // Ensure useAppState() below correctly provides these:
-    // setActiveNamedWorkspace, 
-    // clearActiveNamedWorkspace 
-  } = useAppState(); // Get action creators
+    activeNamedWorkspaceName
+    // REMOVE THE FOLLOWING IF THEY ARE PRESENT IN THIS BLOCK:
+    // saveNamedWorkspace,      <-- remove this line if present
+    // removeNamedWorkspace,    <-- remove this line if present
+    // loadNamedWorkspace,      <-- remove this line if present
+    // clearPendingWorkspaceLoad, <-- remove this line if present
+    // setActiveNamedWorkspace  <-- remove this line if present
+  } = state; 
+
+  // ... (the rest of App.jsx, including handleRenameWorkspaceState, triggerLoadWorkspaceState etc.
+  // which should use the actions obtained from the *initial* useAppState() destructuring)
 
   // --- BEGIN: useEffect to load last active workspace state on startup (REVISED) ---
   useEffect(() => {
@@ -2064,15 +2068,14 @@ function App() {
       } finally {
         // 5. Clear the pending state regardless of success or failure
         console.log("[App Load Effect] Clearing pending workspace load state.");
-        clearPendingWorkspaceLoad(); // Dispatch action to clear the trigger
-        setAppLoading(false); // Clear general loading indicator
+        clearPendingWorkspaceLoad(); // This needs to be defined in scope
+        setAppLoading(false); 
       }
     };
 
     performLoad();
   }, [ 
       pendingWorkspaceLoad, 
-      // Include dependencies needed for the loading process
       clearOpenFiles, 
       originalClearFolders, 
       setActiveRootFolders, 
@@ -2082,14 +2085,16 @@ function App() {
       scanFolder, 
       addOpenFile,
       originalOpenFile, 
-      files, // Need current files list to find objects to re-open
-      setCurrentFile, updateContent, setFiles, setFolders, // For fallback clearing
-      clearPendingWorkspaceLoad,
+      files, 
+      setCurrentFile, updateContent, setFiles, setFolders, 
+      clearPendingWorkspaceLoad, // Make sure it's a dependency if used inside
       setAppLoading, 
       showInfo, 
       showSuccess, 
       showError,
+      setActiveNamedWorkspace, // Added setActiveNamedWorkspace to dependencies
       clearActiveNamedWorkspace,
+      loadNamedWorkspace // Added loadNamedWorkspace to dependencies
   ]);
   // --- END: useEffect to handle the actual loading process ---
 
@@ -2109,7 +2114,7 @@ function App() {
     
     try {
       // Dispatch action to remove the state from context
-      removeNamedWorkspace(stateName);
+      removeNamedWorkspace(stateName, false);
       showSuccess(`Workspace state '${stateName}' removed.`);
     } catch (error) {
       console.error(`Failed to dispatch remove workspace state '${stateName}':`, error);
@@ -2202,6 +2207,45 @@ function App() {
   };
   // --- END: handleClearWorkspace ---
 
+  // --- NEW: Handler to Rename a Saved Workspace State ---
+  const handleRenameWorkspaceState = useCallback((oldName, newName) => {
+    console.log(`[App] handleRenameWorkspaceState called: ${oldName} -> ${newName}`);
+    if (!savedWorkspaceStates[oldName] || !newName || newName.trim() === '' || oldName === newName) {
+      console.warn('[App] Rename aborted: Invalid names or old state not found.');
+      return;
+    }
+    if (savedWorkspaceStates[newName]) {
+      showError(`Cannot rename: A workspace named "${newName}" already exists.`);
+      return;
+    }
+
+    const workspaceDataToRename = { ...savedWorkspaceStates[oldName] };
+    const renamedWorkspaceData = {
+      ...workspaceDataToRename,
+      name: newName,
+      timestamp: Date.now(),
+    };
+
+    try {
+      // Check if we're renaming the active workspace
+      const isActiveWorkspace = activeNamedWorkspaceName === oldName;
+      
+      // Use the renameWorkspace action creator 
+      renameWorkspace(oldName, newName, renamedWorkspaceData);
+      
+      // If this was the active workspace, explicitly set it again to ensure UI updates
+      if (isActiveWorkspace) {
+        setActiveNamedWorkspace(newName);
+      }
+      
+      showSuccess(`Workspace "${oldName}" renamed to "${newName}".`);
+    } catch (error) {
+      console.error(`[App] Error renaming workspace: ${error.message}`);
+      showError(`Failed to rename workspace: ${error.message}`);
+    }
+  }, [savedWorkspaceStates, activeNamedWorkspaceName, renameWorkspace, setActiveNamedWorkspace, showError, showSuccess]);
+  // --- END: Handler to Rename a Saved Workspace State ---
+
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
       {/* <AccessibilityHelper /> */}
@@ -2212,10 +2256,12 @@ function App() {
 
            {/* 1. Saved State Tabs Container (Takes remaining space, scrolls) */}
            <WorkspaceStateTabs
-             savedWorkspaceStates={savedWorkspaceStates} // Pass from context state
-             onLoadState={triggerLoadWorkspaceState} // Pass the trigger function
-             onRemoveState={handleRemoveWorkspaceState} // Pass the context-dispatching handler
-             onStateReorder={handleStateReorder} // <-- Pass the new handler
+             savedWorkspaceStates={savedWorkspaceStates} 
+             activeNamedWorkspaceName={activeNamedWorkspaceName} 
+             onLoadState={triggerLoadWorkspaceState} 
+             onRemoveState={handleRemoveWorkspaceState} 
+             onRenameWorkspaceState={handleRenameWorkspaceState} // Pass the new handler
+             onStateReorder={handleStateReorder} 
            />
 
            {/* 2. Settings Container (Takes required width) */}
@@ -2355,16 +2401,16 @@ function App() {
              </div>
              
              {/* Add Folder Button Footer (Outside SidebarTabs) */}
-             <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700 space-y-2">
+             {/* <div className="flex-shrink-0 bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700 space-y-2"> */}
                {/* The New Workspace button that was here has been removed. Its functionality is merged with the Save Workspace button at the top of the sidebar. */}
-               <button
+               {/* <button
                  onClick={openAndScanFolder} // Use the existing handler from App
                  className="w-full px-3 py-1 border border-surface-300 dark:border-surface-600 rounded text-sm hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center justify-center gap-2"
                >
                  <IconFolderPlus size={16} />
                  Add Folder
-               </button>
-             </div>
+               </button> */}
+             {/* </div> */}
           </aside>
           
           {/* Pane 2: Editor - Moved from nested split */}

@@ -116,6 +116,7 @@ const ActionTypes = {
   // Named Workspace State Actions
   SAVE_NAMED_WORKSPACE: 'SAVE_NAMED_WORKSPACE',
   REMOVE_NAMED_WORKSPACE: 'REMOVE_NAMED_WORKSPACE',
+  RENAME_WORKSPACE: 'RENAME_WORKSPACE',  // <-- NEW ACTION for renaming
   SET_PENDING_WORKSPACE_LOAD: 'SET_PENDING_WORKSPACE_LOAD',
   CLEAR_PENDING_WORKSPACE_LOAD: 'CLEAR_PENDING_WORKSPACE_LOAD',
 
@@ -451,10 +452,27 @@ function appStateReducer(state, action) {
       };
     case ActionTypes.REMOVE_NAMED_WORKSPACE:
       const newSavedStates = { ...state.savedWorkspaceStates };
-      delete newSavedStates[action.payload]; // Payload is the name of the state to remove
+      const removedName = action.payload.name || action.payload; // Support both object and string formats
+      
+      // If this is part of a rename, check if the workspace with this name still exists
+      // If not, it may have already been removed or renamed in a previous operation
+      const isRenameOperation = action.payload.isRename === true;
+      if (isRenameOperation && !newSavedStates[removedName]) {
+        console.log(`[AppStateContext] Workspace "${removedName}" already removed, skipping removal during rename.`);
+        return state; // Don't modify state if this is a rename and the workspace is already gone
+      }
+      
+      // Remove the workspace
+      delete newSavedStates[removedName];
+      
+      // Check if the removed workspace was active
+      const isRemovedActive = state.activeNamedWorkspaceName === removedName;
+      
       return {
         ...state,
         savedWorkspaceStates: newSavedStates,
+        // If we're removing the active workspace and it's not part of a rename, clear it
+        activeNamedWorkspaceName: (isRemovedActive && !isRenameOperation) ? null : state.activeNamedWorkspaceName,
       };
     case ActionTypes.SET_PENDING_WORKSPACE_LOAD:
       return {
@@ -480,6 +498,54 @@ function appStateReducer(state, action) {
         activeNamedWorkspaceName: null,
       };
     // --- END: Active Named Workspace cases ---
+
+    // --- NEW: Case to handle renaming a workspace in a single atomic operation ---
+    case ActionTypes.RENAME_WORKSPACE:
+      const { oldName, newName, data } = action.payload;
+      
+      // Early validation
+      if (!oldName || !newName || oldName === newName || !state.savedWorkspaceStates[oldName]) {
+        console.warn(`[AppStateContext] Invalid rename operation: ${oldName} -> ${newName}`);
+        return state;
+      }
+      
+      // Check if the new name already exists
+      if (state.savedWorkspaceStates[newName]) {
+        console.warn(`[AppStateContext] Cannot rename: A workspace named "${newName}" already exists.`);
+        return state;
+      }
+      
+      // Create a new copy of the saved states
+      const updatedStates = { ...state.savedWorkspaceStates };
+      
+      // Remove the old workspace
+      delete updatedStates[oldName];
+      
+      // Add the workspace with the new name
+      updatedStates[newName] = data;
+      
+      // Check if this workspace is the active one
+      const isActive = state.activeNamedWorkspaceName === oldName;
+      
+      // Update localStorage directly to ensure atomic update
+      try {
+        localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(updatedStates));
+        
+        // Also update the active workspace name in localStorage if necessary
+        if (isActive) {
+          localStorage.setItem('lastActiveMdViewerWorkspaceName', newName);
+        }
+      } catch (e) {
+        console.error("[AppStateContext] Failed to update workspace states in localStorage during rename:", e);
+      }
+      
+      return {
+        ...state,
+        savedWorkspaceStates: updatedStates,
+        // Update the active workspace name if necessary
+        activeNamedWorkspaceName: isActive ? newName : state.activeNamedWorkspaceName,
+      };
+    // --- END: Rename workspace case ---
 
     default:
       return state;
@@ -714,9 +780,14 @@ export const AppStateProvider = ({ children }) => {
     payload: { name: workspaceName, data: workspaceData },
   });
 
-  const removeNamedWorkspace = (workspaceName) => dispatch({
+  const removeNamedWorkspace = (workspaceName, isRename = false) => dispatch({
     type: ActionTypes.REMOVE_NAMED_WORKSPACE,
-    payload: workspaceName,
+    payload: { name: workspaceName, isRename }
+  });
+
+  const renameWorkspace = (oldName, newName, workspaceData) => dispatch({
+    type: ActionTypes.RENAME_WORKSPACE,
+    payload: { oldName, newName, data: workspaceData }
   });
 
   const loadNamedWorkspace = (workspaceData) => dispatch({ // Takes the data to load
@@ -785,6 +856,7 @@ export const AppStateProvider = ({ children }) => {
         // Named Workspaces
         saveNamedWorkspace,
         removeNamedWorkspace,
+        renameWorkspace,
         loadNamedWorkspace,
         clearPendingWorkspaceLoad,
         // Active Named Workspace <-- NEW

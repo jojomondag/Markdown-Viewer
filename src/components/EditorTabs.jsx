@@ -15,7 +15,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { IconX, IconPlus, IconEye, IconEyeOff } from '@tabler/icons-react';
+import { IconX, IconEye, IconEyeOff } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
 
 // New SortableTab component - Refactored structure
@@ -90,7 +90,6 @@ const EditorTabs = ({
   openFiles,
   onTabChange,
   onTabClose,
-  onNewTab,
   onTabReorder, // New prop for reordering
   onToggleEditorVisibility, // Added prop
   isPreviewVisible // Added prop
@@ -220,15 +219,6 @@ const EditorTabs = ({
             );
           })}
         </SortableContext>
-
-        {/* New tab button - MOVED HERE, before the eye icon */}
-        <button
-          className="flex-shrink-0 px-1.5 py-1 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700 flex items-center rounded focus:outline-none ml-1" // Added ml-1 for spacing from tabs
-          onClick={onNewTab}
-          title="New tab"
-        >
-          <IconPlus size={14} />
-        </button>
 
         {/* Toggle Preview Visibility Button - Now with ml-auto to push to far right */}
         {typeof onToggleEditorVisibility === 'function' && (

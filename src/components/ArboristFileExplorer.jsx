@@ -472,6 +472,42 @@ const FileExplorer = ({
   }, [onMoveItemProp, dragOverPath, dragOverPosition, selectedNodePaths, setSelectedNodePaths, setShiftSelectionAnchorPath]); // Added dependencies
   // --- End Drag and Drop Handler ---
 
+  // Add handler for background context menu
+  const handleExplorerContextMenu = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Calculate position relative to viewport
+    let x = event.clientX;
+    let y = event.clientY;
+
+    // Prevent viewport overflow
+    const menuWidth = 160;
+    const menuHeight = 150;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    if (x + menuWidth > viewportWidth) {
+      x = viewportWidth - menuWidth - 10;
+    }
+    if (y + menuHeight > viewportHeight) {
+      y = viewportHeight - menuHeight - 10;
+    }
+
+    // Set context menu for the explorer background (no specific node)
+    setContextMenu({ visible: true, x, y, node: null });
+  }, []);
+
+  // Handle "Add Root Folder" action from context menu
+  const handleAddRootFolder = () => {
+    setContextMenu(prev => ({ ...prev, visible: false }));
+    if (typeof onAddFolderProp === 'function') {
+      onAddFolderProp();
+    } else {
+      console.error("onAddFolderProp function is not available");
+    }
+  };
+
   return (
     <div
       ref={explorerRef}
@@ -485,6 +521,7 @@ const FileExplorer = ({
             setShiftSelectionAnchorPath(null); // Clear anchor
         }
       }}
+      onContextMenu={handleExplorerContextMenu} // Add context menu for the explorer background
     >
       {treeData.length === 0 ? (
         <button
@@ -496,7 +533,7 @@ const FileExplorer = ({
         </button>
       ) : (
         // Scrollable Content Area for the tree
-        <div className="w-full flex-grow overflow-y-auto min-h-0 p-2">
+        <div className="w-full flex-grow overflow-y-auto min-h-0 p-2" onContextMenu={handleExplorerContextMenu}>
           <div className="text-sm">
             {treeData.map(node => (
               <TreeNode
@@ -530,30 +567,46 @@ const FileExplorer = ({
           // Added ref/data-attribute to help handleClickOutside ignore clicks inside
           data-context-menu="true" 
         >
-          {contextMenu.node && contextMenu.node.type === 'folder' && (
+          {/* Show "Add Root Folder" option ONLY when right-clicking on empty space */}
+          {!contextMenu.node && (
+            <button 
+              onClick={handleAddRootFolder} 
+              className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2"
+            >
+              <IconFolderPlus size={14} className="opacity-70" />
+              Add Folder to Workspace
+            </button>
+          )}
+          
+          {/* Show other options only when right-clicking on a node */}
+          {contextMenu.node && (
             <>
-              <button onClick={() => handleNewFile(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New File</button>
-              <button onClick={() => handleNewFolder(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New Folder</button>
+              {contextMenu.node.type === 'folder' && (
+                <>
+                  <button onClick={() => handleNewFile(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New File</button>
+                  <button onClick={() => handleNewFolder(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New Folder</button>
+                  <div className="context-menu-divider h-px my-1 bg-surface-200 dark:bg-surface-700"></div>
+                </>
+              )}
+              
+              <button onClick={() => handleRenameStart(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Rename</button>
+              {contextMenu.node && contextMenu.node.type === 'folder' ? (
+                <button onClick={() => handleDeleteItem(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Remove Folder from Workspace</button>
+              ) : (
+                <button onClick={() => handleDeleteItem(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Delete File</button>
+              )}
+              
+              {/* Show in Explorer option */}
               <div className="context-menu-divider h-px my-1 bg-surface-200 dark:bg-surface-700"></div>
+              <button
+                onClick={() => handleShowInExplorer(contextMenu.node)}
+                className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2"
+              >
+                <IconExternalLink size={14} className="opacity-70" />
+                Show in Explorer
+              </button>
             </>
           )}
-          <button onClick={() => handleRenameStart(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Rename</button>
-          {contextMenu.node && contextMenu.node.type === 'folder' ? (
-            <button onClick={() => handleDeleteItem(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Remove Folder</button>
-          ) : (
-            <button onClick={() => handleDeleteItem(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">Delete File</button>
-          )}
-          {/* --- START: Add Show in Explorer option --- */}
-          <div className="context-menu-divider h-px my-1 bg-surface-200 dark:bg-surface-700"></div>
-          <button
-             onClick={() => handleShowInExplorer(contextMenu.node)}
-             className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2" // Added flex for icon
-           >
-             <IconExternalLink size={14} className="opacity-70" /> {/* Added icon */}
-             Show in Explorer
-           </button>
-          {/* --- END: Add Show in Explorer option --- */}
-           {/* Add more context menu options here if needed */}
         </div>
       )}
     </div>
