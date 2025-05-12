@@ -118,7 +118,7 @@ const SortableStateTab = ({
       ref={setNodeRef} 
       style={style} 
       {...dragProps}
-      className={isRenaming ? "rename-active" : ""}
+      className={`${isRenaming ? "rename-active" : ""} select-none h-full`}
     >
       <div
         key={stateData.name}
@@ -156,7 +156,11 @@ const SortableStateTab = ({
             </button>
           </div>
         ) : (
-          <span className="truncate flex-grow text-left">{stateData.name}</span>
+          <span 
+            className={`truncate flex-grow text-left ${!isRenaming ? 'pointer-events-none' : ''}`}
+          >
+            {stateData.name}
+          </span>
         )}
 
         {!isRenaming && (
@@ -331,8 +335,7 @@ const WorkspaceStateTabs = ({ savedWorkspaceStates, onLoadState, onRemoveState, 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        delay: 150,
-        tolerance: 5,
+        distance: 2,
       },
     }),
     useSensor(KeyboardSensor, {

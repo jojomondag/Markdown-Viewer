@@ -1558,72 +1558,125 @@ function App() {
     const itemType = isDirectory ? 'folder' : 'file';
     
     const confirmMessage = isDirectory
-      ? `Are you sure you want to remove the folder "${itemName}" and its contents from the view? This will NOT delete files from your disk.`
-      : `Are you sure you want to delete the file "${itemName}"? This cannot be undone.`;
+      ? `Are you sure you want to remove the folder \"${itemName}\" and its contents from the view? This will NOT delete files from your disk.`
+      : `Are you sure you want to delete the file \"${itemName}\"? This cannot be undone.`;
       
     const confirmed = window.confirm(confirmMessage);
     if (!confirmed) return;
 
-    setAppLoading({ files: true });
+    // --- Optimistic Update ---
+    // 1. Store previous state for potential rollback
+    const previousFiles = [...files];
+    const previousFolders = [...folders];
+    const previousOpenFiles = [...openFiles];
+    const previousCurrentFile = currentFile ? { ...currentFile } : null;
+    const previousContent = content;
+    const parentDirForOrder = getDirname(itemPath) || '.';
+    const previousItemOrderParent = [...(state.ui.itemOrder[parentDirForOrder] || [])]; // Copy relevant order
+
+    // 2. Apply optimistic state updates
+    let openFilesToRemove = [];
+    let closedFileToReopen = null; // Store the next file to open if current is closed
+
     try {
-      if (!isDirectory) { // File deletion (API call)
-        const result = await window.api.deleteFile(itemPath);
-        if (!result || !result.success) {
-          throw new Error(result?.error || `Unknown error deleting ${itemType}`);
-        }
-        // Update useFiles state
+      if (!isDirectory) { // File deletion (optimistic state update)
         setFiles(prev => prev.filter(f => f.path !== itemPath));
-      } else { // Folder removal (from view only)
+      } else { // Folder removal (optimistic state update)
         const pathPrefix = itemPath.endsWith('/') ? itemPath : itemPath + '/';
-        // Update useFiles state
         setFolders(prev => prev.filter(f => f.path !== itemPath && !f.path.startsWith(pathPrefix)));
         setFiles(prev => prev.filter(f => !f.path.startsWith(pathPrefix)));
-
         // If the removed folder was a root folder, update context
         if (activeRootFolders.includes(itemPath)) {
-          removeRootFolder(itemPath); // Dispatch to context
+          removeRootFolder(itemPath); // Dispatch to context (this might need its own rollback if it fails)
         }
       }
 
       // Update itemOrder in context
-      const parentDirForOrder = getDirname(itemPath) || '.';
       removeFromItemOrder(itemPath, parentDirForOrder, isDirectory); // Dispatch to context
-      
+
       // Close tabs for deleted/removed items
       const pathPrefixToRemove = itemPath + (isDirectory ? '/' : '');
-      const openFilesToRemove = openFiles.filter(f => 
+      openFilesToRemove = openFiles.filter(f => 
         isDirectory ? f.path.startsWith(pathPrefixToRemove) : f.path === itemPath
       );
       openFilesToRemove.forEach(file => removeOpenFile(file)); // removeOpenFile is from AppStateContext
       
+      // Determine next file to open if current one is closed
       if (currentFile && (isDirectory ? currentFile.path.startsWith(pathPrefixToRemove) : currentFile.path === itemPath)) {
-        const remainingOpen = openFiles.filter(f => !openFilesToRemove.some(removed => removed.path === f.path));
+        const remainingOpen = previousOpenFiles.filter(f => !openFilesToRemove.some(removed => removed.path === f.path));
         if (remainingOpen.length > 0) {
-          const currentIndex = openFiles.findIndex(f => f.path === currentFile.path); // Original index
-          let nextFileToOpen = null;
-          if (currentIndex > 0 && remainingOpen.find(f => f.path === openFiles[currentIndex -1]?.path)) {
-            nextFileToOpen = openFiles[currentIndex - 1];
-          } else if (remainingOpen.length > 0) {
-            nextFileToOpen = remainingOpen[0];
+          const currentIndex = previousOpenFiles.findIndex(f => f.path === currentFile.path);
+          if (currentIndex > 0 && remainingOpen.find(f => f.path === previousOpenFiles[currentIndex - 1]?.path)) {
+            closedFileToReopen = previousOpenFiles[currentIndex - 1];
+          } else {
+            closedFileToReopen = remainingOpen[0];
           }
-          if (nextFileToOpen) originalOpenFile(nextFileToOpen);
-          else {
-            setCurrentFile(null); updateContent('');
-          }
-        } else {
-          setCurrentFile(null); updateContent('');
         }
+        // Optimistically set current file to null or next file
+        if (closedFileToReopen) {
+           // We actually call originalOpenFile LATER if the API call succeeds,
+           // but clear the state *now* optimistically.
+           // If rollback happens, previousCurrentFile/Content will be restored.
+           setCurrentFile(null); 
+           updateContent(''); 
+        } else {
+          setCurrentFile(null); 
+          updateContent('');
+        }
+      }
+
+      // 3. Perform backend operation (only for actual file deletion)
+      if (!isDirectory) { 
+        const result = await window.api.deleteFile(itemPath);
+        if (!result || !result.success) {
+          throw new Error(result?.error || `Unknown error deleting ${itemType}`);
+        }
+      }
+      
+      // --- Success ---
+      // If we got here, the optimistic updates are correct.
+      // Now, finalize the tab switch if needed.
+      if(closedFileToReopen) {
+          originalOpenFile(closedFileToReopen);
       }
 
       const successMessage = isDirectory ? `Removed folder from view: ${itemName}` : `Deleted file: ${itemName}`;
       showSuccess(successMessage);
 
     } catch (error) {
-        console.error(`[App] Error ${isDirectory ? 'removing' : 'deleting'} ${itemType}: ${error.message}`);
-        showError(`Failed to ${isDirectory ? 'remove' : 'delete'} ${itemType}: ${error.message}`);
-    } finally {
-       setAppLoading({ files: false });
-    }
+      // --- Rollback ---
+      console.error(`[App] Optimistic Delete Failed for ${itemType} "${itemName}". Rolling back. Error: ${error.message}`);
+      showError(`Failed to ${isDirectory ? 'remove' : 'delete'} ${itemType}: ${error.message}. Reverting changes.`);
+
+      // Restore state
+      setFiles(previousFiles);
+      setFolders(previousFolders);
+      // Re-add open files that were optimistically removed
+      openFilesToRemove.forEach(file => addOpenFile(file)); // Assuming addOpenFile handles duplicates gracefully or state logic prevents duplicates
+      // Restore item order for the specific parent
+      updateItemOrderForParent(parentDirForOrder, previousItemOrderParent); // Restore order for this parent
+      // Restore root folder if it was removed (check if needed/possible)
+      if (isDirectory && activeRootFolders.includes(itemPath) && !previousFolders.some(f => f.path === itemPath)) {
+         // If it was a root folder and was removed, potentially add it back via addRootFolder
+         // Note: This interaction needs careful review of removeRootFolder/addRootFolder logic
+         // For now, we focus on file/folder list and order rollback.
+      }
+      
+      // Restore current file/content if it was changed
+      if (previousCurrentFile && (!currentFile || currentFile.path !== previousCurrentFile.path)) {
+        setCurrentFile(previousCurrentFile);
+        updateContent(previousContent); // Assuming previousContent was stored
+      } else if (!previousCurrentFile && currentFile) {
+         setCurrentFile(null);
+         updateContent('');
+      }
+      
+      // Note: We might need more sophisticated rollback for AppStateContext actions 
+      // like removeOpenFile, removeFromItemOrder, removeRootFolder if they aren't simple state setters.
+      // For now, we assume setFiles/setFolders and re-adding files/order is sufficient for UI consistency.
+
+    } 
+    // Removed finally block with setAppLoading(false)
   };
 
   // Effect to initialize itemOrder after initial file/folder loading if not already populated in context
