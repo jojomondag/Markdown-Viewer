@@ -123,6 +123,7 @@ function App() {
     loadNamedWorkspace,       // Ensure loadNamedWorkspace is from useAppState()
     clearPendingWorkspaceLoad, // <-- ENSURE THIS IS PRESENT HERE
     renameWorkspace,          // NEW: Add renameWorkspace action creator
+    reorderSavedWorkspaceStates, // <-- ADD this new action creator
   } = useAppState();
   
   // Get open files from app state for convenience
@@ -2133,29 +2134,31 @@ function App() {
   const handleStateReorder = useCallback((oldIndex, newIndex) => {
     console.log(`[App] handleStateReorder called: ${oldIndex} -> ${newIndex}`);
     
-    // We need to reorder based on the current visual order, which is derived from Object.values()
-    const orderedStates = Object.values(savedWorkspaceStates);
+    // Use savedWorkspaceStates from context (via the 'state' object from useAppState)
+    const orderedStates = Object.values(state.savedWorkspaceStates || {}); // Ensure fallback for initial empty state
     
-    // Perform the move on the ordered array
+    if (oldIndex < 0 || oldIndex >= orderedStates.length || newIndex < 0 || newIndex >= orderedStates.length) {
+      console.warn(`[App] handleStateReorder: Invalid indices. oldIndex: ${oldIndex}, newIndex: ${newIndex}, states: ${orderedStates.length}`);
+      return;
+    }
+    
     const reorderedArray = arrayMove(orderedStates, oldIndex, newIndex);
     
-    // Convert the reordered array back into an object keyed by name
-    const newStatesObject = reorderedArray.reduce((acc, state) => {
-      acc[state.name] = state;
+    const newStatesObject = reorderedArray.reduce((acc, s) => {
+      acc[s.name] = s;
       return acc;
     }, {});
     
-    // Update the state and localStorage
-    setSavedWorkspaceStates(newStatesObject);
+    // Dispatch action to update context state
+    reorderSavedWorkspaceStates(newStatesObject); 
+    
     try {
       localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(newStatesObject));
     } catch (error) {
       console.error("Failed to save reordered workspace states to localStorage:", error);
       showError("Failed to save the new state order.");
-      // Optionally revert state update if localStorage fails?
-      // setSavedWorkspaceStates(savedWorkspaceStates); 
     }
-  }, [savedWorkspaceStates, showError]); // Dependency: need current states to reorder
+  }, [state.savedWorkspaceStates, reorderSavedWorkspaceStates, showError]); // Dependencies updated
   // --- End New Handler ---
 
   // --- NEW: Handler for Reordering Editor Tabs ---

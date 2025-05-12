@@ -117,6 +117,7 @@ const ActionTypes = {
   SAVE_NAMED_WORKSPACE: 'SAVE_NAMED_WORKSPACE',
   REMOVE_NAMED_WORKSPACE: 'REMOVE_NAMED_WORKSPACE',
   RENAME_WORKSPACE: 'RENAME_WORKSPACE',  // <-- NEW ACTION for renaming
+  REORDER_SAVED_WORKSPACE_STATES: 'REORDER_SAVED_WORKSPACE_STATES',
   SET_PENDING_WORKSPACE_LOAD: 'SET_PENDING_WORKSPACE_LOAD',
   CLEAR_PENDING_WORKSPACE_LOAD: 'CLEAR_PENDING_WORKSPACE_LOAD',
 
@@ -474,6 +475,11 @@ function appStateReducer(state, action) {
         // If we're removing the active workspace and it's not part of a rename, clear it
         activeNamedWorkspaceName: (isRemovedActive && !isRenameOperation) ? null : state.activeNamedWorkspaceName,
       };
+    case ActionTypes.REORDER_SAVED_WORKSPACE_STATES:
+      return {
+        ...state,
+        savedWorkspaceStates: action.payload,
+      };
     case ActionTypes.SET_PENDING_WORKSPACE_LOAD:
       return {
         ...state,
@@ -809,6 +815,12 @@ export const AppStateProvider = ({ children }) => {
     type: ActionTypes.CLEAR_ACTIVE_NAMED_WORKSPACE,
   });
 
+  // Action creator for reordering saved workspace states
+  const reorderSavedWorkspaceStates = (reorderedStates) => dispatch({
+    type: ActionTypes.REORDER_SAVED_WORKSPACE_STATES,
+    payload: reorderedStates
+  });
+
   return (
     <AppStateContext.Provider
       value={{
@@ -862,6 +874,8 @@ export const AppStateProvider = ({ children }) => {
         // Active Named Workspace <-- NEW
         setActiveNamedWorkspace,
         clearActiveNamedWorkspace,
+        // New action creator
+        reorderSavedWorkspaceStates,
       }}
     >
       {children}

@@ -413,7 +413,7 @@ const FileExplorer = ({
 
   // --- Drag and Drop Handler passed to TreeNode ---
   const handleMoveItem = useCallback((sourceNodeData, targetNode, action, position = null) => {
-    // sourceNodeData can now be an array of items or a single item (from dragStart)
+    console.log('[FileExplorer] handleMoveItem', { sourceNodeData, targetNode, action, position });
     if (action === 'dragStart' && sourceNodeData) {
       // If dragging an unselected item, select it first
       const items = Array.isArray(sourceNodeData) ? sourceNodeData : [sourceNodeData];

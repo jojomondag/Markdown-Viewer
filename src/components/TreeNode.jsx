@@ -110,25 +110,17 @@ const TreeNode = ({
 
   // --- Drag and Drop Handlers ---
   const handleDragStart = useCallback((e) => {
+    console.log('[TreeNode] handleDragStart', node.path);
     e.stopPropagation();
-
     let draggedItems = [];
     const isNodeSelected = selectedNodePaths.has(node.path);
-
     if (isNodeSelected) {
-      // Dragging a selected node: include all selected items
-      // Parent resolves types if needed
       draggedItems = Array.from(selectedNodePaths).map(path => ({ path, type: 'unknown' }));
     } else {
-      // Dragging an unselected node: select only this node and drag it
-      // The parent component will handle the implicit selection via the 'dragStart' action
       draggedItems = [{ path: node.path, type: node.type }];
     }
-
     e.dataTransfer.setData('application/json', JSON.stringify(draggedItems));
     e.dataTransfer.effectAllowed = 'move';
-
-    // Notify parent about the drag start, passing the items being dragged
     onMoveItem(draggedItems, null, 'dragStart');
   }, [node.path, node.type, selectedNodePaths, onMoveItem]);
 
@@ -156,29 +148,23 @@ const TreeNode = ({
   }, [node, onMoveItem]);
 
   const handleDrop = useCallback((e) => {
+    console.log('[TreeNode] handleDrop', node.path);
     e.preventDefault();
     e.stopPropagation();
     try {
       const draggedItemsData = JSON.parse(e.dataTransfer.getData('application/json'));
-
-      // Determine drop position again (similar to dragOver)
-      const hoverThreshold = 0.25; // Percentage of height for top/bottom zones
+      const hoverThreshold = 0.25;
       const rect = e.currentTarget.getBoundingClientRect();
       const hoverY = e.clientY - rect.top;
-
       let position = 'middle';
       if (hoverY < rect.height * hoverThreshold) {
           position = 'top';
       } else if (hoverY > rect.height * (1 - hoverThreshold)) {
           position = 'bottom';
       }
-
-      // Basic validation: ensure dragged data is an array and not empty
       if (Array.isArray(draggedItemsData) && draggedItemsData.length > 0) {
-        // Check if dropping onto self or one of the dragged items
         const isDroppingOnSelfOrDragged = draggedItemsData.some(item => item.path === node.path);
         if (!isDroppingOnSelfOrDragged) {
-          // Call the parent handler to perform the move
           onMoveItem(draggedItemsData, node, 'drop', position);
         } else {
             console.log('[TreeNode] Drop onto self ignored.');
@@ -189,14 +175,13 @@ const TreeNode = ({
     } catch (error) {
       console.error('[TreeNode DnD] Error parsing dropped data:', error);
     } finally {
-        // Notify parent to clear dragOver state regardless of drop success/failure
-        onMoveItem(null, null, 'dragEnd'); // Use dragEnd action type
+        onMoveItem(null, null, 'dragEnd');
     }
-  }, [node, onMoveItem]); // Ensure all dependencies using node/onMoveItem are included
+  }, [node, onMoveItem]);
 
   const handleDragEnd = useCallback((e) => {
+    console.log('[TreeNode] handleDragEnd', node.path);
     e.stopPropagation();
-    // Notify parent to clear all drag states
     onMoveItem(null, null, 'dragEnd');
   }, [onMoveItem]);
   // --- End Drag and Drop Handlers ---
@@ -229,12 +214,12 @@ const TreeNode = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onDragEnd={handleDragEnd}
-      onContextMenu={handleContextMenu} // Attach context menu to the outer div
+      onContextMenu={handleContextMenu}
+      style={{ touchAction: 'none' }} // Prevent touch events from interfering with drag
     >
       <div
         className={combinedClasses}
-        onClick={handleClick} // Use combined click handler
-        // Remove onContextMenu from here, it's on the outer div
+        onClick={handleClick}
         style={{ paddingLeft: `${level * 16}px` }}
       >
         {/* Toggle Chevron */}
@@ -260,7 +245,7 @@ const TreeNode = ({
             onChange={handleRenameChange}
             onKeyDown={handleRenameKeyDown}
             onBlur={handleRenameBlur}
-            onClick={(e) => e.stopPropagation()} // Prevent click from bubbling
+            onClick={(e) => e.stopPropagation()}
             className="flex-grow bg-surface-100 dark:bg-surface-800 border border-primary-500 rounded px-1 text-sm outline-none"
             style={{ marginLeft: '2px' }}
           />
@@ -270,10 +255,10 @@ const TreeNode = ({
           </div>
         )}
       </div>
-
+      
       {/* Children */}
       {isFolder && isExpanded && hasChildren && (
-        <div className="ml-0"> {/* No extra indent needed if padding works */}
+        <div className="ml-0">
           {node.children.map(child => (
             <TreeNode
               key={child.path}
@@ -289,7 +274,7 @@ const TreeNode = ({
               currentFilePath={currentFilePath}
               onContextMenu={onContextMenu}
               onMoveItem={onMoveItem}
-              isDragging={isDragging} // Pass down dragging state if needed for children styling
+              isDragging={isDragging}
               dragOverPath={dragOverPath}
               dragOverPosition={dragOverPosition}
             />

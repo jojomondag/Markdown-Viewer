@@ -20,13 +20,28 @@ import useNotification from '../hooks/useNotification';
 
 // New SortableTab component - Refactored structure
 const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, handleCloseClick }) => {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+    id,
+    transition: {
+      duration: 150,
+      easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+    },
+  });
+
+  // Add debug log when dragging starts
+  React.useEffect(() => {
+    if (isDragging) {
+      console.log('[SortableTab] Drag started for:', file.path);
+    }
+  }, [isDragging, file.path]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     // Ensure the wrapper takes up necessary space but doesn't shrink
     flexShrink: 0,
+    touchAction: 'none', // Prevent touch events from interfering with drag
+    opacity: isDragging ? 0.5 : 1, // Visual feedback for dragging
   };
 
   // Calculate dynamic padding style
@@ -38,6 +53,7 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
     <div 
       ref={setNodeRef} 
       style={style} 
+      tabIndex={0}
       {...attributes} 
       {...listeners} 
       onClick={() => { 
@@ -46,6 +62,7 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
       }}
       role="tab" 
       aria-selected={isActive} 
+      className="sortable-tab"
     >
       {/* Original Button structure inside the sortable div */}
       <button
@@ -105,7 +122,9 @@ const EditorTabs = ({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,
+        distance: 3, // Reduce distance to make dragging easier to initiate
+        tolerance: 5, // Add tolerance for slight movements
+        delay: 0, // No delay for immediate response
       },
     }),
     useSensor(KeyboardSensor, {
@@ -180,7 +199,7 @@ const EditorTabs = ({
   // Handle drag end for reordering
   const handleDragEnd = (event) => {
     const { active, over } = event;
-
+    console.log('[EditorTabs] handleDragEnd', event);
     if (active.id !== over.id) {
       const oldIndex = filePaths.indexOf(active.id);
       const newIndex = filePaths.indexOf(over.id);
@@ -197,8 +216,9 @@ const EditorTabs = ({
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
+      modifiers={[]} // Add empty modifiers array to ensure proper behavior
     >
-      <div className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-2 min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto">
+      <div className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-2 min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto dnd-tabs-container">
         {/* Wrap tabs with SortableContext */}
         <SortableContext items={filePaths} strategy={rectSortingStrategy}>
           {filteredOpenFiles.map((file) => {
