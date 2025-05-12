@@ -481,43 +481,49 @@ ipcMain.handle('test-dir-write', async (event, dirPath) => {
   }
 });
 
+// Helper function for recursive directory moving
+async function moveItem(sourcePath, targetPath, isDirectory) {
+  if (isDirectory) {
+    // Create target directory if it doesn't exist
+    if (!fs.existsSync(targetPath)) {
+      await fs.promises.mkdir(targetPath, { recursive: true });
+    }
+    
+    // Copy directory contents recursively
+    const items = await fs.promises.readdir(sourcePath, { withFileTypes: true });
+    for (const item of items) {
+      const srcPath = path.join(sourcePath, item.name);
+      const tgtPath = path.join(targetPath, item.name);
+      
+      if (item.isDirectory()) {
+        await fs.promises.mkdir(tgtPath, { recursive: true });
+        // Recursively copy subdirectory
+        await moveItem(srcPath, tgtPath, true);
+      } else {
+        await fs.promises.copyFile(srcPath, tgtPath);
+      }
+    }
+    
+    // Remove original directory
+    await fs.promises.rmdir(sourcePath, { recursive: true });
+  } else {
+    // Create parent directory if it doesn't exist
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+      await fs.promises.mkdir(targetDir, { recursive: true });
+    }
+    
+    // Move file (copy then delete)
+    await fs.promises.copyFile(sourcePath, targetPath);
+    await fs.promises.unlink(sourcePath);
+  }
+}
+
 // File operations for drag and drop
 ipcMain.handle('move-item', async (event, sourcePath, targetPath, isDirectory) => {
   try {
-    if (isDirectory) {
-      // Create target directory if it doesn't exist
-      if (!fs.existsSync(targetPath)) {
-        await fs.promises.mkdir(targetPath, { recursive: true });
-      }
-      
-      // Copy directory contents recursively
-      const items = await fs.promises.readdir(sourcePath, { withFileTypes: true });
-      for (const item of items) {
-        const srcPath = path.join(sourcePath, item.name);
-        const tgtPath = path.join(targetPath, item.name);
-        
-        if (item.isDirectory()) {
-          await fs.promises.mkdir(tgtPath, { recursive: true });
-          // Recursively copy subdirectory
-          await moveItem(srcPath, tgtPath, true);
-        } else {
-          await fs.promises.copyFile(srcPath, tgtPath);
-        }
-      }
-      
-      // Remove original directory
-      await fs.promises.rmdir(sourcePath, { recursive: true });
-    } else {
-      // Create parent directory if it doesn't exist
-      const targetDir = path.dirname(targetPath);
-      if (!fs.existsSync(targetDir)) {
-        await fs.promises.mkdir(targetDir, { recursive: true });
-      }
-      
-      // Move file (copy then delete)
-      await fs.promises.copyFile(sourcePath, targetPath);
-      await fs.promises.unlink(sourcePath);
-    }
+    console.log(`[Main Process] Moving ${isDirectory ? 'directory' : 'file'}: ${sourcePath} -> ${targetPath}`);
+    await moveItem(sourcePath, targetPath, isDirectory);
     
     return {
       success: true,
@@ -532,38 +538,44 @@ ipcMain.handle('move-item', async (event, sourcePath, targetPath, isDirectory) =
   }
 });
 
+// Helper function for recursive directory copying
+async function copyItem(sourcePath, targetPath, isDirectory) {
+  if (isDirectory) {
+    // Create target directory if it doesn't exist
+    if (!fs.existsSync(targetPath)) {
+      await fs.promises.mkdir(targetPath, { recursive: true });
+    }
+    
+    // Copy directory contents recursively
+    const items = await fs.promises.readdir(sourcePath, { withFileTypes: true });
+    for (const item of items) {
+      const srcPath = path.join(sourcePath, item.name);
+      const tgtPath = path.join(targetPath, item.name);
+      
+      if (item.isDirectory()) {
+        await fs.promises.mkdir(tgtPath, { recursive: true });
+        // Recursively copy subdirectory
+        await copyItem(srcPath, tgtPath, true);
+      } else {
+        await fs.promises.copyFile(srcPath, tgtPath);
+      }
+    }
+  } else {
+    // Create parent directory if it doesn't exist
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+      await fs.promises.mkdir(targetDir, { recursive: true });
+    }
+    
+    // Copy file
+    await fs.promises.copyFile(sourcePath, targetPath);
+  }
+}
+
 ipcMain.handle('copy-item', async (event, sourcePath, targetPath, isDirectory) => {
   try {
-    if (isDirectory) {
-      // Create target directory if it doesn't exist
-      if (!fs.existsSync(targetPath)) {
-        await fs.promises.mkdir(targetPath, { recursive: true });
-      }
-      
-      // Copy directory contents recursively
-      const items = await fs.promises.readdir(sourcePath, { withFileTypes: true });
-      for (const item of items) {
-        const srcPath = path.join(sourcePath, item.name);
-        const tgtPath = path.join(targetPath, item.name);
-        
-        if (item.isDirectory()) {
-          await fs.promises.mkdir(tgtPath, { recursive: true });
-          // Recursively copy subdirectory
-          await copyItem(srcPath, tgtPath, true);
-        } else {
-          await fs.promises.copyFile(srcPath, tgtPath);
-        }
-      }
-    } else {
-      // Create parent directory if it doesn't exist
-      const targetDir = path.dirname(targetPath);
-      if (!fs.existsSync(targetDir)) {
-        await fs.promises.mkdir(targetDir, { recursive: true });
-      }
-      
-      // Copy file
-      await fs.promises.copyFile(sourcePath, targetPath);
-    }
+    console.log(`[Main Process] Copying ${isDirectory ? 'directory' : 'file'}: ${sourcePath} -> ${targetPath}`);
+    await copyItem(sourcePath, targetPath, isDirectory);
     
     return {
       success: true,

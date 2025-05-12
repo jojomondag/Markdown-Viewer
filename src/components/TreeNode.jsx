@@ -23,8 +23,12 @@ const TreeNode = ({
   onMoveItem, // Added prop for drop handler
   isDragging, // Is this node being dragged?
   dragOverPosition, // Where is the cursor relative to this node? ('top', 'bottom', 'middle')
-  dragOverPath // Path of the node being dragged over (used by parent)
+  dragOverPath, // Path of the node being dragged over (used by parent)
+  itemOrderVersion // Accept the new prop
 }) => {
+  // Add console log to debug rendering (only when debugging needed)
+  // console.log(`[TreeNode] Rendering node: ${node.path} with itemOrderVersion: ${itemOrderVersion}`);
+  
   const isExpanded = expandedNodes[node.path] || false;
   const isSelected = selectedNodePaths.has(node.path); // Calculate isSelected internally
   const hasChildren = node.children && node.children.length > 0;
@@ -33,12 +37,22 @@ const TreeNode = ({
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(node.name);
   const renameInputRef = useRef(null);
+  
+  // Throttle mechanism for dragOver events
+  const lastDragOverRef = useRef(0);
+  const lastPositionRef = useRef(null);
+  
+  // Keep track of local drag state to prevent loss of node info
+  const nodeStateRef = useRef(node);
+  useEffect(() => {
+    nodeStateRef.current = node;
+  }, [node]);
 
   // Effect to set renaming state based on prop
   useEffect(() => {
     if (renamingNodePath === node.path) {
       setIsRenaming(true);
-      const currentName = node.name; // Use original node name
+      const currentName = node.name;
       setNewName(currentName);
 
       // Focus the input and select text when renaming starts
@@ -54,22 +68,20 @@ const TreeNode = ({
 
           inputElement.setSelectionRange(0, selectionEnd);
         }
-      }, 0); // Timeout ensures element is rendered and ready
+      }, 0);
 
     } else {
       setIsRenaming(false);
     }
-    // Add node.type as dependency
   }, [renamingNodePath, node.path, node.name, node.type]);
 
   const handleClick = useCallback((e) => {
-    e.stopPropagation(); // Prevent event bubbling
-    // Always call onNodeSelect to let the parent handle selection/rename/toggle logic
-    onNodeSelect(node, e); // Pass event object
+    e.stopPropagation();
+    onNodeSelect(node, e);
   }, [node, onNodeSelect]);
 
   const handleToggle = useCallback((e) => {
-      e.stopPropagation(); // Prevent event bubbling
+      e.stopPropagation();
       if (isFolder) {
           onFolderToggle(node.path);
       }
@@ -82,11 +94,11 @@ const TreeNode = ({
 
   const handleRenameKeyDown = (e) => {
     if (e.key === 'Enter') {
-      handleRenameBlur(); // Submit on Enter
+      handleRenameBlur();
     } else if (e.key === 'Escape') {
-      setIsRenaming(false); // Cancel on Escape
-      setNewName(node.name); // Reset name
-      onRenameCancel(); // Notify parent
+      setIsRenaming(false);
+      setNewName(node.name);
+      onRenameCancel();
     }
   };
 
@@ -94,94 +106,160 @@ const TreeNode = ({
     if (isRenaming) {
       const trimmedName = newName.trim();
       if (trimmedName && trimmedName !== node.name) {
-        onRenameSubmit(node, trimmedName); // Submit if name changed and not empty
+        onRenameSubmit(node, trimmedName);
       } else {
-        onRenameCancel(); // Cancel if name is unchanged or empty
+        onRenameCancel();
       }
-      setIsRenaming(false); // Exit renaming mode regardless
+      setIsRenaming(false);
     }
   };
 
   const handleContextMenu = (e) => {
-    e.preventDefault(); // Prevent default browser context menu
+    e.preventDefault();
     e.stopPropagation();
-    onContextMenu(e, node); // Pass event and node data
+    onContextMenu(e, node);
   };
 
   // --- Drag and Drop Handlers ---
   const handleDragStart = useCallback((e) => {
-    console.log('[TreeNode] handleDragStart', node.path);
     e.stopPropagation();
     let draggedItems = [];
     const isNodeSelected = selectedNodePaths.has(node.path);
-    if (isNodeSelected) {
-      draggedItems = Array.from(selectedNodePaths).map(path => ({ path, type: 'unknown' }));
+    
+    if (isNodeSelected && selectedNodePaths.size > 1) {
+      // For multi-selection, gather all selected items
+      draggedItems = Array.from(selectedNodePaths).map(path => ({ 
+        path, 
+        type: path.includes('.') ? 'file' : 'folder', // Simple type detection
+        name: path.split('/').pop() // Ensure name is available
+      }));
     } else {
-      draggedItems = [{ path: node.path, type: node.type }];
+      // If dragging an item that's not part of the current selection,
+      // just drag that single item
+      draggedItems = [{ 
+        path: node.path, 
+        type: node.type, 
+        name: node.name // Ensure name is available
+      }];
     }
+    
+    // Set both text/plain AND application/json formats to ensure cross-browser compatibility
+    e.dataTransfer.setData('text/plain', JSON.stringify(draggedItems));
     e.dataTransfer.setData('application/json', JSON.stringify(draggedItems));
     e.dataTransfer.effectAllowed = 'move';
+    
+    // Call parent handler to update the explorer state
     onMoveItem(draggedItems, null, 'dragStart');
-  }, [node.path, node.type, selectedNodePaths, onMoveItem]);
+  }, [node, selectedNodePaths, onMoveItem]);
 
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault(); // Necessary to allow dropping
-    e.stopPropagation();
-
-    // Determine position relative to the target element
-    const hoverThreshold = 0.25; // Percentage of height for top/bottom zones
-    const rect = e.currentTarget.getBoundingClientRect();
-    const hoverY = e.clientY - rect.top;
-
-    let position = 'middle';
-    if (hoverY < rect.height * hoverThreshold) {
-        position = 'top';
-    } else if (hoverY > rect.height * (1 - hoverThreshold)) {
-        position = 'bottom';
-    }
-
-    // Notify parent about the drag over event, passing the target node and position
-    onMoveItem(null, node, 'dragOver', position);
-
-    // Set drop effect (visual cue) - this might be better handled by parent setting styles
-    e.dataTransfer.dropEffect = 'move';
-  }, [node, onMoveItem]);
-
-  const handleDrop = useCallback((e) => {
-    console.log('[TreeNode] handleDrop', node.path);
+  // Determine drop position relative to the node
+  const getDropPosition = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    
+    // Position thresholds - top 25%, middle 50%, bottom 25%
+    const height = rect.height;
+    const topThreshold = height * 0.25;
+    const bottomThreshold = height * 0.75;
+    
+    // For folders, we allow drops inside the folder (middle position)
+    // For files, only allow top/bottom positions
+    if (offsetY < topThreshold) {
+      return 'top';
+    } else if (offsetY > bottomThreshold) {
+      return 'bottom';
+    } else {
+      return 'middle'; // Inside the folder or between items
+    }
+  }, []);
+
+  // Optimize handleDragOver with debounce
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Throttle dragOver events to reduce excessive event handling
+    // Only process event every 200ms (increased from 150ms)
+    const now = Date.now();
+    if (now - lastDragOverRef.current < 200) {
+      return;
+    }
+    
+    const position = getDropPosition(e);
+    
+    // Skip if position hasn't changed since last call
+    if (position === lastPositionRef.current && dragOverPath === node.path) {
+      return;
+    }
+    
+    lastPositionRef.current = position;
+    lastDragOverRef.current = now;
+    
+    // Set the drop effect based on position and node type
+    if (node.type === 'folder' || position !== 'middle') {
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      // Can't drop inside a file
+      e.dataTransfer.dropEffect = 'none';
+    }
+    
+    onMoveItem(null, nodeStateRef.current, 'dragOver', position);
+  }, [node, getDropPosition, onMoveItem, dragOverPath]);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Reset throttle refs when drop occurs
+    lastDragOverRef.current = 0;
+    lastPositionRef.current = null;
+    
     try {
-      const draggedItemsData = JSON.parse(e.dataTransfer.getData('application/json'));
-      const hoverThreshold = 0.25;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const hoverY = e.clientY - rect.top;
-      let position = 'middle';
-      if (hoverY < rect.height * hoverThreshold) {
-          position = 'top';
-      } else if (hoverY > rect.height * (1 - hoverThreshold)) {
-          position = 'bottom';
-      }
-      if (Array.isArray(draggedItemsData) && draggedItemsData.length > 0) {
-        const isDroppingOnSelfOrDragged = draggedItemsData.some(item => item.path === node.path);
-        if (!isDroppingOnSelfOrDragged) {
-          onMoveItem(draggedItemsData, node, 'drop', position);
-        } else {
-            console.log('[TreeNode] Drop onto self ignored.');
+      // Try both data formats
+      let data;
+      try {
+        data = e.dataTransfer.getData('application/json');
+        if (!data) {
+          data = e.dataTransfer.getData('text/plain');
         }
-      } else {
-        console.error('[TreeNode DnD] Drop ignored (invalid data)');
+      } catch (err) {
+        data = e.dataTransfer.getData('text/plain');
+      }
+
+      if (!data) {
+        console.error('[TreeNode] No drag data available');
+        return;
+      }
+      
+      const sourceItems = JSON.parse(data);
+      const position = getDropPosition(e);
+      
+      if (sourceItems && sourceItems.length > 0) {
+        // Check if we're trying to drop onto self
+        const isDroppingOnSelf = sourceItems.some(item => item.path === node.path);
+        if (isDroppingOnSelf && position === 'middle') {
+          return;
+        }
+        
+        // Use current node state from ref to ensure we have all properties
+        onMoveItem(sourceItems, nodeStateRef.current, 'drop', position);
       }
     } catch (error) {
-      console.error('[TreeNode DnD] Error parsing dropped data:', error);
-    } finally {
-        onMoveItem(null, null, 'dragEnd');
+      console.error('[TreeNode] Error during drop:', error);
     }
-  }, [node, onMoveItem]);
+  }, [node, getDropPosition, onMoveItem]);
 
   const handleDragEnd = useCallback((e) => {
-    console.log('[TreeNode] handleDragEnd', node.path);
+    e.preventDefault();
     e.stopPropagation();
+    
+    // Reset throttle refs
+    lastDragOverRef.current = 0;
+    lastPositionRef.current = null;
+    
     onMoveItem(null, null, 'dragEnd');
   }, [onMoveItem]);
   // --- End Drag and Drop Handlers ---
@@ -196,11 +274,11 @@ const TreeNode = ({
   const getDragOverClasses = () => {
       if (dragOverPath !== node.path) return '';
       switch (dragOverPosition) {
-          case 'top': return 'border-t-2 border-blue-600 -mt-0.5'; // Use margin instead of padding/border size increase
-          case 'bottom': return 'border-b-2 border-blue-600 -mb-0.5'; // Use margin instead of padding/border size increase
+          case 'top': return 'border-t-2 border-blue-500 dark:border-blue-400 -mt-px';
+          case 'bottom': return 'border-b-2 border-blue-500 dark:border-blue-400 -mb-px';
           case 'middle':
               // Only apply background if dropping *into* a folder
-              return node.type === 'folder' ? 'bg-blue-100 dark:bg-blue-900/50 rounded' : 'bg-error-100 dark:bg-error-900/50 rounded'; // Indicate invalid middle drop on file
+              return node.type === 'folder' ? 'bg-blue-100 dark:bg-blue-900/30 rounded' : 'bg-red-100 dark:bg-red-900/30 rounded';
           default: return '';
       }
   };
@@ -208,35 +286,47 @@ const TreeNode = ({
 
   return (
     <div
-      className={`flex flex-col transition-all duration-100 ease-in-out ${isDragging ? 'opacity-50' : ''} ${dragOverContainerClasses}`.trim()}
-      draggable="true"
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      onDragEnd={handleDragEnd}
+      className={`flex flex-col transition-all duration-100 ease-in-out ${isDragging ? 'opacity-70' : ''} ${dragOverPath === node.path ? getDragOverClasses() : ''}`}
+      style={{ paddingLeft: level * 16 }}
       onContextMenu={handleContextMenu}
-      style={{ touchAction: 'none' }} // Prevent touch events from interfering with drag
     >
       <div
         className={combinedClasses}
         onClick={handleClick}
-        style={{ paddingLeft: `${level * 16}px` }}
+        draggable={true}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
+        data-testid={`tree-node-${node.path}`}
       >
-        {/* Toggle Chevron */}
-        <div className="flex-shrink-0 mr-1 w-4 h-4 flex items-center justify-center" onClick={handleToggle}>
-          {isFolder && hasChildren && (
-            isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />
-          )}
-        </div>
-        {/* Icon */}
-        <div className="flex-shrink-0 mr-2">
-          {isFolder ? (
-            isExpanded ? <IconFolderOpen size={16} color="#60a5fa" /> : <IconFolder size={16} color="#60a5fa" />
+        {/* Folder Toggle or Spacer */}
+        <div className="w-5 flex-shrink-0" onClick={hasChildren ? handleToggle : undefined}>
+          {hasChildren && isFolder ? (
+            isExpanded ? (
+              <IconChevronDown size={16} className="opacity-60" />
+            ) : (
+              <IconChevronRight size={16} className="opacity-60" />
+            )
           ) : (
-            <IconFile size={16} color="#a1a1aa" />
+            <span className="w-4"></span>
           )}
         </div>
-        {/* Name or Input */}
+
+        {/* Icon */}
+        <div className="w-5 flex-shrink-0 mr-1">
+          {isFolder ? (
+            isExpanded ? (
+              <IconFolderOpen size={16} className="text-amber-500" />
+            ) : (
+              <IconFolder size={16} className="text-amber-500" />
+            )
+          ) : (
+            <IconFile size={16} className="opacity-60" />
+          )}
+        </div>
+
+        {/* Name (with rename input if active) */}
         {isRenaming ? (
           <input
             ref={renameInputRef}
@@ -245,23 +335,22 @@ const TreeNode = ({
             onChange={handleRenameChange}
             onKeyDown={handleRenameKeyDown}
             onBlur={handleRenameBlur}
-            onClick={(e) => e.stopPropagation()}
-            className="flex-grow bg-surface-100 dark:bg-surface-800 border border-primary-500 rounded px-1 text-sm outline-none"
-            style={{ marginLeft: '2px' }}
+            className="flex-grow bg-white dark:bg-surface-800 border border-primary-500 rounded px-1 py-0 text-sm outline-none"
+            autoFocus
           />
         ) : (
-          <div className="truncate text-sm" data-testid="node-name">
+          <div className="flex-grow truncate" data-testid="node-name">
             {node.name}
           </div>
         )}
       </div>
-      
+
       {/* Children */}
-      {isFolder && isExpanded && hasChildren && (
-        <div className="ml-0">
+      {isExpanded && hasChildren && (
+        <div className="children">
           {node.children.map(child => (
             <TreeNode
-              key={child.path}
+              key={`${child.path}-${itemOrderVersion}`}
               node={child}
               level={level + 1}
               onNodeSelect={onNodeSelect}
@@ -274,9 +363,10 @@ const TreeNode = ({
               currentFilePath={currentFilePath}
               onContextMenu={onContextMenu}
               onMoveItem={onMoveItem}
-              isDragging={isDragging}
+              isDragging={dragOverPath === child.path}
               dragOverPath={dragOverPath}
               dragOverPosition={dragOverPosition}
+              itemOrderVersion={itemOrderVersion}
             />
           ))}
         </div>

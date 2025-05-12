@@ -65,6 +65,7 @@ function App() {
   const [isSaveStateDialogOpen, setIsSaveStateDialogOpen] = useState(false);
   // isProjectOpen will be derived from context state later
   const [isProjectOpen, setIsProjectOpen] = useState(false); 
+  const [itemOrderVersion, setItemOrderVersion] = useState(0); // Add this state
 
   const {
     files,
@@ -871,148 +872,114 @@ function App() {
 
   // *** NEW: Handler for moving files/folders via Drag and Drop ***
   const handleMoveItem = async (sourceItems, targetNode, dropPosition) => {
-    // sourceItems is now an array of {path: string, type: string}
-    if (!Array.isArray(sourceItems) || sourceItems.length === 0 || !targetNode) {
-      console.error('[App] Invalid move operation data. Source items:', sourceItems, 'Target:', targetNode);
-      showError("Invalid data for move operation.");
+    console.log('[App] handleMoveItem', { sourceItems, targetNode, dropPosition });
+    
+    if (!sourceItems || sourceItems.length === 0) {
+      console.warn('[App] No source items provided for move operation');
       return;
     }
 
-    console.log(`[App] handleMoveItem called for ${sourceItems.length} items.`);
+    // Create local copies of state for this operation
+    let currentFilesState = [...files];
+    let currentFoldersState = [...folders];
+    let currentItemOrderState = { ...itemOrder };
+    let currentCurrentFileState = currentFile;
+    
+    // Keep track of success for UI feedback
+    let allSuccess = true;
+    const errors = [];
 
-    setAppLoading({ files: true }); // Indicate loading for the whole operation
+    // Determine if this is a multi-reorder operation
+    const firstItemOldParentPath = getDirname(sourceItems[0].path) || '.';
+    const isMultiReorder = dropPosition !== 'middle' && 
+        sourceItems.length > 0 && 
+        sourceItems.every(item => getDirname(item.path) === firstItemOldParentPath) &&
+        getDirname(targetNode.path) === firstItemOldParentPath;
 
-    // Determine the actual target folder based on drop position
-    let effectiveTargetFolder;
-    if (dropPosition === 'top' || dropPosition === 'bottom') {
-        // Dropping between items means moving into the PARENT of the target node
-        const parentPath = getDirname(targetNode.path);
-        // Find the parent folder object from our state
-        effectiveTargetFolder = folders.find(f => f.path === parentPath);
-        // If parentPath is a root or not found, handle appropriately (e.g., disallow or use root)
-        if (!effectiveTargetFolder) {
-            // This might happen if dropping relative to a root item
-            // For now, let's find the root folder object if the parent path matches a root
-             effectiveTargetFolder = folders.find(f => f.path === parentPath && activeRootFolders.includes(f.path));
-             if (!effectiveTargetFolder) {
-                 console.error(`[App] Could not find parent folder object for path: ${parentPath}`);
-                 showError("Cannot determine target folder for drop.");
-                 return;
-             }
+    // Multi-reordering of items within the same folder
+    if (isMultiReorder) {
+        console.log(`[App] Multi-Reordering ${sourceItems.length} items within ${firstItemOldParentPath}`);
+        setAppLoading({ files: true }); // Set loading state for UI feedback
+
+        // Update the itemOrder for this parent
+        const parentPath = firstItemOldParentPath;
+        const currentParentOrder = [...(currentItemOrderState[parentPath] || [])];
+        const targetIndex = currentParentOrder.indexOf(targetNode.path);
+        
+        if (targetIndex === -1) {
+            console.warn('[App] Multi-Reorder target node not found in order map. Appending.');
+            
+            // Remove all source items from the current order
+            const sourcePaths = sourceItems.map(item => item.path);
+            const newOrder = currentParentOrder.filter(path => !sourcePaths.includes(path));
+            
+            // Append all source items at the end
+            newOrder.push(...sourcePaths);
+            currentItemOrderState[parentPath] = newOrder;
+        } else {
+            // Remove all source items from the current order
+            const sourcePaths = sourceItems.map(item => item.path);
+            const newOrder = currentParentOrder.filter(path => !sourcePaths.includes(path));
+            
+            // Calculate insert index (before or after target)
+            let insertIndex = targetIndex;
+            // If dropping after, and target still exists in newOrder, adjust index
+            if (dropPosition === 'bottom') {
+                const adjustedTargetIndex = newOrder.indexOf(targetNode.path);
+                if (adjustedTargetIndex !== -1) {
+                    insertIndex = adjustedTargetIndex + 1;
+                }
+            }
+            
+            // Insert all source items at the calculated position
+            newOrder.splice(insertIndex, 0, ...sourcePaths);
+            currentItemOrderState[parentPath] = newOrder;
         }
-    } else if (dropPosition === 'middle' && targetNode.type === 'folder') {
-        // Dropping onto a folder means moving into that folder
-        effectiveTargetFolder = targetNode;
-    } else {
-        // Invalid drop position (e.g., middle of a file)
-        console.warn(`[App] Invalid drop position '${dropPosition}' onto target type '${targetNode.type}'`);
+        
+        setItemOrder(currentItemOrderState);
+        setAppLoading({ files: false });
+        
+        // Force UI update
+        setItemOrderVersion(prevVersion => prevVersion + 1);
         return;
     }
 
-    // *** Check for Multi-Item Reorder case first ***
-    const firstItem = sourceItems[0];
-    const firstItemOldParentPath = getDirname(firstItem.path) || '.';
-    const isMultiReorder = 
-        (dropPosition === 'top' || dropPosition === 'bottom') &&
-        firstItemOldParentPath === effectiveTargetFolder.path && // Target folder is the same as original parent
-        sourceItems.every(item => (getDirname(item.path) || '.') === firstItemOldParentPath); // All items share the same original parent
-
-    if (isMultiReorder) {
-        console.log(`[App] Multi-Reordering ${sourceItems.length} items within ${firstItemOldParentPath}`);
-        setItemOrder(prevOrder => {
-            const currentParentOrder = [...(prevOrder[firstItemOldParentPath] || [])];
-            const targetIndex = currentParentOrder.indexOf(targetNode.path);
-            
-            if (targetIndex === -1) {
-                console.warn('[App] Multi-Reorder target node not found in order map. Appending.');
-                // Remove all source items and append them
-                const sourcePaths = sourceItems.map(item => item.path);
-                const sourceRemoved = currentParentOrder.filter(p => !sourcePaths.includes(p));
-                return { ...prevOrder, [firstItemOldParentPath]: [...sourceRemoved, ...sourcePaths] };
-            }
-
-            // Remove all source items first
-            const sourcePaths = sourceItems.map(item => item.path);
-            const sourceRemovedOrder = currentParentOrder.filter(p => !sourcePaths.includes(p));
-
-            // Calculate insertion index based on the target's position *after* removal
-            const newTargetIndex = sourceRemovedOrder.indexOf(targetNode.path);
-            const insertIndex = dropPosition === 'top' ? newTargetIndex : newTargetIndex + 1;
-
-            // Insert all source items at the calculated position
-            sourceRemovedOrder.splice(insertIndex, 0, ...sourcePaths);
-            
-            console.log(`[App Reorder] Parent order AFTER multi-reorder for [${firstItemOldParentPath}]:`, JSON.stringify(sourceRemovedOrder));
-            return { ...prevOrder, [firstItemOldParentPath]: sourceRemovedOrder };
-        });
-
-        showSuccess(`Reordered ${sourceItems.length} items`);
-        setAppLoading({ files: false }); // Turn off loading
-        return; // End execution here for multi-reorder
-    }
-
-    // --- Proceed with Move or Single-Item Reorder --- 
-        let allSuccess = true;
-        let errors = [];
-        let successfulMoves = 0;
+    // --- Moving Items Between Folders ---
+    setAppLoading({ files: true }); // Set loading state for UI feedback
     
-        // Use a temporary state for updates to avoid issues with async loops
-        let currentFilesState = [...files];
-        let currentFoldersState = [...folders];
-        let currentOpenFilesState = [...openFiles];
-        let currentItemOrderState = { ...itemOrder };
-        let currentCurrentFileState = currentFile ? { ...currentFile } : null;
-
-    // Process each source item
-    for (const sourceItem of sourceItems) {
-        const oldPath = sourceItem.path;
-        // Resolve item type if it was unknown (might need full node info from explorer)
-        let itemType = sourceItem.type;
-        if (itemType === 'unknown') {
-            // Look in the *current* temporary state being built within the loop
-            const fullItem = currentFilesState.find(f => f.path === oldPath) || currentFoldersState.find(f => f.path === oldPath);
-            if (fullItem) {
-                itemType = fullItem.type;
-            } else {
-                console.warn(`[App] Could not resolve type for dragged item: ${oldPath}`);
-                errors.push(`Could not find info for ${getBasename(oldPath)}.`);
-                allSuccess = false;
-                continue; // Skip this item
-            }
-        }
-        const isDirectory = itemType === 'folder';
-        const itemName = getBasename(oldPath);
-        const oldParentPath = getDirname(oldPath) || '.';
-        const newParentPath = effectiveTargetFolder.path;
-
-        // --- Determine if it's a reorder within the same parent or a move between parents ---
-        const isReorder = oldParentPath === newParentPath && (dropPosition === 'top' || dropPosition === 'bottom');
-
-        if (isReorder && sourceItems.length === 1) {
-            // --- Handle Reorder (only for single item drags for simplicity) ---
-            console.log(`[App] Reordering item: ${itemName} within ${oldParentPath}`);
-
-            console.log(`[App Reorder] Current Target Node: ${targetNode.path}, Drop Position: ${dropPosition}`);
-            const currentParentOrder = [...(currentItemOrderState[oldParentPath] || [])];
-            const targetIndex = currentParentOrder.indexOf(targetNode.path);
-
-            if (targetIndex === -1) {
-                console.warn('[App] Reorder target node not found in order map. Appending.');
-                const sourceRemoved = currentParentOrder.filter(p => p !== oldPath);
-                currentItemOrderState[oldParentPath] = [...sourceRemoved, oldPath];
-            } else {
-                const sourceRemovedOrder = currentParentOrder.filter(p => p !== oldPath);
-                const newTargetIndex = sourceRemovedOrder.indexOf(targetNode.path);
-                const insertIndex = dropPosition === 'top' ? newTargetIndex : newTargetIndex + 1;
-                sourceRemovedOrder.splice(insertIndex, 0, oldPath);
-                currentItemOrderState[oldParentPath] = sourceRemovedOrder;
-            }
-            console.log(`[App Reorder] Parent order AFTER reorder for [${oldParentPath}]:`, JSON.stringify(currentItemOrderState[oldParentPath]));
-            // No backend call needed for pure reorder
-            successfulMoves++;
+    // Determine target folder path
+    let effectiveTargetFolder;
+    
+    if (targetNode.type === 'folder') {
+        // If dropping directly onto a folder
+        if (dropPosition === 'middle') {
+            effectiveTargetFolder = targetNode; // Inside the folder
         } else {
+            // If dropping before/after a folder, place in parent folder
+            effectiveTargetFolder = {
+                path: getDirname(targetNode.path) || '.',
+                type: 'folder'
+            };
+        }
+    } else {
+        // If dropping near a file, place in same folder as that file
+        effectiveTargetFolder = {
+            path: getDirname(targetNode.path) || '.',
+            type: 'folder'
+        };
+    }
+    
+    console.log(`[App] Move target folder: ${effectiveTargetFolder.path}`);
+
+    // Process each item to be moved
+    for (const item of sourceItems) {
+        try {
+            const oldPath = item.path;
+            const isDirectory = item.type === 'folder';
+            const itemName = getBasename(oldPath);
+            
             // --- Handle Move (between folders or dropping onto folder, or multi-item reorder treated as move) ---
-            let newPath = path.join(effectiveTargetFolder.path, itemName).replace(/\\/g, '/');
+            let newPath = path.join(effectiveTargetFolder.path, itemName).replace(/\\\\/g, '/');
             console.log(`[App] Moving ${isDirectory ? 'folder' : 'file'}: ${oldPath} -> ${newPath}`);
 
             // Prevent moving into self
@@ -1024,155 +991,178 @@ function App() {
             }
 
             // Check for naming conflicts based on *current* temporary state
-            let finalNewPath = newPath;
-            let counter = 0;
-            const siblings = isDirectory
-                ? currentFoldersState.filter(f => getDirname(f.path) === effectiveTargetFolder.path)
-                : currentFilesState.filter(f => getDirname(f.path) === effectiveTargetFolder.path);
-
-            while (siblings.some(s => s.path === finalNewPath)) {
-                counter++;
-                const extension = !isDirectory ? path.extname(itemName) : '';
-                const nameWithoutExt = !isDirectory ? itemName.slice(0, -extension.length) : itemName;
-                const newName = `${nameWithoutExt} (${counter})${extension}`;
-                finalNewPath = path.join(effectiveTargetFolder.path, newName).replace(/\\/g, '/');
-                console.log(`[App] Naming conflict found for ${itemName}, trying new path: ${finalNewPath}`);
+            let fileExists = false;
+            let renamed = false;
+            let uniqueSuffix = 1;
+            
+            // Function to check if a path exists in our current state
+            const pathExistsInCurrentState = (pathToCheck) => {
+                const pathLower = pathToCheck.toLowerCase();
+                return currentFilesState.some(f => f.path.toLowerCase() === pathLower) || 
+                       currentFoldersState.some(f => f.path.toLowerCase() === pathLower);
+            };
+            
+            // Generate unique name if needed
+            while (pathExistsInCurrentState(newPath)) {
+                fileExists = true;
+                const ext = getExtension(itemName);
+                const baseName = ext ? itemName.slice(0, -(ext.length + 1)) : itemName;
+                const newName = `${baseName} (${uniqueSuffix})${ext ? '.' + ext : ''}`;
+                newPath = path.join(effectiveTargetFolder.path, newName).replace(/\\\\/g, '/');
+                uniqueSuffix++;
+                renamed = true;
+            }
+            
+            if (fileExists) {
+                console.log(`[App] Target path exists, using: ${newPath}`);
             }
 
+            // Now attempt to perform the move operation via IPC
             try {
-                // Only call the backend API if the path is actually changing
-                if (oldPath !== finalNewPath) {
-                  const result = await window.api.moveItem(oldPath, finalNewPath, isDirectory);
-                  if (!result || !result.success) {
-                    throw new Error(result?.message || `Unknown error moving ${itemName}`);
-                  }
-                } else {
-                  console.log(`[App] Skipping backend move for ${oldPath} as path is unchanged (likely reorder).`);
-                }
-
-                // --- Update Temporary State for this item --- 
-                const newItemName = getBasename(finalNewPath);
-                const oldPathPrefix = oldPath + '/';
-                const newPathPrefix = finalNewPath + '/';
-
+                await window.api.moveItem(oldPath, newPath, isDirectory);
+                console.log(`[App] Move successful: ${oldPath} -> ${newPath}`);
+                
+                // Update state based on item type
                 if (isDirectory) {
-                    // Update the folder itself
-                    currentFoldersState = currentFoldersState.map(f => f.path === oldPath ? { ...f, path: finalNewPath, name: newItemName } : f);
+                    // Update folders state with new path for this folder
+                    currentFoldersState = currentFoldersState.filter(f => f.path !== oldPath);
+                    currentFoldersState.push({
+                        ...item,
+                        path: newPath
+                    });
+                    
+                    // Also update paths for all descendant files and folders
+                    const descendantPrefix = oldPath + '/';
+                    
                     // Update descendant folders
                     currentFoldersState = currentFoldersState.map(f => {
-                        if (f.path.startsWith(oldPathPrefix)) {
-                            const relativePath = f.path.substring(oldPathPrefix.length);
-                            const updatedPath = newPathPrefix + relativePath;
-                            return { ...f, path: updatedPath, name: getBasename(updatedPath) };
+                        if (f.path.startsWith(descendantPrefix)) {
+                            return {
+                                ...f,
+                                path: newPath + '/' + f.path.substring(descendantPrefix.length)
+                            };
                         }
                         return f;
                     });
+                    
                     // Update descendant files
                     currentFilesState = currentFilesState.map(f => {
-                        if (f.path.startsWith(oldPathPrefix)) {
-                            const relativePath = f.path.substring(oldPathPrefix.length);
-                            const updatedPath = newPathPrefix + relativePath;
-                            return { ...f, path: updatedPath, name: getBasename(updatedPath) };
+                        if (f.path.startsWith(descendantPrefix)) {
+                            const newFilePath = newPath + '/' + f.path.substring(descendantPrefix.length);
+                            
+                            // If this is the current file, update currentFile reference
+                            if (currentCurrentFileState && f.path === currentCurrentFileState.path) {
+                                currentCurrentFileState = {
+                                    ...currentCurrentFileState,
+                                    path: newFilePath
+                                };
+                            }
+                            
+                            return {
+                                ...f,
+                                path: newFilePath
+                            };
                         }
                         return f;
                     });
-                    // Update open files
-                    currentOpenFilesState = currentOpenFilesState.map(openFile => {
-                        if (openFile.path.startsWith(oldPathPrefix)) {
-                            const relativePath = openFile.path.substring(oldPathPrefix.length);
-                            const updatedPath = newPathPrefix + relativePath;
-                            // Update current file state if necessary
-                            if(currentCurrentFileState?.path === openFile.path) {
-                                currentCurrentFileState = { ...currentCurrentFileState, path: updatedPath, name: getBasename(updatedPath) };
-                            }
-                            return { ...openFile, path: updatedPath, name: getBasename(updatedPath) };
+                    
+                    // Update item order for all affected folders
+                    const oldOrderEntry = currentItemOrderState[oldPath];
+                    if (oldOrderEntry) {
+                        currentItemOrderState[newPath] = oldOrderEntry;
+                        delete currentItemOrderState[oldPath];
+                    }
+                    
+                    // Update parent folders' order
+                    const oldParent = getDirname(oldPath) || '.';
+                    const newParent = getDirname(newPath) || '.';
+                    
+                    if (oldParent in currentItemOrderState) {
+                        currentItemOrderState[oldParent] = currentItemOrderState[oldParent]
+                            .filter(p => p !== oldPath);
+                    }
+                    
+                    if (newParent in currentItemOrderState) {
+                        if (!currentItemOrderState[newParent].includes(newPath)) {
+                            currentItemOrderState[newParent].push(newPath);
                         }
-                        return openFile;
+                    } else {
+                        currentItemOrderState[newParent] = [newPath];
+                    }
+                } else {
+                    // Handle file move
+                    currentFilesState = currentFilesState.filter(f => f.path !== oldPath);
+                    currentFilesState.push({
+                        ...item,
+                        path: newPath
                     });
-                } else { // File
-                    currentFilesState = currentFilesState.map(f => f.path === oldPath ? { ...f, path: finalNewPath, name: newItemName } : f);
-                    // Update open file
-                    const openFileIndex = currentOpenFilesState.findIndex(f => f.path === oldPath);
-                    if (openFileIndex > -1) {
-                        const updatedOpenFile = { ...currentOpenFilesState[openFileIndex], path: finalNewPath, name: newItemName };
-                        if (currentCurrentFileState?.path === oldPath) {
-                           currentCurrentFileState = updatedOpenFile;
+                    
+                    // Update currentFile reference if needed
+                    if (currentCurrentFileState && currentCurrentFileState.path === oldPath) {
+                        currentCurrentFileState = {
+                            ...currentCurrentFileState,
+                            path: newPath
+                        };
+                    }
+                    
+                    // Update parent folders' order
+                    const oldParent = getDirname(oldPath) || '.';
+                    const newParent = getDirname(newPath) || '.';
+                    
+                    if (oldParent in currentItemOrderState) {
+                        currentItemOrderState[oldParent] = currentItemOrderState[oldParent]
+                            .filter(p => p !== oldPath);
+                    }
+                    
+                    if (newParent in currentItemOrderState) {
+                        if (!currentItemOrderState[newParent].includes(newPath)) {
+                            currentItemOrderState[newParent].push(newPath);
                         }
-                        currentOpenFilesState[openFileIndex] = updatedOpenFile;
+                    } else {
+                        currentItemOrderState[newParent] = [newPath];
                     }
                 }
-
-                // --- Update itemOrder state --- 
-                // Remove from old parent order
-                if (oldParentPath in currentItemOrderState) {
-                    currentItemOrderState[oldParentPath] = currentItemOrderState[oldParentPath].filter(p => p !== oldPath);
-                    if (currentItemOrderState[oldParentPath].length === 0) {
-                        delete currentItemOrderState[oldParentPath];
-                    }
-                }
-                // Add to new parent order (append)
-                const currentNewParentOrder = currentItemOrderState[newParentPath] || [];
-                if (!currentNewParentOrder.includes(finalNewPath)) {
-                    currentItemOrderState[newParentPath] = [...currentNewParentOrder, finalNewPath];
-                }
-                // Update keys if a folder was moved
-                if (isDirectory) {
-                    const keysToUpdate = Object.keys(currentItemOrderState).filter(key => key === oldPath || key.startsWith(oldPathPrefix));
-                    keysToUpdate.forEach(oldKey => {
-                        const relativeKeyPath = oldKey.substring(oldPath.length);
-                        const newKey = finalNewPath + relativeKeyPath;
-                        const updatedChildPaths = (currentItemOrderState[oldKey] || []).map(childPath => {
-                            const relativeChildPath = childPath.substring(oldKey.length);
-                            return newKey + relativeChildPath;
-                        });
-                        currentItemOrderState[newKey] = updatedChildPaths;
-                        delete currentItemOrderState[oldKey];
-                    });
-                }
-                successfulMoves++;
-            } catch (error) {
-                console.error(`[App] Error moving item ${oldPath}:`, error);
-                errors.push(`Failed to move ${itemName}: ${error.message}`);
+            } catch (err) {
+                console.error(`[App] Error moving ${oldPath} to ${newPath}:`, err);
+                errors.push(`Failed to move ${itemName}: ${err.message}`);
                 allSuccess = false;
-                // Continue to next item even if one fails
             }
-        } // End of Move/Reorder block
-    } // End of loop through sourceItems
+        } catch (err) {
+            console.error('[App] Unexpected error in handleMoveItem:', err);
+            errors.push(`Error: ${err.message}`);
+            allSuccess = false;
+        }
+    }
 
     // --- Final State Updates --- 
     setFiles(currentFilesState);
     setFolders(currentFoldersState);
     setItemOrder(currentItemOrderState);
+    
+    // Increment the version to force re-render of the explorer
+    setItemOrderVersion(prevVersion => prevVersion + 1);
+    
     // Update open files using the context dispatchers based on the final state
     // This is complex because dispatch is async; a full refresh might be safer
     // For now, let's just update the current file if it changed
     if (currentFile && currentCurrentFileState && currentFile.path !== currentCurrentFileState.path) {
       setCurrentFile(currentCurrentFileState);
     }
-    // We also need to update the openFiles array in the context state
-    // Easiest way might be to remove old ones and add new ones if paths changed
-    const originalPaths = sourceItems.map(i => i.path);
-    const finalOpenFiles = openFiles
-        .filter(f => !originalPaths.includes(f.path)) // Remove old moved files
-        .concat(currentOpenFilesState.filter(f => originalPaths.includes(f.path))); // Add back the updated ones
-    // TODO: This isn't quite right. Needs proper dispatching. Replace openFiles state entirely?
-    // clearOpenFiles(); 
-    // finalOpenFiles.forEach(f => addOpenFile(f)); // Risky due to async dispatches
-    console.warn("[App] Open file state update after multi-move might be incomplete.");
+    
+    // Clear loading state
+    setAppLoading({ files: false });
 
-    // --- Show Feedback --- 
-    if (allSuccess && successfulMoves > 0) {
-        const msg = successfulMoves === 1 ? `Moved ${getBasename(sourceItems[0].path)}` : `Moved ${successfulMoves} items`;
-        showSuccess(`${msg} to ${getBasename(effectiveTargetFolder.path)}`);
-    } else if (successfulMoves > 0) {
-        showWarning(`Moved ${successfulMoves} items, but some failed: ${errors.join('; ')}`);
-    } else if (errors.length > 0) {
-        showError(`Failed to move items: ${errors.join('; ')}`);
-    } else {
-        // No moves happened (e.g., invalid drop)
+    // Show feedback to user for multi-item operations
+    if (sourceItems.length > 1) {
+        if (allSuccess) {
+            showSuccess(`Successfully moved ${sourceItems.length} items.`);
+        } else {
+            showError(`Some items could not be moved. Check console for details.`);
+            console.error('[App] Move errors:', errors);
+        }
+    } else if (!allSuccess) {
+        showError(errors[0] || 'Failed to move item.');
     }
-
-    setAppLoading({ files: false }); // Turn off loading indicator
   };
 
   // Add handler for creating new folders
@@ -2388,6 +2378,7 @@ function App() {
                            onFolderToggle={handleFolderToggle} 
                            // Pass addRootFolder (which now dispatches to context) directly
                            onAddFolderProp={openAndScanFolder} 
+                           itemOrderVersion={itemOrderVersion} // Pass the new state
                          />
                        </div>
                      </LoadingOverlay>

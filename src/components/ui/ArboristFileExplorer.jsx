@@ -10,9 +10,9 @@ import {
   IconExternalLink
 } from '@tabler/icons-react';
 import path from 'path-browserify';
-import { getBasename, getDirname } from '../utils/pathUtils'; // Assuming pathUtils exists
-import { isValidDrop } from '../utils/fileOperations'; // Import DnD utils
-import TreeNode from './TreeNode';
+import { getBasename, getDirname } from '../../utils/pathUtils'; // Assuming pathUtils exists
+import { isValidDrop } from '../../utils/fileOperations'; // Import DnD utils
+import TreeNode from '../TreeNode';
 
 // Main FileExplorer component (Arborist style)
 const FileExplorer = ({
@@ -31,7 +31,6 @@ const FileExplorer = ({
   expandedNodes, // <-- Accept expandedNodes state from props
   onFolderToggle, // <-- Accept folder toggle handler from props
   onAddFolderProp, // <-- Accept the new prop from App.jsx
-  itemOrderVersion, // Accept the new prop
   // Add any other necessary props based on App.jsx usage
 }) => {
   const [treeData, setTreeData] = useState([]);
@@ -48,49 +47,44 @@ const FileExplorer = ({
   const [dragOverPosition, setDragOverPosition] = useState(null); // 'top', 'bottom', 'middle'
   // --- End Drag and Drop State ---
 
-  // Use a ref to avoid excessive renders during drag operations
-  const dragStateRef = useRef({
-    draggingPath: null,
-    dragOverPath: null,
-    dragOverPosition: null
-  });
-
   // Function to build the tree structure from flat lists based on currentFolders
-  const buildTree = useCallback((files, folders, rootPaths, currentItemOrder) => {
-    // Reduce console logging for normal operations
-    if (itemOrderVersion % 5 === 0) {
-      console.log('[ArboristFileExplorer] Building tree with itemOrderVersion:', itemOrderVersion);
-    }
-    
-    // Combine files and folders into a single array of nodes
-    const allItems = [...files, ...folders];
+  const buildTree = useCallback((files, folders, currentFolders, currentItemOrder) => {
     const nodes = {};
     const roots = [];
+    const allItems = [...folders, ...files];
 
-    // First pass: Create nodes for all items
+    // First pass: Create nodes for all items and store them in the map
     allItems.forEach(item => {
-      const node = {
-        ...item,
-        key: `${item.path}-${itemOrderVersion}`, // Add itemOrderVersion to key to force re-render on order change
-        children: []
-      };
-      nodes[item.path] = node;
+        const name = getBasename(item.path);
+        nodes[item.path] = {
+            ...item, // Copy original item data
+            name: name, // Ensure name is basename
+            children: item.type === 'folder' ? [] : null // Initialize children for folders
+        };
     });
 
     // Second pass: Establish parent-child relationships
     Object.values(nodes).forEach(node => {
-      if (node.path === '.') return; // Skip special root entry
-      const parentPath = getDirname(node.path) || '.';
-      const parentNode = nodes[parentPath];
-      if (parentNode) {
-        parentNode.children.push(node);
-      }
+        const parentPath = getDirname(node.path);
+        if (parentPath && parentPath !== '.' && parentPath !== node.path && nodes[parentPath]) {
+            // Ensure parent exists and is a folder before adding child
+            if(nodes[parentPath].type === 'folder') {
+                // Avoid adding duplicates
+                if (!nodes[parentPath].children.some(child => child.path === node.path)) {
+                    nodes[parentPath].children.push(node);
+                }
+            }
+        }
     });
 
-    // Identify roots based on rootPaths prop (possibly coming from state.ui.rootFolders)
-    rootPaths.forEach(rootPath => {
-        const rootNode = nodes[rootPath];
+    // Third pass: Identify roots based on currentFolders prop
+    currentFolders.forEach(rootPath => {
+        // Normalize the root path from the prop for matching
+        const normalizedRootPath = rootPath.replace(/\\/g, '/');
+        // Find the node corresponding to this root path
+        const rootNode = Object.values(nodes).find(node => node.path.replace(/\\/g, '/') === normalizedRootPath);
         if (rootNode) {
+            // Check if it's already added to prevent duplicates if currentFolders has dupes
             if (!roots.some(r => r.path === rootNode.path)) {
                 roots.push(rootNode);
             } else {
@@ -107,30 +101,12 @@ const FileExplorer = ({
 
         // Get the predefined order for this parent, if available
         const predefinedOrder = orderMap ? orderMap[parentPath] : null;
-        
-        // Only log when needed for debugging
-        if (false) { // Set to true when debugging sort issues
-          console.log(`[ArboristFileExplorer] Sorting nodes for parent ${parentPath}:`, 
-            { 
-              nodeCount: nodeList.length, 
-              hasPredefinedOrder: !!predefinedOrder, 
-              predefinedOrder: predefinedOrder || 'none',
-              nodesPaths: nodeList.map(n => n.path),
-              itemOrderVersion
-            }
-          );
-        }
 
         nodeList.sort((a, b) => {
             // --- Predefined Order Logic ---
             if (predefinedOrder) {
                 const indexA = predefinedOrder.indexOf(a.path);
                 const indexB = predefinedOrder.indexOf(b.path);
-
-                // Only log when debugging sort issues
-                if (false) { // Set to true when debugging
-                  console.log(`[ArboristFileExplorer] Comparing nodes: ${a.path} (idx: ${indexA}) vs ${b.path} (idx: ${indexB}), itemOrderVersion: ${itemOrderVersion}`);
-                }
 
                 // If both items are in the predefined order, sort by their index
                 if (indexA !== -1 && indexB !== -1) {
@@ -164,23 +140,11 @@ const FileExplorer = ({
     // Sort the final list of root nodes themselves (using '.' as the key for the root level)
     sortNodesRecursive(roots, '.', currentItemOrder);
 
-    // Only log on milestone versions to reduce console spam
-    if (itemOrderVersion % 5 === 0) {
-      console.log('[ArboristFileExplorer] Built tree structure with itemOrderVersion:', itemOrderVersion, 
-        roots.map(root => ({
-          path: root.path,
-          childrenCount: root.children?.length || 0
-        }))
-      );
-    }
-
     return roots;
-  }, [itemOrderVersion]);
+  }, []);
 
   useEffect(() => {
     // Rebuild tree when files, folders, OR currentFolders change
-    console.log('[ArboristFileExplorer] useEffect triggered to rebuild tree with itemOrderVersion:', itemOrderVersion);
-    
     const newTree = buildTree(files, folders, currentFolders, itemOrder);
     setTreeData(newTree);
 
@@ -192,7 +156,7 @@ const FileExplorer = ({
         setRootFolderName('');
     }
 
-  }, [files, folders, currentFolders, buildTree, itemOrder, itemOrderVersion]);
+  }, [files, folders, currentFolders, buildTree, itemOrder]);
 
   // Helper function to get a flattened list of visible nodes
   const getVisibleNodes = useCallback(() => {
@@ -449,9 +413,7 @@ const FileExplorer = ({
 
   // --- Drag and Drop Handler passed to TreeNode ---
   const handleMoveItem = useCallback((sourceNodeData, targetNode, action, position = null) => {
-    // Remove excessive logging
-    // console.log('[FileExplorer] handleMoveItem', action);
-    
+    console.log('[FileExplorer] handleMoveItem', { sourceNodeData, targetNode, action, position });
     if (action === 'dragStart' && sourceNodeData) {
       // If dragging an unselected item, select it first
       const items = Array.isArray(sourceNodeData) ? sourceNodeData : [sourceNodeData];
@@ -459,79 +421,56 @@ const FileExplorer = ({
         setSelectedNodePaths(new Set([items[0].path]));
         setShiftSelectionAnchorPath(items[0].path);
       }
-      // Mark the primary dragged item for visual feedback
+      // Mark the primary dragged item for visual feedback (optional)
       setDraggingPath(items[0]?.path || null);
-      dragStateRef.current.draggingPath = items[0]?.path || null;
-      
-      // Clear drag over state
-      setDragOverPath(null);
+      setDragOverPath(null); // Clear drag over when starting a new drag
       setDragOverPosition(null);
-      dragStateRef.current.dragOverPath = null;
-      dragStateRef.current.dragOverPosition = null;
-      
     } else if (action === 'dragOver' && targetNode) {
-      // Only update state if the target or position has changed
-      // This reduces unnecessary renders during drag operations
-      if (dragStateRef.current.dragOverPath !== targetNode.path || 
-          dragStateRef.current.dragOverPosition !== position) {
-        
-        // Update the dragOver path and position
+      // Update drag over state for visual feedback
+      if (targetNode.path !== dragOverPath || position !== dragOverPosition) {
         setDragOverPath(targetNode.path);
         setDragOverPosition(position);
-        dragStateRef.current.dragOverPath = targetNode.path;
-        dragStateRef.current.dragOverPosition = position;
       }
-    } else if (action === 'drop' && targetNode && sourceNodeData) {
-      const items = Array.isArray(sourceNodeData) ? sourceNodeData : [sourceNodeData];
-      
-      // Don't allow dropping onto self
-      if (items.some(item => item.path === targetNode.path)) {
-        return;
-      }
-      
-      // For files: Allow top/bottom positions but not middle
-      let effectivePosition = position;
-      if (targetNode.type === 'file' && position === 'middle') {
-        effectivePosition = 'bottom'; // Default to positioning after the file
-      }
-      
-      // Process the drop with the onMoveItemProp
-      if (onMoveItemProp) {
-        // Ensure we have complete items with path, type, and name
-        const completeItems = items.map(item => ({
-          path: item.path,
-          type: item.type || (item.path.includes('.') ? 'file' : 'folder'),
-          name: item.name || item.path.split('/').pop()
-        }));
-        
-        // Ensure we have a complete target node with path, type, and name
-        const completeTargetNode = {
-          path: targetNode.path,
-          type: targetNode.type || (targetNode.path.includes('.') ? 'file' : 'folder'),
-          name: targetNode.name || targetNode.path.split('/').pop()
-        };
-        
-        onMoveItemProp(completeItems, completeTargetNode, effectivePosition);
-      }
-      
-      // Reset all drag state
-      setDragOverPath(null);
+      // ---------------------------------------------------------------------
+      // Logic for allowing drop effect is handled by onDragOver in TreeNode directly
+    } else if (action === 'drop' && sourceNodeData && targetNode) {
+      // sourceNodeData is now guaranteed to be an array by handleDrop
+      const sourceItems = sourceNodeData;
+
+      setDragOverPath(null); // Clear visual cues immediately on drop
       setDragOverPosition(null);
+
+      if (position === 'top' || position === 'bottom') {
+        // Keep targetNode as the node we dropped relative to
+      } else if (position === 'middle' && targetNode.type !== 'folder') {
+        // Dropping onto a file is invalid for move *into*
+        console.warn('[Explorer] Invalid drop target (middle of file).');
+        // No need to clear draggingPath here, dragEnd will handle it
+        return; // Abort
+      } // else: dropping middle of folder is fine, targetNode is correct
+
+      // Check validity for the *first* dragged item as a representative check
+      // More robust checking might be needed depending on requirements
+      if (sourceItems.length > 0 && isValidDrop(sourceItems[0], targetNode)) {
+        if (typeof onMoveItemProp === 'function') {
+            // Pass source items array, the node dropped relative to, and the position
+            onMoveItemProp(sourceItems, targetNode, position);
+        } else {
+            console.warn('onMoveItemProp is not provided. Cannot perform move.');
+        }
+      } else {
+        console.warn('[Explorer] Drop deemed invalid or no items.');
+      }
+      // Reset drag path state regardless of validity
       setDraggingPath(null);
-      dragStateRef.current.dragOverPath = null;
-      dragStateRef.current.dragOverPosition = null;
-      dragStateRef.current.draggingPath = null;
-      
     } else if (action === 'dragEnd') {
-      // Reset all drag state
+      // Reset all drag states when drag ends (dropped outside or cancelled)
+      setDraggingPath(null);
       setDragOverPath(null);
       setDragOverPosition(null);
-      setDraggingPath(null);
-      dragStateRef.current.dragOverPath = null;
-      dragStateRef.current.dragOverPosition = null;
-      dragStateRef.current.draggingPath = null;
     }
-  }, [selectedNodePaths, setSelectedNodePaths, setShiftSelectionAnchorPath, onMoveItemProp]);
+  }, [onMoveItemProp, dragOverPath, dragOverPosition, selectedNodePaths, setSelectedNodePaths, setShiftSelectionAnchorPath]); // Added dependencies
+  // --- End Drag and Drop Handler ---
 
   // Add handler for background context menu
   const handleExplorerContextMenu = useCallback((event) => {
@@ -569,15 +508,6 @@ const FileExplorer = ({
     }
   };
 
-  // Add an effect to sync state with ref
-  useEffect(() => {
-    dragStateRef.current = {
-      draggingPath,
-      dragOverPath,
-      dragOverPosition
-    };
-  }, [draggingPath, dragOverPath, dragOverPosition]);
-
   return (
     <div
       ref={explorerRef}
@@ -607,7 +537,7 @@ const FileExplorer = ({
           <div className="text-sm">
             {treeData.map(node => (
               <TreeNode
-                key={`${node.path}-${itemOrderVersion}`}
+                key={node.path}
                 node={node}
                 level={0}
                 onNodeSelect={handleNodeSelect}
@@ -623,7 +553,6 @@ const FileExplorer = ({
                 isDragging={draggingPath === node.path}
                 dragOverPath={dragOverPath}
                 dragOverPosition={dragOverPosition}
-                itemOrderVersion={itemOrderVersion} // Pass the version down
               />
             ))}
           </div>
@@ -655,7 +584,7 @@ const FileExplorer = ({
               {contextMenu.node.type === 'folder' && (
                 <>
                   <button onClick={() => handleNewFile(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New File</button>
-                  <button onClick={() => handleNewFolder(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-700 hover:bg-surface-100 dark:hover:bg-surface-700">New Folder</button>
+                  <button onClick={() => handleNewFolder(contextMenu.node)} className="context-menu-item w-full text-left px-3 py-1 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">New Folder</button>
                   <div className="context-menu-divider h-px my-1 bg-surface-200 dark:bg-surface-700"></div>
                 </>
               )}
