@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  IconFolder,
-  IconFile,
-  IconFolderOpen,
-  IconChevronRight,
-  IconChevronDown,
   IconFolderPlus,
-  IconFolderOff,
   IconExternalLink
 } from '@tabler/icons-react';
 import path from 'path-browserify';
@@ -21,7 +15,6 @@ const FileExplorer = ({
   currentFolders = [], // <-- Accept currentFolders prop
   currentFilePath,
   onFileSelect,
-  onScanFolder, // Function provided by App.jsx to scan/add folders
   onRenameItem, // Added prop for rename handler
   onCreateFile, // Added prop for create file handler
   onCreateFolder, // Added prop for create folder handler
