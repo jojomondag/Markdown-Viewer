@@ -119,7 +119,6 @@ const MarkdownEditor = forwardRef(({
       ".cm-scroller": { overflow: "auto" },
       ".cm-content": { 
         whiteSpace: "pre", // Changed back to "pre" to disable wrapping
-        caretColor: "white", // Make cursor visible
         fontSize: `${currentFontSize}px`, // Use dynamic font size
         lineHeight: lineHeight // Apply consistent line height
       },
@@ -142,7 +141,6 @@ const MarkdownEditor = forwardRef(({
       ".cm-cursor": {
         borderLeftWidth: "2px",
         borderLeftStyle: "solid",
-        borderLeftColor: "white"
       },
       "&.cm-editor.cm-focused": { outline: "none" }
     });
@@ -955,12 +953,18 @@ const MarkdownEditor = forwardRef(({
   }, [viewRef.current]);
 
   return (
-    <div className={`h-full flex flex-col relative ${className} dark`}>
+    <div className={`h-full flex flex-col relative ${className}`}>
       {/* Add direct styling to fix cursor appearance */}
       <style>{`
         .cm-editor { height: 100%; }
-        .cm-content { caret-color: white !important; }
-        .cm-cursor { border-left: 2px solid white !important; }
+        
+        /* Default cursor for light mode (not inside .dark) */
+        .cm-content { caret-color: #000 !important; }
+        .cm-cursor { border-left: 3px solid #000 !important; }
+        
+        /* Dark mode cursor styles */
+        .dark .cm-content { caret-color: white !important; }
+        .dark .cm-cursor { border-left: 3px solid white !important; }
         
         /* Make gutters and line numbers clickable */
         .cm-gutters { pointer-events: auto !important; }
