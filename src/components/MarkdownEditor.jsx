@@ -90,6 +90,7 @@ const MarkdownEditor = forwardRef(({
   onChange,
   onScroll,
   onCursorChange,
+  filePath,
   extensions = [],
   inScrollSync = false,
   scrollSource = null,
@@ -104,12 +105,20 @@ const MarkdownEditor = forwardRef(({
   const { 
     state: appState, 
     setCursorPosition: setAppCursorPosition, 
+    setSelections: setAppSelections,
     setEditorFontSize
   } = useAppState();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef(null);
   const fontSize = appState.editor.fontSize;
+  
+  const filePathRef = useRef(filePath);
+
+  useEffect(() => {
+    filePathRef.current = filePath;
+    console.log(`[MarkdownEditor] filePathRef updated to: ${filePathRef.current} (prop was: ${filePath})`);
+  }, [filePath]);
   
   // Function to create the theme extension based on font size
   const createThemeExtension = (currentFontSize) => {
@@ -181,14 +190,24 @@ const MarkdownEditor = forwardRef(({
         onCursorChange({ line, column });
       }
       
+      const currentFilePath = filePathRef.current;
+      console.log(`[MarkdownEditor] trackCursorPosition - currentFilePath from ref: ${currentFilePath}, line: ${line}, column: ${column}, anchor: ${selection.anchor}, head: ${selection.head}`);
+
       // Also update app-wide state for cursor position
-      if (setAppCursorPosition) {
-        setAppCursorPosition({ line, column });
+      if (setAppCursorPosition && currentFilePath) {
+        setAppCursorPosition(currentFilePath, { line, column });
       }
+
+      // Update app-wide state for selection
+      if (setAppSelections && currentFilePath) {
+        const { anchor, head } = selection; // Use the main selection's anchor and head
+        setAppSelections(currentFilePath, { anchor, head });
+      }
+
     } catch (err) {
-      console.error("Error tracking cursor:", err);
+      console.error("Error tracking cursor/selection:", err);
     }
-  }, [onCursorChange, setAppCursorPosition]);
+  }, [onCursorChange, setAppCursorPosition, setAppSelections]);
   
   // Expose methods for parent components
   useImperativeHandle(ref, () => ({
@@ -686,6 +705,86 @@ const MarkdownEditor = forwardRef(({
     };
   }, [scrollTo, isScrolling]);
   
+  // Effect to load cursor/selection state when filePath changes or editor initializes
+  useEffect(() => {
+    console.log(`[MarkdownEditor] LoadStateEffect - RUNNING. filePath: ${filePath}, viewRef.current ready: ${!!viewRef.current}, content length: ${content?.length}`);
+    if (viewRef.current && filePath && appState && appState.editor) {
+      console.log(`[MarkdownEditor] LoadStateEffect - Conditions MET. Current doc length: ${viewRef.current.state.doc.length}`);
+      const savedSelection = appState.editor.selections && appState.editor.selections[filePath];
+      const savedCursor = appState.editor.cursorPositions && appState.editor.cursorPositions[filePath];
+      console.log(`[MarkdownEditor] LoadStateEffect - filePath: ${filePath}, savedSelection: ${JSON.stringify(savedSelection)}, savedCursor: ${JSON.stringify(savedCursor)}`);
+      
+      let targetSelection = null;
+      const doc = viewRef.current.state.doc; // Get current document from view state
+      const docLen = doc.length; // Store doc length
+
+      if (savedSelection) {
+        let anchor, head;
+        if (typeof savedSelection.anchor === 'number' && typeof savedSelection.head === 'number') {
+          anchor = savedSelection.anchor;
+          head = savedSelection.head;
+          console.log(`[MarkdownEditor] LoadStateEffect - Using NEW selection format: { anchor: ${anchor}, head: ${head} }`);
+        } else if (typeof savedSelection.anchorOffset === 'number' && typeof savedSelection.headOffset === 'number') {
+          anchor = savedSelection.anchorOffset;
+          head = savedSelection.headOffset;
+          console.log(`[MarkdownEditor] LoadStateEffect - Using OLD selection format (from anchorOffset/headOffset): { anchor: ${anchor}, head: ${head} }`);
+        }
+
+        if (typeof anchor === 'number' && typeof head === 'number') {
+          // Ensure anchor and head are within document bounds and are valid numbers
+          const validAnchor = (isNaN(anchor) || anchor < 0) ? 0 : Math.min(anchor, docLen);
+          const validHead = (isNaN(head) || head < 0) ? 0 : Math.min(head, docLen);
+          targetSelection = { anchor: validAnchor, head: validHead };
+          console.log(`[MarkdownEditor] LoadStateEffect - Using savedSelection. Processed target: ${JSON.stringify(targetSelection)} (docLen: ${docLen})`);
+        }
+      }
+      
+      if (!targetSelection && savedCursor && typeof savedCursor.line === 'number' && typeof savedCursor.column === 'number') {
+        console.log(`[MarkdownEditor] LoadStateEffect - No valid selection from savedSelection, trying savedCursor.`);
+        try {
+          // Ensure line number is within bounds (1 to doc.lines)
+          const validLine = Math.max(1, Math.min(savedCursor.line, doc.lines));
+          const lineInfo = doc.line(validLine);
+          // Ensure column is 1-based and within line length (or 1 if line is empty)
+          // Convert column to 0-based offset from line start
+          const colOffset = Math.max(0, Math.min(savedCursor.column - 1, lineInfo.length));
+          const offset = lineInfo.from + colOffset;
+
+          if (offset >= 0 && offset <= doc.length) {
+             targetSelection = { anchor: offset, head: offset };
+             console.log(`[MarkdownEditor] LoadStateEffect - Using savedCursor. Processed target: ${JSON.stringify(targetSelection)} (line: ${validLine}, colOffset: ${colOffset}, offset: ${offset}, lineFrom: ${lineInfo.from}, lineLen: ${lineInfo.length}, docLen: ${doc.length})`);
+          } else {
+              console.warn("[MarkdownEditor] LoadStateEffect - Saved cursor position resulted in out-of-bounds offset", {filePath, savedCursor, offset, docLength: doc.length });
+          }
+        } catch (e) {
+          console.warn("[MarkdownEditor] LoadStateEffect - Error applying saved cursor line/col to offset:", e, {filePath, savedCursor});
+        }
+      }
+
+      if (targetSelection) {
+        // Check if the new selection is different from the current one to avoid unnecessary dispatches
+        const currentSelection = viewRef.current.state.selection.main;
+        console.log(`[MarkdownEditor] LoadStateEffect - Target to apply: ${JSON.stringify(targetSelection)}. Current editor selection: ${JSON.stringify({anchor: currentSelection.anchor, head: currentSelection.head})}`);
+        if (currentSelection.anchor !== targetSelection.anchor || currentSelection.head !== targetSelection.head) {
+          console.log(`[MarkdownEditor] LoadStateEffect - Dispatching selection change.`);
+          viewRef.current.dispatch({
+            selection: targetSelection,
+            effects: EditorView.scrollIntoView(targetSelection.head, { y: "center" })
+          });
+        } else {
+          console.log(`[MarkdownEditor] LoadStateEffect - Target selection is same as current. No dispatch.`);
+        }
+      } else {
+        console.log(`[MarkdownEditor] LoadStateEffect - No targetSelection derived for ${filePath}.`);
+      }
+    } else {
+      console.log(`[MarkdownEditor] LoadStateEffect - SKIPPED. filePath: ${filePath}, viewRef.current: ${!!viewRef.current}, appState: ${!!appState}, appState.editor: ${!!appState?.editor}`);
+    }
+    // This effect should run when the filePath changes, or when the view is ready,
+    // or when the relevant appState parts (cursorPositions, selections) might have been loaded/updated.
+    // Content is also a dependency because the document length/structure might change, affecting validity of stored positions.
+  }, [filePath, viewRef.current, appState?.editor?.cursorPositions, appState?.editor?.selections, content]);
+
   // Add direct click handler for line numbers
   useEffect(() => {
     if (!viewRef.current) return;

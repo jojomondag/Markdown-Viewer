@@ -821,10 +821,6 @@ function App() {
     try {
       // This is the most direct approach - force the editor to clear and reload
       
-      // 1. First, clear content to ensure the editor knows it's changing
-      console.log(`[App] Clearing content before loading new file`);
-      updateContent('');
-      
       // 2. Force a small delay so the editor can re-render
       console.log(`[App] Scheduling file read with timeout`);
       setTimeout(() => {
@@ -2586,8 +2582,9 @@ function App() {
               <MarkdownEditor
                 ref={editorRef}
                 content={content}
+                filePath={currentFile ? currentFile.path : null} // Pass filePath
                 onChange={handleContentChange}
-                onCursorChange={handleCursorChange}
+                onCursorChange={handleCursorChange} // This can remain if App.jsx needs direct line/col updates
                 onScroll={handleEditorScroll} // This scroll handler is now on the correct element
                 inScrollSync={scrollSyncEnabled}
                 scrollSource={scrollSource}

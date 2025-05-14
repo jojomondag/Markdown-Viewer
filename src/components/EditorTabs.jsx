@@ -280,6 +280,7 @@ const EditorTabs = ({
         renderItem={renderTabContent}
         activeItemId={currentFile?.path}
         className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-1 min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto dnd-tabs-container"
+        dragConstraints={{ delay: 150, distance: 5, tolerance: 5 }}
         extraContent={previewToggleButton}
       />
 
