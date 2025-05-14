@@ -30,8 +30,8 @@ const initialState = {
   
   // Editor state
   editor: {
-    // Current cursor position
-    cursorPosition: { line: 0, ch: 0 },
+    // Store cursor positions per file path
+    cursorPositions: {}, 
     // Selection ranges
     selections: [],
     // Scroll position
@@ -371,7 +371,10 @@ function appStateReducer(state, action) {
         ...state,
         editor: {
           ...state.editor,
-          cursorPosition: action.payload,
+          cursorPositions: {
+            ...state.editor.cursorPositions,
+            [action.payload.filePath]: action.payload.position,
+          },
         },
       };
       
@@ -682,9 +685,9 @@ export const AppStateProvider = ({ children }) => {
     payload: preferences
   });
   
-  const setCursorPosition = (position) => dispatch({ 
+  const setCursorPosition = (filePath, position) => dispatch({ 
     type: ActionTypes.SET_CURSOR_POSITION, 
-    payload: position 
+    payload: { filePath, position } 
   });
   
   const setSelections = (selections) => dispatch({ 
