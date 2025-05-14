@@ -191,13 +191,20 @@ function App() {
       console.log(`[App] openFile - adding file to history`);
       addToHistory(file);
       
-      // Focus the editor after opening the file
-      setTimeout(() => {
-        if (editorRef.current && editorRef.current.focus) {
-          console.log(`[App] openFile - focusing editor`);
-          editorRef.current.focus();
-        }
-      }, 300);
+      // Focus the editor after opening the file, UNLESS it's a new file being created (which will be renamed)
+      if (!file.isNew) { // Check the isNew flag
+        setTimeout(() => {
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur(); // Try to release current focus
+          }
+          if (editorRef.current && editorRef.current.focus) {
+            console.log(`[App] openFile - focusing editor for existing file`);
+            editorRef.current.focus();
+          }
+        }, 300);
+      } else {
+        console.log(`[App] openFile - new file detected (path: ${file.path}), skipping editor focus to allow rename input focus.`);
+      }
     } catch (error) {
       console.error(`[App] Error in openFile: ${error.message}`);
     }
@@ -1329,7 +1336,7 @@ function App() {
       const currentOrderForParent = itemOrder[parentDirForOrder] || [];
       updateItemOrderForParent(parentDirForOrder, [...currentOrderForParent, normalizedPath]);
 
-      return normalizedPath;
+      return { path: normalizedPath, name: newFileObject.name, type: 'file', isNew: true }; // Return object with isNew flag
       
     } catch (error) {
       console.error(`[App] Error creating file: ${error.message}`);
@@ -1546,9 +1553,40 @@ function App() {
         const openFileIndex = openFiles.findIndex(f => f.path === oldPath);
         if (openFileIndex > -1) {
           updateOpenFile(oldPath, { path: newPath, name: newName }); // Dispatch to context
+
+          console.log(`[App HandleRenameItem] Focus Check: currentFile.path = "${currentFile?.path}", oldPath = "${oldPath}"`);
           if (currentFile?.path === oldPath) {
+            console.log(`[App HandleRenameItem] Focus Check Passed: currentFile.path === oldPath. Updating currentFile and scheduling editor focus.`);
             setCurrentFile({ ...openFiles[openFileIndex], path: newPath, name: newName }); // This is useFiles setCurrentFile
+            // After renaming the current file and updating its state, focus the editor
+            setTimeout(() => {
+              // Check if editorRef and its focus method are available
+              const editorInstance = editorRef.current;
+              if (editorInstance && typeof editorInstance.focus === 'function') {
+                // Add a micro-delay to allow editor to re-render if filePath prop change caused it
+                setTimeout(() => {
+                  if (editorRef.current && typeof editorRef.current.focus === 'function') { // Re-check, just in case
+                    console.log('[App] Focusing editor after rename of current file (after micro-delay)');
+                    editorRef.current.focus();
+                  } else {
+                    console.log('[App] Editor became non-focusable during micro-delay after rename.', {
+                        editorRefCurrent: editorRef.current,
+                        focusType: typeof editorRef.current?.focus
+                    });
+                  }
+                }, 0); // 0ms micro-delay
+              } else {
+                console.log('[App] Editor not focusable after rename (main check). Details:', {
+                  editorRefCurrent: editorInstance, // Log the captured instance
+                  focusType: typeof editorInstance?.focus
+                });
+              }
+            }, 150); // Main delay remains 150ms
+          } else {
+            console.log(`[App HandleRenameItem] Focus Check Failed: currentFile.path !== oldPath. Not focusing editor.`);
           }
+        } else {
+          console.log(`[App HandleRenameItem] File to rename (oldPath: "${oldPath}") not found in openFiles. Index: ${openFileIndex}`);
         }
       }
       // If a folder is renamed and it's an open file's ancestor, its path in openFiles also needs update (more complex).

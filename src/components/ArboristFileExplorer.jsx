@@ -281,18 +281,16 @@ const FileExplorer = ({
   const handleNewFile = async (folderNode) => {
     setContextMenu(prev => ({ ...prev, visible: false }));
     if (typeof onCreateFile === 'function' && typeof onFileSelect === 'function') {
-      const newPath = await onCreateFile(folderNode.path);
-      if (newPath) {
+      const newFileCreationResult = await onCreateFile(folderNode.path);
+      if (newFileCreationResult && newFileCreationResult.path) {
+        const newPath = newFileCreationResult.path;
         if (!expandedNodes[folderNode.path]) {
           onFolderToggle(folderNode.path);
         }
-        const newFileObject = {
-          path: newPath,
-          name: getBasename(newPath),
-          type: 'file'
-        };
-        onFileSelect(newFileObject);
-        setRenamingNodePath(newPath);
+        onFileSelect(newFileCreationResult);
+        setTimeout(() => {
+          setRenamingNodePath(newPath);
+        }, 0);
       } else {
         console.error('onCreateFile prop failed or did not return a path.');
       }
@@ -305,7 +303,9 @@ const FileExplorer = ({
     if (typeof onCreateFolder === 'function') {
       const newPath = await onCreateFolder(parentNode.path);
       if (newPath) {
-        setRenamingNodePath(newPath);
+        setTimeout(() => {
+          setRenamingNodePath(newPath);
+        }, 0);
       } else {
         console.error('onCreateFolder prop failed or did not return a path.');
       }

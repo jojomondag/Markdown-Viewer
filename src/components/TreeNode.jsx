@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import {
   IconFolder,
   IconFile,
@@ -49,27 +49,36 @@ const TreeNode = ({
   }, [node]);
 
   // Effect to set renaming state based on prop
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (renamingNodePath === node.path) {
       setIsRenaming(true);
       const currentName = node.name;
       setNewName(currentName);
 
-      // Focus the input and select text when renaming starts
-      setTimeout(() => {
+      // Attempt to focus immediately after state update makes input visible
+      // The ref might not be populated on the very first call that sets isRenaming=true,
+      // so the setTimeout below acts as a more reliable fallback.
+      if (renameInputRef.current) {
+        renameInputRef.current.focus();
+        const isFile = node.type === 'file';
+        const lastDotIndex = isFile ? currentName.lastIndexOf('.') : -1;
+        const selectionEnd = (isFile && lastDotIndex > 0) ? lastDotIndex : currentName.length;
+        renameInputRef.current.setSelectionRange(0, selectionEnd);
+      }
+
+      // Fallback/ensure focus after a short delay, also handles selection
+      const timerId = setTimeout(() => {
         const inputElement = renameInputRef.current;
         if (inputElement) {
           inputElement.focus();
-
-          // Determine selection range
           const isFile = node.type === 'file';
           const lastDotIndex = isFile ? currentName.lastIndexOf('.') : -1;
           const selectionEnd = (isFile && lastDotIndex > 0) ? lastDotIndex : currentName.length;
-
           inputElement.setSelectionRange(0, selectionEnd);
         }
-      }, 0);
+      }, 50); // Shortened delay (e.g., 50ms) as this is now more of a fallback
 
+      return () => clearTimeout(timerId); // Cleanup timeout
     } else {
       setIsRenaming(false);
     }
@@ -77,8 +86,13 @@ const TreeNode = ({
 
   const handleClick = useCallback((e) => {
     e.stopPropagation();
+    // If renaming is in progress for this node, don't process the click further
+    // as it might interfere with the input field.
+    if (isRenaming) {
+      return;
+    }
     onNodeSelect(node, e);
-  }, [node, onNodeSelect]);
+  }, [node, onNodeSelect, isRenaming]);
 
   const handleToggle = useCallback((e) => {
       e.stopPropagation();
