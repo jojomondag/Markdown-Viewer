@@ -2,6 +2,10 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const chokidar = require('chokidar');
+const Store = require('electron-store');
+
+// Initialize store for app preferences
+const store = new Store();
 
 // Create a map to store file watchers
 const fileWatchers = new Map();
@@ -20,11 +24,40 @@ try {
 // Keep track of imported folder paths to prevent duplicate file creation
 const importedFolderPaths = [];
 
+// Get stored window size and position
+function getStoredWindowBounds() {
+  const defaultBounds = { width: 1200, height: 800, x: undefined, y: undefined };
+  const bounds = store.get('windowBounds', defaultBounds);
+  
+  // Ensure the window is visible on a connected display
+  const displays = require('electron').screen.getAllDisplays();
+  const isVisibleOnDisplay = displays.some(display => {
+    return (
+      bounds.x >= display.bounds.x &&
+      bounds.y >= display.bounds.y &&
+      bounds.x + bounds.width <= display.bounds.x + display.bounds.width &&
+      bounds.y + bounds.height <= display.bounds.y + display.bounds.height
+    );
+  });
+
+  // If not visible, return default bounds
+  if (!isVisibleOnDisplay) {
+    return defaultBounds;
+  }
+
+  return bounds;
+}
+
 // Create main window
 function createWindow() {
+  // Get saved window bounds
+  const windowBounds = getStoredWindowBounds();
+
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: windowBounds.width,
+    height: windowBounds.height,
+    x: windowBounds.x,
+    y: windowBounds.y,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -53,23 +86,62 @@ function createWindow() {
     return { action: 'allow' };
   });
 
+  // Save window size and position when changes occur
+  ['resize', 'move'].forEach(event => {
+    mainWindow.on(event, () => {
+      if (!mainWindow.isMaximized() && !mainWindow.isMinimized()) {
+        const bounds = mainWindow.getBounds();
+        store.set('windowBounds', bounds);
+      }
+    });
+  });
+
+  // Save maximized state
+  mainWindow.on('maximize', () => {
+    store.set('isMaximized', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    store.set('isMaximized', false);
+    // Save the restored bounds
+    const bounds = mainWindow.getBounds();
+    store.set('windowBounds', bounds);
+  });
+
   // Load the app - in development or production
   const startUrl = process.env.ELECTRON_START_URL || 
                   `file://${path.join(__dirname, '../index.html')}`;
   mainWindow.loadURL(startUrl);
 
+  // Apply maximized state if previously maximized
+  if (store.get('isMaximized', false)) {
+    mainWindow.maximize();
+  }
+
   // Open DevTools in development
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
+
+  return mainWindow;
 }
 
 // Create window when Electron is ready
 app.whenReady().then(() => {
-  createWindow();
+  const mainWindow = createWindow();
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  // Add IPC handler to access store from renderer
+  ipcMain.handle('get-store-value', (event, key) => {
+    return store.get(key);
+  });
+
+  ipcMain.handle('set-store-value', (event, key, value) => {
+    store.set(key, value);
+    return true;
   });
 });
 

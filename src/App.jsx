@@ -547,25 +547,73 @@ function App() {
     }
   }, [isMobile, settings.ui.sidebarVisible]);
   
-  // Calculate split sizes based on visibility and settings
+  // Modify getSplitSizes to use the state value
   const getSplitSizes = () => {
-    const sidebarW = settings.ui.sidebarWidth;
-    const remainingW = 100 - sidebarW;
-    // Default editor/preview split when both are visible (e.g., 50/50 of remaining space)
-    const editorW = remainingW / 2; 
-    const previewW = remainingW / 2;
-
-    if (!sidebarVisible && !isEditorContainerVisible && !previewVisible) return [0, 0, 0]; // Should not happen
-    if (!sidebarVisible && !isEditorContainerVisible) return [0, 0, 100]; // Only Preview
-    if (!sidebarVisible && !previewVisible) return [0, 100, 0]; // Only Editor
-    if (!isEditorContainerVisible && !previewVisible) return [100, 0, 0]; // Only Sidebar (adjust if needed)
-
-    if (!sidebarVisible) return [0, previewVisible ? 50 : 100, previewVisible ? 50 : 0]; // No Sidebar
-    if (!isEditorContainerVisible) return [sidebarW, 0, 100 - sidebarW]; // No Editor
-    if (!previewVisible) return [sidebarW, 100 - sidebarW, 0]; // No Preview
-
-    // All visible: Use calculated widths
-    return [sidebarW, editorW, previewW];
+    // If splitSizes state exists and is valid, use it as a starting point
+    let sizes = [25, 37.5, 37.5]; // Default fallback sizes
+    
+    if (splitSizes && splitSizes.length === 3 && splitSizes.every(size => !isNaN(size))) {
+      sizes = [...splitSizes]; // Make a copy of the stored sizes
+    }
+    
+    // Special cases for visibility - handle each possible combination
+    if (!sidebarVisible && !isEditorContainerVisible && !previewVisible) {
+      return [0, 0, 0]; // Should not happen but handle anyway
+    }
+    
+    // Only one component visible - it gets 100%
+    if (sidebarVisible && !isEditorContainerVisible && !previewVisible) {
+      return [100, 0, 0];
+    }
+    if (!sidebarVisible && isEditorContainerVisible && !previewVisible) {
+      return [0, 100, 0];
+    }
+    if (!sidebarVisible && !isEditorContainerVisible && previewVisible) {
+      return [0, 0, 100];
+    }
+    
+    // Two components visible - they share space proportionally
+    if (!sidebarVisible) {
+      // Editor and Preview visible - distribute space based on their relative proportions
+      const totalEditorPreviewSize = sizes[1] + sizes[2];
+      if (totalEditorPreviewSize > 0) {
+        const editorRatio = sizes[1] / totalEditorPreviewSize;
+        const previewRatio = sizes[2] / totalEditorPreviewSize;
+        return [0, editorRatio * 100, previewRatio * 100];
+      }
+      return [0, 50, 50]; // Fallback to even split
+    }
+    
+    if (!isEditorContainerVisible) {
+      // Sidebar and Preview visible - distribute space based on their relative proportions
+      const totalSidebarPreviewSize = sizes[0] + sizes[2];
+      if (totalSidebarPreviewSize > 0) {
+        const sidebarRatio = sizes[0] / totalSidebarPreviewSize;
+        const previewRatio = sizes[2] / totalSidebarPreviewSize;
+        return [sidebarRatio * 100, 0, previewRatio * 100];
+      }
+      return [25, 0, 75]; // Fallback to 1/4 sidebar, 3/4 preview
+    }
+    
+    if (!previewVisible) {
+      // Sidebar and Editor visible - distribute space based on their relative proportions
+      const totalSidebarEditorSize = sizes[0] + sizes[1];
+      if (totalSidebarEditorSize > 0) {
+        const sidebarRatio = sizes[0] / totalSidebarEditorSize;
+        const editorRatio = sizes[1] / totalSidebarEditorSize;
+        return [sidebarRatio * 100, editorRatio * 100, 0];
+      }
+      return [25, 75, 0]; // Fallback to 1/4 sidebar, 3/4 editor
+    }
+    
+    // All components visible - normalize to ensure they add up to 100%
+    const total = sizes.reduce((sum, size) => sum + size, 0);
+    if (total > 0) {
+      return sizes.map(size => (size / total) * 100);
+    }
+    
+    // Fallback if anything goes wrong
+    return [25, 37.5, 37.5];
   };
 
   // Update loading states
@@ -1400,23 +1448,53 @@ function App() {
   const toggleEditorEye = () => {
     // The editor's eye controls the preview panel
     setPreviewVisible(!previewVisible);
+    
+    // Force layout recalculation
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+      // Give the Split component time to update
+      setTimeout(() => {
+        if (editorRef.current && typeof editorRef.current.refreshLayout === 'function') {
+          editorRef.current.refreshLayout();
+        }
+      }, 50);
+    }, 10);
   };
 
   const togglePreviewEye = () => {
     // The preview's eye should control the entire editor container
     setIsEditorContainerVisible(!isEditorContainerVisible);
+    
+    // Force layout recalculation
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+      // Give the Split component time to update
+      setTimeout(() => {
+        if (previewRef.current && typeof previewRef.current.refreshLayout === 'function') {
+          previewRef.current.refreshLayout();
+        }
+      }, 50);
+    }, 10);
   };
 
   // Add effect to recalculate split sizes when visibility changes
   useEffect(() => {
-    // Force a window resize event to make the Split component recalculate
-    // Add a small delay to ensure the DOM has updated first
+    // Short delay to allow React to update the DOM
     const timer = setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 10);
+      if (!window._isDraggingSplitPane) { // Don't interfere with active dragging
+        window.dispatchEvent(new Event('resize'));
+        // Try to refresh layouts of editor and preview components
+        if (editorRef.current && typeof editorRef.current.refreshLayout === 'function') {
+          editorRef.current.refreshLayout();
+        }
+        if (previewRef.current && typeof previewRef.current.refreshLayout === 'function') {
+          previewRef.current.refreshLayout();
+        }
+      }
+    }, 50);
     
     return () => clearTimeout(timer);
-  }, [isEditorContainerVisible, previewVisible]);
+  }, [sidebarVisible, isEditorContainerVisible, previewVisible]);
   
   const handleDeleteFolder = async (path) => {
     try {
@@ -2192,6 +2270,7 @@ function App() {
           editorSelections: loadedEditorSelections = {},
           editorCursorPositions: loadedEditorCursorPositions = {},
           editorFontSize: loadedEditorFontSize = null, // Allow null to distinguish from default 0 or 14
+          splitSizes: loadedSplitSizes = null, // <-- NEW: Get saved split sizes
           // any other properties...
         } = pendingWorkspaceLoad;
 
@@ -2313,6 +2392,15 @@ function App() {
           console.error("[App Load Effect] Failed to save last active workspace name:", e);
         }
 
+        // Restore split sizes if available
+        if (loadedSplitSizes && Array.isArray(loadedSplitSizes) && loadedSplitSizes.length === 3) {
+          console.log('[App Load Effect] Restoring split sizes:', loadedSplitSizes);
+          setSplitSizes(loadedSplitSizes);
+          // Also save to electron store for persistence across app restarts
+          window.api.setStoreValue('splitSizes', loadedSplitSizes)
+            .catch(error => console.error('[App Load Effect] Error saving loaded split sizes to store:', error));
+        }
+
       } catch (error) {
         console.error(`[App Load Effect] Error loading workspace state '${pendingWorkspaceLoad?.name}':`, error);
         showError(`Error loading workspace state '${pendingWorkspaceLoad?.name}': ${error.message}`);
@@ -2355,7 +2443,9 @@ function App() {
       clearActiveNamedWorkspace,
       loadNamedWorkspace, // Added loadNamedWorkspace to dependencies
       updatePreferences, // Added updatePreferences to dependencies
-      savedWorkspaceStates // Added savedWorkspaceStates to dependencies
+      savedWorkspaceStates, // Added savedWorkspaceStates to dependencies
+      splitSizes, // Added splitSizes to dependencies
+      setSplitSizes // Add setSplitSizes to dependencies
   ]);
   // --- END: useEffect to handle the actual loading process ---
 
@@ -2525,6 +2615,8 @@ function App() {
       editorSelections: { ...(state.editor.selections || {}) },
       editorCursorPositions: { ...(state.editor.cursorPositions || {}) },
       editorFontSize: state.editor.fontSize || 14, // Default if undefined
+      // Layout settings
+      splitSizes: splitSizes, // Include Split component sizes
     };
   }, [
     state.ui.activeRootFolders,
@@ -2535,7 +2627,8 @@ function App() {
     state.ui.preferences,
     state.editor.selections,
     state.editor.cursorPositions,
-    state.editor.fontSize
+    state.editor.fontSize,
+    splitSizes, // Add splitSizes to dependencies
   ]);
 
   // Effect to save current workspace state on application close
@@ -2590,6 +2683,44 @@ function App() {
     saveNamedWorkspace // The dispatch action from useAppState
     // Dependencies from gatherComprehensiveWorkspaceData are implicitly handled by its useCallback
   ]);
+
+  // Inside App function, add new state variable for split sizes after other state variables
+  const [splitSizes, setSplitSizes] = useState([25, 37.5, 37.5]); // Default split sizes
+
+  // Load split sizes from electron store when the app starts
+  useEffect(() => {
+    async function loadSavedSplitSizes() {
+      try {
+        const savedSizes = await window.api.getStoreValue('splitSizes');
+        if (savedSizes && Array.isArray(savedSizes) && savedSizes.length === 3) {
+          setSplitSizes(savedSizes);
+        }
+      } catch (error) {
+        console.error('Failed to load saved split sizes:', error);
+      }
+    }
+
+    loadSavedSplitSizes();
+  }, []);
+
+  // Add a handler for Split onDragEnd to save the new sizes
+  const handleSplitDragEnd = (newSizes) => {
+    // Only update if we have valid sizes
+    if (newSizes && 
+        newSizes.length === 3 && 
+        newSizes.every(size => !isNaN(size))) {
+      
+      // Update local state
+      setSplitSizes(newSizes);
+      
+      // Save to electron store
+      window.api.setStoreValue('splitSizes', newSizes)
+        .catch(error => console.error('Error saving split sizes:', error));
+      
+      // Force layout recalculation after resize
+      window.dispatchEvent(new Event('resize'));
+    }
+  };
 
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
@@ -2648,12 +2779,25 @@ function App() {
           })}
           gutterStyle={(dimension, gutterSize) => ({
             'flex-basis': `${gutterSize}px`,
+            'display': (dimension === 0 && !sidebarVisible) || 
+                       (dimension === 1 && (!isEditorContainerVisible || !sidebarVisible)) ? 
+                       'none' : undefined,
           })}
-          // onDragEnd - maybe keep this for layout refresh?
-           onDragEnd={() => {
-             // Force layout recalculation after resize
-             window.dispatchEvent(new Event('resize'));
-           }}
+          onDragStart={() => {
+            // Set a flag to prevent other operations during drag
+            window._isDraggingSplitPane = true;
+          }}
+          onDragEnd={(newSizes) => {
+            // Clear flag
+            window._isDraggingSplitPane = false;
+            // Only update when all components are visible to avoid saving bad sizes
+            if (sidebarVisible && isEditorContainerVisible && previewVisible) {
+              handleSplitDragEnd(newSizes);
+            } else {
+              // Force layout recalculation even if we don't save the sizes
+              window.dispatchEvent(new Event('resize'));
+            }
+          }}
         >
           {/* Pane 1: Sidebar */}
           <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 flex flex-col ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">

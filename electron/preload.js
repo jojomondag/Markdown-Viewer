@@ -76,6 +76,10 @@ contextBridge.exposeInMainWorld(
     // --- File Explorer ---
     showItemInFolder: (itemPath) => ipcRenderer.invoke('show-item-in-folder', itemPath),
 
+    // --- Store API for persisting settings ---
+    getStoreValue: (key) => ipcRenderer.invoke('get-store-value', key),
+    setStoreValue: (key, value) => ipcRenderer.invoke('set-store-value', key, value),
+    
     // --- Other APIs (Add more as needed) ---
     // Example: openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
     // Example: readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
