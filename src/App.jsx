@@ -804,11 +804,89 @@ function App() {
 
   // Handle tab change
   const handleTabChange = (file) => {
-    // Only proceed if the clicked tab's file is different from the current one
-    if (file.path !== currentFile?.path) {
-      // Directly open the selected file, bypassing the unsaved changes check for now
-      console.log(`[App] handleTabChange: Bypassing unsaved check, preparing to call originalOpenFile for ${file.path}`); // <-- Modify log
-      originalOpenFile(file);
+    console.log(
+      `[App] handleTabChange STARTED for: ${file?.path}, ` +
+      `currentFile: ${currentFile?.path}`
+    );
+    
+    if (!file || !file.path) {
+      console.error('[App] handleTabChange called with invalid file', file);
+      return;
+    }
+    
+    // Set loading state
+    console.log(`[App] Setting loading state to true`);
+    setAppLoading({ content: true });
+    
+    try {
+      // This is the most direct approach - force the editor to clear and reload
+      
+      // 1. First, clear content to ensure the editor knows it's changing
+      console.log(`[App] Clearing content before loading new file`);
+      updateContent('');
+      
+      // 2. Force a small delay so the editor can re-render
+      console.log(`[App] Scheduling file read with timeout`);
+      setTimeout(() => {
+        console.log(`[App] Timeout triggered, reading file: ${file.path}`);
+        
+        // 3. Read the file directly from the filesystem
+        window.api.readMarkdownFile(file.path)
+          .then(fileContent => {
+            console.log(
+              `[App] File content loaded successfully! ` +
+              `Length: ${fileContent?.length || 0}, ` + 
+              `First 20 chars: "${(fileContent || '').substring(0, 20)}..."`
+            );
+            
+            // 4. Update both content and currentFile states in correct order
+            console.log(`[App] Setting content state`);
+            updateContent(fileContent || '');
+            
+            console.log(`[App] Setting currentFile state to:`, file);
+            setCurrentFile(file);
+            
+            // 5. Focus editor after content is loaded
+            console.log(`[App] Focusing editor and clearing loading state`);
+            if (editorRef.current && editorRef.current.focus) {
+              setTimeout(() => {
+                console.log(`[App] Editor focus timeout triggered`);
+                editorRef.current.focus();
+                setAppLoading({ content: false });
+                console.log(`[App] Tab change complete! Editor focused and ready.`);
+              }, 50);
+            } else {
+              console.log(`[App] No editor ref available for focus`);
+              setAppLoading({ content: false });
+              console.log(`[App] Tab change complete! (No editor focus)`);
+            }
+          })
+          .catch(err => {
+            console.error(`[App] Error reading file directly: ${err.message}`);
+            console.log(`[App] Trying fallback method with originalOpenFile...`);
+            
+            // Try the original approach as fallback
+            try {
+              originalOpenFile(file)
+                .then(() => {
+                  console.log(`[App] Fallback success! File loaded via originalOpenFile`);
+                  setAppLoading({ content: false });
+                })
+                .catch(fallbackErr => {
+                  console.error(`[App] Fallback also failed: ${fallbackErr.message}`);
+                  showError(`Failed to open file: ${fallbackErr.message}`);
+                  setAppLoading({ content: false });
+                });
+            } catch (fallbackErr) {
+              console.error(`[App] Error in fallback: ${fallbackErr.message}`);
+              showError(`Failed to open file: ${err.message}`);
+              setAppLoading({ content: false });
+            }
+          });
+      }, 10);
+    } catch (err) {
+      console.error(`[App] Error in handleTabChange: ${err.message}`);
+      setAppLoading({ content: false });
     }
   };
   
@@ -2467,7 +2545,7 @@ function App() {
              aria-label="Editor"
           >
             {/* Editor Tabs */}
-            <div className="editor-tabs-container flex-shrink-0"> {/* Ensure tabs don't grow */}
+            <div className="editor-tabs-container flex-shrink-0 pointer-events-auto"> {/* Ensure tabs don't grow */}
               <EditorTabs 
                 currentFile={currentFile}
                 openFiles={openFiles} // This comes from useAppState

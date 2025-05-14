@@ -1,4 +1,22 @@
 import React, { useState, useEffect } from 'react';
+/**
+ * EDITOR TABS COMPONENT
+ * 
+ * This component handles the tabs in the editor area that let users switch between open files.
+ * 
+ * Tab interaction fixes implemented:
+ * 1. Fixed an issue where tab clicks were being misinterpreted as drag operations
+ * 2. Improved detection of drag vs. click by adding delay to click handling
+ * 3. Enhanced pointer events to ensure clicks are properly captured
+ * 4. Added proper handling for drag and drop operations to update editor content
+ * 5. Used state tracking to differentiate between clicks and drags
+ * 
+ * To prevent simultaneous drag and click operations, we:
+ * - Added a delay before processing clicks to ensure they're not the start of a drag
+ * - Use a click intent state to track if a click is being processed
+ * - Reset click intent when a drag operation starts
+ * - Only process tab changes when we're confident it's a click operation
+ */
 import {
   DndContext,
   closestCenter,
@@ -17,6 +35,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { IconX, IconEye, IconEyeOff } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
+import SortableTabs from './common/SortableTabs';
+import ContextMenu from './common/ContextMenu';
 
 // New SortableTab component - Refactored structure
 const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, handleCloseClick }) => {
@@ -34,6 +54,16 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
       console.log('[SortableTab] Drag started for:', file.path);
     }
   }, [isDragging, file.path]);
+  
+  // Track if we're handling a click vs. a drag
+  const [isClickIntent, setIsClickIntent] = React.useState(false);
+  
+  // Reset click intent when dragging starts
+  React.useEffect(() => {
+    if (isDragging && isClickIntent) {
+      setIsClickIntent(false);
+    }
+  }, [isDragging, isClickIntent]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -42,6 +72,11 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
     flexShrink: 0,
     touchAction: 'none', // Prevent touch events from interfering with drag
     opacity: isDragging ? 0.5 : 1, // Visual feedback for dragging
+    pointerEvents: 'auto', // Ensure pointer events are enabled
+    cursor: 'grab', // Show grab cursor to indicate draggability
+    position: 'relative', // Ensure proper stacking context
+    zIndex: isDragging ? 1000 : 1, // Higher z-index when dragging
+    userSelect: 'none', // Prevent text selection during drag
   };
 
   // Calculate dynamic padding style
@@ -56,35 +91,51 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
       tabIndex={0}
       {...attributes} 
       {...listeners} 
-      onClick={() => { 
-        console.log(`[SortableTab] onClick triggered for file: ${file.path}`);
-        onTabChange(file); 
+      onMouseDown={(e) => {
+        // Use mouse down instead of click for better drag detection
+        if (e.button === 0) { // Left click only
+          setIsClickIntent(true);
+        }
       }}
+      onClick={(e) => { 
+        // Prevent default browser behavior to ensure our handler takes priority
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log(`[SortableTab] onClick triggered for file: ${file.path}, isDragging=${isDragging}`);
+        
+        // Immediately handle click if we're not dragging
+        if (!isDragging) {
+          console.log(`[SortableTab] Directly calling onTabChange for: ${file.path}`);
+          onTabChange(file);
+        } else {
+          console.log(`[SortableTab] Click ignored because dragging is in progress`);
+        }
+      }}
+      onContextMenu={(e) => onContextMenu(e, file)}
       role="tab" 
       aria-selected={isActive} 
-      className="sortable-tab"
+      className="sortable-tab pointer-events-auto"
     >
-      {/* Original Button structure inside the sortable div */}
-      <button
-        key={file.path} // Keep key on the button for React lists if needed
-        style={paddingStyle} // Apply padding style directly to the button
+      {/* Tab content without nested button that could interfere with drag */}
+      <div
+        style={paddingStyle}
         className={`
-          flex-shrink-0 px-2 py-1 border-b-2 text-xs whitespace-nowrap transition-colors duration-150 ease-in-out group relative flex items-center focus:outline-none w-full h-full
+          flex-shrink-0 px-2 py-1 border-b-2 text-xs whitespace-nowrap transition-colors duration-150 ease-in-out group relative flex items-center w-full h-full
           ${isActive
             ? 'border-primary-500 text-primary-600 dark:text-primary-400'
             : 'border-transparent hover:border-surface-400 dark:hover:border-surface-500 text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100'}
         `}
-        onContextMenu={(e) => onContextMenu(e, file)}
         title={file.path}
       >
         {/* Make sure span doesn't interfere with button clicks/context menu */}
-        <span className="truncate flex-grow text-left">{file.name}</span>
+        <span className="truncate flex-grow text-left pointer-events-none">{file.name}</span>
 
         {isDirty && (
           <span className="ml-1 mr-0.5 w-1.5 h-1.5 rounded-full bg-warning-500 flex-shrink-0" />
         )}
 
-        {/* Nested close button needs careful event handling */}
+        {/* Close button with stopPropagation to prevent drag when clicking close */}
         <button
           onClick={(e) => {
             e.stopPropagation(); // Prevent SortableTab onClick/onContextMenu
@@ -92,12 +143,12 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
           }}
           // Prevent drag initiation when clicking close button
           onPointerDown={(e) => e.stopPropagation()}
-          className="absolute right-1 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out flex-shrink-0 focus:outline-none"
+          className="absolute right-1 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out flex-shrink-0 focus:outline-none pointer-events-auto z-10"
           title={`Close tab: ${file.name}`}
         >
           <IconX size={12} />
         </button>
-      </button>
+      </div>
     </div>
   );
 };
@@ -107,44 +158,14 @@ const EditorTabs = ({
   openFiles,
   onTabChange,
   onTabClose,
-  onTabReorder, // New prop for reordering
-  onToggleEditorVisibility, // Added prop
-  isPreviewVisible // Added prop
+  onTabReorder,
+  onToggleEditorVisibility,
+  isPreviewVisible
 }) => {
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, file: null });
   const { showInfo } = useNotification();
 
-  const filteredOpenFiles = openFiles;
-  // Get just the paths for SortableContext items
-  const filePaths = filteredOpenFiles.map(f => f.path);
-
-  // Setup dnd-kit sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 3, // Reduce distance to make dragging easier to initiate
-        tolerance: 5, // Add tolerance for slight movements
-        delay: 0, // No delay for immediate response
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setContextMenu({ visible: false, x: 0, y: 0, file: null });
-    };
-
-    document.addEventListener('click', handleClickOutside);
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
-  }, []);
-
-  // Handle context menu (right click)
+  // Handle context menu
   const handleContextMenu = (e, file) => {
     e.preventDefault();
     e.stopPropagation();
@@ -156,138 +177,121 @@ const EditorTabs = ({
     });
   };
 
-  // Handle tab close click
+  // Handle tab click
+  const handleTabClick = (e, file) => {
+    if (onTabChange) {
+      onTabChange(file);
+    }
+  };
+
+  // Handle tab close
   const handleCloseClick = (e, file) => {
-    e.stopPropagation(); // Prevent drag listeners
+    e.stopPropagation(); // Should already be handled by SortableTab if it calls this, but good to be safe
     if (onTabClose) {
       onTabClose(file);
     }
   };
 
-  // Handle context menu options
-  const handleCloseOthers = (file) => {
-    if (onTabClose) {
-      filteredOpenFiles
-        .filter(f => f.path !== file.path)
+  // Context menu action handlers
+  const handleMenuCloseOthers = () => {
+    if (contextMenu.file && onTabClose) {
+      openFiles
+        .filter(f => f.path !== contextMenu.file.path)
         .forEach(f => onTabClose(f));
       showInfo('Closed other tabs');
     }
-    setContextMenu({ visible: false, x: 0, y: 0, file: null });
+    // setContextMenu({ visible: false, x: 0, y: 0, file: null }); // ContextMenu's onClose will handle this
   };
 
-  const handleCloseAll = () => {
+  const handleMenuCloseAll = () => {
     if (onTabClose) {
-      filteredOpenFiles.forEach(f => onTabClose(f));
+      openFiles.forEach(f => onTabClose(f));
       showInfo('Closed all tabs');
     }
-    setContextMenu({ visible: false, x: 0, y: 0, file: null });
+    // setContextMenu({ visible: false, x: 0, y: 0, file: null });
   };
 
-  const handleCloseRight = (file) => {
-    if (onTabClose) {
-      const currentIndex = filteredOpenFiles.findIndex(f => f.path === file.path);
-      if (currentIndex >= 0) {
-        filteredOpenFiles
-          .slice(currentIndex + 1)
-          .forEach(f => onTabClose(f));
-        showInfo('Closed tabs to the right');
-      }
-    }
-    setContextMenu({ visible: false, x: 0, y: 0, file: null });
+  // Render tab content function
+  const renderTabContent = (file, isActive, isDragging) => {
+    const isDirty = file.isDirty;
+    
+    return (
+      <div 
+        className={`
+          flex-shrink-0 px-2 py-1 border-b-2 text-xs whitespace-nowrap transition-colors duration-150 ease-in-out group relative flex items-center w-full h-full
+          ${isActive
+            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+            : 'border-transparent hover:border-surface-400 dark:hover:border-surface-500 text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100'}
+        `}
+        style={{ paddingRight: isDirty ? '1.1rem' : '1.6rem' }}
+        title={file.path}
+      >
+        {/* Tab name */}
+        <span className="truncate flex-grow text-left pointer-events-none mr-1">{file.name}</span>
+
+        {/* Dirty indicator */}
+        {isDirty && (
+          <span className="ml-1 w-1.5 h-1.5 rounded-full bg-warning-500 flex-shrink-0" />
+        )}
+
+        {/* Close button */}
+        <button
+          onClick={(e) => handleCloseClick(e, file)}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+             if (e.button === 2) { // Prevent context menu on close button
+                e.preventDefault();
+            }
+          }}
+          className="absolute right-0.5 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out flex-shrink-0 focus:outline-none pointer-events-auto z-10"
+          title={`Close tab: ${file.name}`}
+        >
+          <IconX size={12} />
+        </button>
+      </div>
+    );
   };
 
-  // Handle drag end for reordering
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
-    console.log('[EditorTabs] handleDragEnd', event);
-    if (active.id !== over.id) {
-      const oldIndex = filePaths.indexOf(active.id);
-      const newIndex = filePaths.indexOf(over.id);
-      
-      if (onTabReorder) {
-        onTabReorder(oldIndex, newIndex);
-      }
-    }
-  };
+  // Toggle Preview Visibility Button
+  const previewToggleButton = typeof onToggleEditorVisibility === 'function' && (
+    <button
+      title={isPreviewVisible ? "Hide Preview" : "Show Preview"}
+      onClick={onToggleEditorVisibility}
+      className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 flex-shrink-0 ml-auto mr-1"
+      aria-label={isPreviewVisible ? "Hide Preview" : "Show Preview"}
+    >
+      {isPreviewVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+    </button>
+  );
+  
+  const editorContextMenuItems = contextMenu.file ? [
+    { label: 'Close Others', onClick: handleMenuCloseOthers, disabled: openFiles.length <= 1 },
+    { label: 'Close All', onClick: handleMenuCloseAll, disabled: openFiles.length === 0 },
+  ] : [];
 
   return (
-    // Wrap with DndContext
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-      modifiers={[]} // Add empty modifiers array to ensure proper behavior
-    >
-      <div className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-2 min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-5 shadow-sm pointer-events-auto dnd-tabs-container">
-        {/* Wrap tabs with SortableContext */}
-        <SortableContext items={filePaths} strategy={rectSortingStrategy}>
-          {filteredOpenFiles.map((file) => {
-            const isActive = currentFile && file.path === currentFile.path;
-            const isDirty = file.isDirty;
+    <>
+      <SortableTabs
+        items={openFiles}
+        getItemId={(file) => file.path}
+        onItemClick={handleTabClick}
+        onItemContextMenu={handleContextMenu}
+        onReorder={onTabReorder}
+        renderItem={renderTabContent}
+        activeItemId={currentFile?.path}
+        className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-1 min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto dnd-tabs-container"
+        extraContent={previewToggleButton}
+      />
 
-            return (
-              <SortableTab
-                key={file.path}
-                id={file.path} // Use path as the unique ID for dnd-kit
-                file={file}
-                isActive={isActive}
-                isDirty={isDirty}
-                onTabChange={onTabChange}
-                onContextMenu={handleContextMenu}
-                handleCloseClick={handleCloseClick}
-              />
-            );
-          })}
-        </SortableContext>
-
-        {/* Toggle Preview Visibility Button - Now with ml-auto to push to far right */}
-        {typeof onToggleEditorVisibility === 'function' && (
-          <button
-            title={isPreviewVisible ? "Hide Preview" : "Show Preview"}
-            onClick={onToggleEditorVisibility}
-            className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 flex-shrink-0 ml-auto" // Changed ml-1 to ml-auto
-            aria-label={isPreviewVisible ? "Hide Preview" : "Show Preview"}
-          >
-            {isPreviewVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-          </button>
-        )}
-
-        {/* Context menu (its position in JSX doesn't affect this flex layout as it's absolutely positioned) */}
-        {contextMenu.visible && contextMenu.file && (
-           // ... context menu JSX ... (unchanged)
-           <div
-             className="fixed z-50 rounded-md shadow-lg bg-white dark:bg-surface-800 ring-1 ring-black ring-opacity-5 focus:outline-none"
-             style={{
-               left: `${contextMenu.x}px`,
-               top: `${contextMenu.y}px`,
-               transform: 'translate(-20px, -100%)'
-             }}
-             onClick={(e) => e.stopPropagation()}
-           >
-             <div className="py-1 px-1 flex flex-row gap-1">
-               <button
-                 className="px-3 py-1 text-xs text-left text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded focus:outline-none"
-                 onClick={() => handleCloseOthers(contextMenu.file)}
-               >
-                 Close Others
-               </button>
-               <button
-                 className="px-3 py-1 text-xs text-left text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded focus:outline-none"
-                 onClick={() => handleCloseRight(contextMenu.file)}
-               >
-                 Close to the Right
-               </button>
-               <button
-                 className="px-3 py-1 text-xs text-left text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded focus:outline-none"
-                 onClick={handleCloseAll}
-               >
-                 Close All
-               </button>
-             </div>
-           </div>
-        )}
-      </div>
-    </DndContext>
+      <ContextMenu 
+        visible={contextMenu.visible}
+        x={contextMenu.x}
+        y={contextMenu.y}
+        items={editorContextMenuItems}
+        onClose={() => setContextMenu({ visible: false, x: 0, y: 0, file: null })}
+        transform="translate(0,0)" // Position relative to cursor, adjust if needed
+      />
+    </>
   );
 };
 

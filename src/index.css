@@ -247,3 +247,64 @@ body.modal-open {
 }
 
 /* Add other custom styles below */ 
+
+/* =========== DRAG-DROP STYLES FOR EDITOR TABS =========== */
+
+/* Container styling */
+.dnd-tabs-container {
+  user-select: none; /* Prevent text selection during drag */
+  position: relative; /* Create stacking context */
+  z-index: 10; /* Ensure proper stacking */
+}
+
+/* Style for sortable tab */
+.sortable-tab {
+  cursor: grab;
+  touch-action: none; /* Required for proper touch drag on mobile */
+  will-change: transform; /* Optimize for animations */
+  transition: transform 150ms ease, opacity 150ms ease;
+  display: flex;
+  align-items: center;
+  position: relative; /* Create stacking context */
+}
+
+/* Style while dragging */
+.sortable-tab[data-dragging="true"] {
+  cursor: grabbing;
+  opacity: 0.5;
+  z-index: 999;
+  pointer-events: none; /* Prevents issues with hover states during drag */
+}
+
+/* Ensure all elements in the tabs have proper pointer events */
+.editor-tabs * {
+  pointer-events: auto;
+}
+
+/* Make sure the tab content is not blocking drag events */
+.sortable-tab > div {
+  pointer-events: none; /* Allow drag events to pass through to the parent div */
+}
+
+/* But allow pointer events on the close button */
+.sortable-tab > div > button {
+  pointer-events: auto; /* Re-enable pointer events for the close button */
+}
+
+/* Override browser default drag behavior */
+.editor-tabs [role="tab"] {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* Fix for Firefox which has issues with pointer-events */
+@-moz-document url-prefix() {
+  .sortable-tab {
+    position: relative;
+    z-index: 1;
+  }
+  
+  .sortable-tab[data-dragging="true"] {
+    z-index: 1000;
+  }
+} 

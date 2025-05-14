@@ -93,32 +93,46 @@ const useFiles = () => {
   // Open a markdown file
   const openFile = useCallback(async (file) => {
     console.log(`[useFiles] openFile called for: ${file?.path}`);
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Validate file object
-      if (!file || !file.path) {
-        console.error('Invalid file object provided to openFile');
-        setError('Invalid file object');
+    console.log(`[useFiles] Current file before change: ${currentFile?.path}`);
+    
+    // Return a Promise that resolves after the file is opened
+    return new Promise(async (resolve, reject) => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Validate file object
+        if (!file || !file.path) {
+          const errorMsg = 'Invalid file object provided to openFile';
+          console.error(errorMsg);
+          setError(errorMsg);
+          setLoading(false);
+          reject(new Error(errorMsg));
+          return;
+        }
+        
+        console.log(`[useFiles] Reading content for file: ${file.path}`);
+        const fileContent = await readMarkdownFile(file.path);
+        
+        // Ensure content is set to empty string if undefined/null
+        console.log(`[useFiles] Content read, length: ${fileContent ? fileContent.length : 0}`);
+        setContent(fileContent || '');
+        console.log(`[useFiles] Content set, now setting currentFile`);
+        setCurrentFile(file);
+        console.log(`[useFiles] Successfully set content and currentFile for: ${file?.path}`);
+        
         setLoading(false);
-        return;
+        resolve(file); // Resolve the promise with the file object
+      } catch (err) {
+        const errorMsg = err.message || 'Failed to open file';
+        setError(errorMsg);
+        console.error(`Error opening file: ${errorMsg}`, err);
+        // Set empty content on error to avoid undefined issues
+        setContent('');
+        setLoading(false);
+        reject(err); // Reject the promise with the error
       }
-      
-      const fileContent = await readMarkdownFile(file.path);
-      
-      // Ensure content is set to empty string if undefined/null
-      setContent(fileContent || '');
-      setCurrentFile(file);
-      console.log(`[useFiles] Successfully set content and currentFile for: ${file?.path}`);
-    } catch (err) {
-      setError(err.message || 'Failed to open file');
-      console.error('Error opening file:', err);
-      // Set empty content on error to avoid undefined issues
-      setContent('');
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
   // Save the current file
