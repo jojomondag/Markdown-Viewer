@@ -8,6 +8,9 @@ const initialState = {
   // Open files - tracks currently open files in tabs
   openFiles: [],
   
+  // Current active file
+  currentFile: null,
+  
   // UI state
   ui: {
     // Tracks open/closed states of panels, dialogs, etc.
@@ -74,6 +77,7 @@ const ActionTypes = {
   SET_FILE_DIRTY: 'SET_FILE_DIRTY',
   CLEAR_OPEN_FILES: 'CLEAR_OPEN_FILES',
   REORDER_OPEN_FILES: 'REORDER_OPEN_FILES',
+  SET_CURRENT_FILE: 'SET_CURRENT_FILE',
   
   // UI state actions
   TOGGLE_PANEL: 'TOGGLE_PANEL',
@@ -191,6 +195,7 @@ function appStateReducer(state, action) {
       return {
         ...state,
         openFiles: [],
+        currentFile: null,
       };
     
     case ActionTypes.REORDER_OPEN_FILES:
@@ -559,6 +564,12 @@ function appStateReducer(state, action) {
       };
     // --- END: Rename workspace case ---
 
+    case ActionTypes.SET_CURRENT_FILE:
+      return {
+        ...state,
+        currentFile: action.payload,
+      };
+
     default:
       return state;
   }
@@ -821,7 +832,11 @@ export const AppStateProvider = ({ children }) => {
     type: ActionTypes.CLEAR_ACTIVE_NAMED_WORKSPACE,
   });
 
-  // Action creator for reordering saved workspace states
+  const setCurrentFile = (file) => dispatch({
+    type: ActionTypes.SET_CURRENT_FILE,
+    payload: file
+  });
+
   const reorderSavedWorkspaceStates = (reorderedStates) => dispatch({
     type: ActionTypes.REORDER_SAVED_WORKSPACE_STATES,
     payload: reorderedStates
@@ -831,9 +846,11 @@ export const AppStateProvider = ({ children }) => {
     <AppStateContext.Provider
       value={{
         state,
-        // Action creators
+        dispatch,
+        // File history actions
         addToHistory,
         clearHistory,
+        
         // Open files actions
         addOpenFile,
         removeOpenFile,
@@ -841,6 +858,8 @@ export const AppStateProvider = ({ children }) => {
         setFileDirty,
         clearOpenFiles,
         reorderOpenFiles,
+        setCurrentFile,
+        
         // UI actions
         togglePanel,
         setPanel,

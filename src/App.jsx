@@ -105,6 +105,7 @@ function App() {
     setFileDirty,
     clearOpenFiles, 
     reorderOpenFiles, 
+    setCurrentFile: setAppCurrentFile, // Rename to avoid conflict
     updatePreferences, // Keep this for general preferences if any are left
     // Action creators for state now managed by context
     setActiveRootFolders,     // For bulk setting (e.g., loading workspace)
@@ -186,6 +187,9 @@ function App() {
       // Actually open the file
       console.log(`[App] openFile - calling originalOpenFile`);
       originalOpenFile(file);
+      
+      // Also update the current file in AppStateContext
+      setAppCurrentFile(file);
       
       // Add file to history
       console.log(`[App] openFile - adding file to history`);
@@ -848,6 +852,8 @@ function App() {
             
             console.log(`[App] Setting currentFile state to:`, file);
             setCurrentFile(file);
+            // Also update the AppStateContext current file
+            setAppCurrentFile(file);
             
             // 5. Focus editor after content is loaded
             console.log(`[App] Focusing editor and clearing loading state`);
@@ -911,10 +917,16 @@ function App() {
         // Open the previous file in the list, or the next one if closing the first file
         const currentIndex = openFiles.findIndex(f => f.path === file.path);
         const nextIndex = currentIndex > 0 ? currentIndex - 1 : 0;
-        originalOpenFile(remainingFiles[nextIndex]);
+        const nextFile = remainingFiles[nextIndex];
+        originalOpenFile(nextFile);
+        // Update AppStateContext currentFile as well
+        setAppCurrentFile(nextFile);
       } else {
         // No files left open, clear the editor
         updateContent('');
+        // Clear both currentFile states
+        setCurrentFile(null);
+        setAppCurrentFile(null);
       }
     }
   };
@@ -1665,130 +1677,162 @@ function App() {
   };
 
   // *** NEW: Handler for deleting files/folders ***
-  const handleDeleteItem = async (itemPath, isDirectory) => {
-    const itemName = getBasename(itemPath);
-    const itemType = isDirectory ? 'folder' : 'file';
-    
-    const confirmMessage = isDirectory
-      ? `Are you sure you want to remove the folder \"${itemName}\" and its contents from the view? This will NOT delete files from your disk.`
-      : `Are you sure you want to delete the file \"${itemName}\"? This cannot be undone.`;
-      
+  const handleDeleteItem = async (itemsToDelete) => { // itemsToDelete is Array<{path: string, type: string}>
+    if (!itemsToDelete || itemsToDelete.length === 0) return;
+
+    // Confirmation
+    let confirmMessage = "";
+    const fileCount = itemsToDelete.filter(item => item.type === 'file').length;
+    const folderCount = itemsToDelete.filter(item => item.type === 'folder').length;
+
+    if (itemsToDelete.length === 1) {
+      const item = itemsToDelete[0];
+      const itemName = getBasename(item.path);
+      confirmMessage = item.type === 'folder'
+        ? `Are you sure you want to remove the folder \"${itemName}\" and its contents from the view? This will NOT delete files from your disk.`
+        : `Are you sure you want to delete the file \"${itemName}\"? This cannot be undone.`;
+    } else {
+      let parts = [];
+      if (fileCount > 0) parts.push(`${fileCount} file(s)`);
+      if (folderCount > 0) parts.push(`${folderCount} folder(s)`);
+      confirmMessage = `Are you sure you want to delete/remove ${parts.join(' and ')}? Files will be deleted from disk; folders will be removed from view. This cannot be undone for files.`;
+    }
+
     const confirmed = window.confirm(confirmMessage);
     if (!confirmed) return;
 
     // --- Optimistic Update ---
-    // 1. Store previous state for potential rollback
     const previousFiles = [...files];
     const previousFolders = [...folders];
     const previousOpenFiles = [...openFiles];
     const previousCurrentFile = currentFile ? { ...currentFile } : null;
     const previousContent = content;
-    const parentDirForOrder = getDirname(itemPath) || '.';
-    const previousItemOrderParent = [...(state.ui.itemOrder[parentDirForOrder] || [])]; // Copy relevant order
 
-    // 2. Apply optimistic state updates
-    let openFilesToRemove = [];
-    let closedFileToReopen = null; // Store the next file to open if current is closed
+    let overallSuccess = true;
+    let errors = [];
 
-    try {
-      if (!isDirectory) { // File deletion (optimistic state update)
-        setFiles(prev => prev.filter(f => f.path !== itemPath));
-      } else { // Folder removal (optimistic state update)
+    const itemsByParent = itemsToDelete.reduce((acc, item) => {
+      const parentDir = getDirname(item.path) || '.';
+      if (!acc[parentDir]) acc[parentDir] = [];
+      acc[parentDir].push(item);
+      return acc;
+    }, {});
+    
+    const previousItemOrdersByParent = {};
+    for (const parentDir in itemsByParent) {
+      previousItemOrdersByParent[parentDir] = [...(state.ui.itemOrder[parentDir] || [])];
+    }
+
+    let optimisticallyRemovedOpenFiles = [];
+    let optimisticallyClosedFileToReopenPath = null; 
+
+    let nextFilesState = [...files];
+    let nextFoldersState = [...folders];
+    
+    itemsToDelete.forEach(item => {
+      const { path: itemPath, type } = item;
+      const isDirectory = type === 'folder';
+
+      if (!isDirectory) {
+        nextFilesState = nextFilesState.filter(f => f.path !== itemPath);
+      } else {
         const pathPrefix = itemPath.endsWith('/') ? itemPath : itemPath + '/';
-        setFolders(prev => prev.filter(f => f.path !== itemPath && !f.path.startsWith(pathPrefix)));
-        setFiles(prev => prev.filter(f => !f.path.startsWith(pathPrefix)));
-        // If the removed folder was a root folder, update context
+        nextFoldersState = nextFoldersState.filter(f => f.path !== itemPath && !f.path.startsWith(pathPrefix));
+        nextFilesState = nextFilesState.filter(f => !f.path.startsWith(pathPrefix));
         if (activeRootFolders.includes(itemPath)) {
-          removeRootFolder(itemPath); // Dispatch to context (this might need its own rollback if it fails)
+          removeRootFolder(itemPath); 
         }
       }
+      const parentDirForOrder = getDirname(itemPath) || '.';
+      removeFromItemOrder(itemPath, parentDirForOrder, isDirectory); 
 
-      // Update itemOrder in context
-      removeFromItemOrder(itemPath, parentDirForOrder, isDirectory); // Dispatch to context
-
-      // Close tabs for deleted/removed items
       const pathPrefixToRemove = itemPath + (isDirectory ? '/' : '');
-      openFilesToRemove = openFiles.filter(f => 
+      const currentlyOpenAndToBeRemoved = openFiles.filter(f => // Use openFiles from current state, not nextOpenFiles
         isDirectory ? f.path.startsWith(pathPrefixToRemove) : f.path === itemPath
       );
-      openFilesToRemove.forEach(file => removeOpenFile(file)); // removeOpenFile is from AppStateContext
-      
-      // Determine next file to open if current one is closed
-      if (currentFile && (isDirectory ? currentFile.path.startsWith(pathPrefixToRemove) : currentFile.path === itemPath)) {
-        const remainingOpen = previousOpenFiles.filter(f => !openFilesToRemove.some(removed => removed.path === f.path));
-        if (remainingOpen.length > 0) {
-          const currentIndex = previousOpenFiles.findIndex(f => f.path === currentFile.path);
-          if (currentIndex > 0 && remainingOpen.find(f => f.path === previousOpenFiles[currentIndex - 1]?.path)) {
-            closedFileToReopen = previousOpenFiles[currentIndex - 1];
-          } else {
-            closedFileToReopen = remainingOpen[0];
-          }
-        }
-        // Optimistically set current file to null or next file
-        if (closedFileToReopen) {
-           // We actually call originalOpenFile LATER if the API call succeeds,
-           // but clear the state *now* optimistically.
-           // If rollback happens, previousCurrentFile/Content will be restored.
-           setCurrentFile(null); 
-           updateContent(''); 
+      optimisticallyRemovedOpenFiles.push(...currentlyOpenAndToBeRemoved);
+    });
+
+    setFiles(nextFilesState);
+    setFolders(nextFoldersState);
+    optimisticallyRemovedOpenFiles.forEach(file => removeOpenFile(file)); 
+
+    const currentFileWasDeleted = currentFile && optimisticallyRemovedOpenFiles.some(f => f.path === currentFile.path);
+
+    if (currentFileWasDeleted) {
+      const remainingOpenAfterDeletions = previousOpenFiles.filter(f =>
+        !optimisticallyRemovedOpenFiles.some(removed => removed.path === f.path)
+      );
+      if (remainingOpenAfterDeletions.length > 0) {
+        const currentIndexInOriginal = previousOpenFiles.findIndex(f => f.path === currentFile.path);
+        if (currentIndexInOriginal > 0 && remainingOpenAfterDeletions.find(f => f.path === previousOpenFiles[currentIndexInOriginal - 1]?.path)) {
+          optimisticallyClosedFileToReopenPath = previousOpenFiles[currentIndexInOriginal - 1].path;
         } else {
-          setCurrentFile(null); 
-          updateContent('');
+          optimisticallyClosedFileToReopenPath = remainingOpenAfterDeletions[0].path;
         }
       }
+      setCurrentFile(null); 
+      updateContent('');     
+    }
 
-      // 3. Perform backend operation (only for actual file deletion)
+    for (const item of itemsToDelete) {
+      const { path: itemPath, type } = item;
+      const isDirectory = type === 'folder';
       if (!isDirectory) { 
-        const result = await window.api.deleteFile(itemPath);
-        if (!result || !result.success) {
-          throw new Error(result?.error || `Unknown error deleting ${itemType}`);
+        try {
+          const result = await window.api.deleteFile(itemPath);
+          if (!result || !result.success) {
+            overallSuccess = false;
+            errors.push(`Failed to delete file ${getBasename(itemPath)}: ${result?.error || 'Unknown error'}`);
+          }
+        } catch (err) {
+          overallSuccess = false;
+          errors.push(`Error deleting file ${getBasename(itemPath)}: ${err.message}`);
         }
       }
-      
-      // --- Success ---
-      // If we got here, the optimistic updates are correct.
-      // Now, finalize the tab switch if needed.
-      if(closedFileToReopen) {
-          originalOpenFile(closedFileToReopen);
+    }
+
+    if (overallSuccess) {
+      if (optimisticallyClosedFileToReopenPath) {
+        const fileToOpen = previousOpenFiles.find(f => f.path === optimisticallyClosedFileToReopenPath);
+        if (fileToOpen) originalOpenFile(fileToOpen);
       }
-
-      const successMessage = isDirectory ? `Removed folder from view: ${itemName}` : `Deleted file: ${itemName}`;
+      const successMessage = itemsToDelete.length > 1 ? `${itemsToDelete.length} items processed.` :
+        (itemsToDelete[0].type === 'folder' ? `Removed folder from view: ${getBasename(itemsToDelete[0].path)}` : `Deleted file: ${getBasename(itemsToDelete[0].path)}`);
       showSuccess(successMessage);
+    } else {
+      console.error(`[App] Multi-Delete Failed. Rolling back. Errors: ${errors.join('; ')}`);
+      showError(`Failed to process all items: ${errors.join('; ')}. Reverting changes.`);
 
-    } catch (error) {
-      // --- Rollback ---
-      console.error(`[App] Optimistic Delete Failed for ${itemType} "${itemName}". Rolling back. Error: ${error.message}`);
-      showError(`Failed to ${isDirectory ? 'remove' : 'delete'} ${itemType}: ${error.message}. Reverting changes.`);
-
-      // Restore state
       setFiles(previousFiles);
       setFolders(previousFolders);
-      // Re-add open files that were optimistically removed
-      openFilesToRemove.forEach(file => addOpenFile(file)); // Assuming addOpenFile handles duplicates gracefully or state logic prevents duplicates
-      // Restore item order for the specific parent
-      updateItemOrderForParent(parentDirForOrder, previousItemOrderParent); // Restore order for this parent
-      // Restore root folder if it was removed (check if needed/possible)
-      if (isDirectory && activeRootFolders.includes(itemPath) && !previousFolders.some(f => f.path === itemPath)) {
-         // If it was a root folder and was removed, potentially add it back via addRootFolder
-         // Note: This interaction needs careful review of removeRootFolder/addRootFolder logic
-         // For now, we focus on file/folder list and order rollback.
-      }
       
-      // Restore current file/content if it was changed
-      if (previousCurrentFile && (!currentFile || currentFile.path !== previousCurrentFile.path)) {
-        setCurrentFile(previousCurrentFile);
-        updateContent(previousContent); // Assuming previousContent was stored
-      } else if (!previousCurrentFile && currentFile) {
-         setCurrentFile(null);
-         updateContent('');
-      }
-      
-      // Note: We might need more sophisticated rollback for AppStateContext actions 
-      // like removeOpenFile, removeFromItemOrder, removeRootFolder if they aren't simple state setters.
-      // For now, we assume setFiles/setFolders and re-adding files/order is sufficient for UI consistency.
+      // Restore open files by clearing and re-adding from previous state
+      // This relies on removeOpenFile and addOpenFile dispatching to context correctly.
+      // A more direct AppState restoration might be needed for full robustness.
+      const currentOpenPaths = new Set(openFiles.map(f => f.path));
+      previousOpenFiles.forEach(pof => {
+        if (!currentOpenPaths.has(pof.path)) {
+          addOpenFile(pof); // Add if it was removed
+        }
+      });
+      // Ensure files that were *not* part of optimistic removal but are in previousOpenFiles are still there
+      // This part of rollback for openFiles might need more refinement based on exact state management of openFiles.
 
-    } 
-    // Removed finally block with setAppLoading(false)
+      for (const parentDir in previousItemOrdersByParent) {
+        updateItemOrderForParent(parentDir, previousItemOrdersByParent[parentDir]);
+      }
+      // TODO: Rollback activeRootFolders if any were removed by re-adding them.
+      // This requires knowing which ones were removed due to this operation.
+
+      if (previousCurrentFile) {
+        setCurrentFile(previousCurrentFile);
+        updateContent(previousContent);
+      } else if (currentFile) { // If currentFile was set (e.g. by opening another) but previously was null
+        setCurrentFile(null);
+        updateContent('');
+      }
+    }
   };
 
   // Effect to initialize itemOrder after initial file/folder loading if not already populated in context
@@ -1901,55 +1945,77 @@ function App() {
       };
 
       const loadLastSession = async () => {
+        let sessionToLoad = null;
+        const lastActiveNameFromLocalStorage = localStorage.getItem('lastActiveMdViewerWorkspaceName');
+
+        // Priority 1: Does AppStateProvider have active root folders already?
         if (state.ui.activeRootFolders && state.ui.activeRootFolders.length > 0) {
           console.log("[App Startup] AppStateProvider restored session with root folders. Prioritizing this session:", state.ui.activeRootFolders);
           await performInitialScan(state.ui.activeRootFolders);
 
-          // After scanning, if AppStateProvider restored a currentFile, try to open it.
+          let fileToOpenInitially = null;
+          // Check if AppStateProvider restored a currentFile
           if (state.currentFile && state.currentFile.path) {
-            console.log("[App Startup] AppStateProvider restored currentFile. Attempting to load its content directly:", state.currentFile);
-            // originalOpenFile loads content and sets currentFile in useFiles hook.
-            // EditorTabs component will use state.currentFile from AppStateContext for active tab.
-            originalOpenFile(state.currentFile);
-          } else if (state.openFiles && state.openFiles.length > 0 && state.openFiles[0]?.path) {
-            // Fallback: If no currentFile, but openFiles were restored, open the first one.
-            // Assuming state.openFiles[0] is a complete file object if it exists.
-            const firstRestoredOpenFile = state.openFiles[0];
-            console.log("[App Startup] No currentFile restored by AppState. Attempting to open first of restored openFiles:", firstRestoredOpenFile);
-            originalOpenFile(firstRestoredOpenFile);
+            console.log("[App Startup] AppStateProvider restored currentFile. Using this:", state.currentFile);
+            fileToOpenInitially = state.currentFile;
+          } else if (lastActiveNameFromLocalStorage && state.savedWorkspaceStates && state.savedWorkspaceStates[lastActiveNameFromLocalStorage]) {
+            // AppStateProvider restored folders and openFiles, but NOT currentFile.
+            // Let's try to use the activeFilePath from our more robust save.
+            const lastSessionData = state.savedWorkspaceStates[lastActiveNameFromLocalStorage];
+            if (lastSessionData && lastSessionData.activeFilePath) {
+              console.log(`[App Startup] AppStateProvider did not restore currentFile. Trying activeFilePath ('${lastSessionData.activeFilePath}') from saved session '${lastActiveNameFromLocalStorage}'.`);
+              // Find this file in the restored state.openFiles
+              const targetOpenFile = state.openFiles.find(f => f.path === lastSessionData.activeFilePath);
+              if (targetOpenFile) {
+                console.log("[App Startup] Found target file in restored openFiles based on saved activeFilePath:", targetOpenFile);
+                fileToOpenInitially = targetOpenFile;
+              }
+            }
+          }
+          
+          // Fallback: If no specific file determined yet, use the first from restored openFiles
+          if (!fileToOpenInitially && state.openFiles && state.openFiles.length > 0 && state.openFiles[0]?.path) {
+            console.log("[App Startup] No specific currentFile determined. Attempting to open first of restored openFiles:", state.openFiles[0]);
+            fileToOpenInitially = state.openFiles[0];
+          }
+
+          if (fileToOpenInitially) {
+            originalOpenFile(fileToOpenInitially);
+            // Also update the AppStateContext current file
+            setAppCurrentFile(fileToOpenInitially);
           } else {
             console.log("[App Startup] No currentFile or openFiles with paths restored by AppStateProvider to auto-open after folder scan.");
           }
+        } else if (lastActiveNameFromLocalStorage && state.savedWorkspaceStates && state.savedWorkspaceStates[lastActiveNameFromLocalStorage]) {
+          // Priority 2: No root folders from AppStateProvider, so load the last active NAMED workspace fully.
+          console.log(`[App Startup] No session folders from AppState. Found last active NAMED workspace: '${lastActiveNameFromLocalStorage}'. Triggering full load.`);
+          sessionToLoad = state.savedWorkspaceStates[lastActiveNameFromLocalStorage];
+          if (sessionToLoad) {
+            loadNamedWorkspace(sessionToLoad); // This triggers the pendingWorkspaceLoad effect
+          }
         } else {
-          // If no root folders were restored by AppStateProvider (e.g., fresh session or cleared state),
-          // then try to load the "last active named workspace state" as a fallback.
-          const lastActiveStateName = localStorage.getItem('lastActiveMdViewerWorkspaceName');
-          if (lastActiveStateName && savedWorkspaceStates && savedWorkspaceStates[lastActiveStateName]) {
-            console.log(`[App Startup] No session folders from AppState. Found last active NAMED workspace: '${lastActiveStateName}'. Attempting to load.`);
-            // Dispatch action to load this workspace state
-            loadNamedWorkspace(savedWorkspaceStates[lastActiveStateName]); // Dispatch action
-          } else if (lastActiveStateName) {
-            console.log(`[App Startup] Last active NAMED workspace '${lastActiveStateName}' not found or invalid. Clearing from localStorage.`);
-            localStorage.removeItem('lastActiveMdViewerWorkspaceName');
-          } else {
-            console.log("[App Startup] No active session from AppState or last named workspace found. Starting fresh or with empty state.");
+          console.log("[App Startup] No active session from AppState or last named workspace found. Starting fresh.");
+          if (lastActiveNameFromLocalStorage) {
+              console.log(`[App Startup] Last active NAMED workspace '${lastActiveNameFromLocalStorage}' not found in current state.savedWorkspaceStates or was invalid. Clearing from localStorage.`);
+              localStorage.removeItem('lastActiveMdViewerWorkspaceName');
           }
         }
       };
 
       loadLastSession();
     }
-    // Dependencies ensure this runs when the necessary data is available and on initial mount.
-  }, [
-    state.ui.activeRootFolders, 
-    state.currentFile, // React to restored currentFile from AppState
-    state.openFiles,   // React to restored openFiles for fallback
-    savedWorkspaceStates, 
-    loadNamedWorkspace, // Added: Effect logic uses this action creator
-    scanFolder, 
-    setAppLoading, 
-    showError, 
-    originalOpenFile 
+  }, [ /* ... existing dependencies ... */ 
+      state.ui.activeRootFolders,
+      state.currentFile, 
+      state.openFiles,   
+      state.savedWorkspaceStates, // Added: to check for last active named workspace
+      loadNamedWorkspace, 
+      scanFolder, 
+      setAppLoading, 
+      showError, 
+      originalOpenFile,
+      setAppCurrentFile, // Add dependency for setting app current file
+      // initialLoadPerformedRef is a ref, not needed in deps
   ]);
   // --- END: useEffect to load last active workspace state on startup (REVISED) ---
 
@@ -2001,7 +2067,7 @@ function App() {
       itemOrder: itemOrder, 
       explorerSortBy: explorerSortBy, 
       explorerSortDirection: explorerSortDirection,
-      activeFilePath: currentFile?.path // <-- NEW: Save the active file's path
+      activeFilePath: state.currentFile?.path // Use state.currentFile from AppStateContext
     };
     
     console.log('[App] Saving workspace state via context:', projectData);
@@ -2047,7 +2113,7 @@ function App() {
       itemOrder: state.ui.itemOrder, 
       explorerSortBy: state.ui.preferences.explorerSortBy, 
       explorerSortDirection: state.ui.preferences.explorerSortDirection,
-      activeFilePath: currentFile?.path // <-- NEW: Save the active file's path (currentFile from useFiles)
+      activeFilePath: state.currentFile?.path // Use state.currentFile from AppStateContext
     };
     
     console.log('[App] Auto-saving workspace state via context:', projectData);
@@ -2121,7 +2187,12 @@ function App() {
           itemOrder: loadedItemOrder = {}, 
           explorerSortBy: loadedSortBy = 'name', 
           explorerSortDirection: loadedSortDir = 'asc',
-          activeFilePath: loadedActiveFilePath = null // <-- NEW: Get the saved active file path
+          activeFilePath: loadedActiveFilePath = null, // <-- NEW: Get the saved active file path
+          preferences: loadedPreferences = {}, // Ensure default to empty object
+          editorSelections: loadedEditorSelections = {},
+          editorCursorPositions: loadedEditorCursorPositions = {},
+          editorFontSize: loadedEditorFontSize = null, // Allow null to distinguish from default 0 or 14
+          // any other properties...
         } = pendingWorkspaceLoad;
 
         console.log(`[App Load Effect] Setting state for workspace: '${loadedName}'. Folders: ${loadedRootFolders.length}, Files: ${loadedOpenFilesPaths.length}, ActiveFile: ${loadedActiveFilePath}`);
@@ -2130,6 +2201,29 @@ function App() {
         setItemOrder(loadedItemOrder);
         setExplorerSort(loadedSortBy, loadedSortDir);
         // isProjectOpen will update via its own useEffect
+
+        // Restore preferences
+        if (loadedPreferences && Object.keys(loadedPreferences).length > 0) {
+          console.log('[App pendingWorkspaceLoad] Restoring preferences:', loadedPreferences);
+          updatePreferences(loadedPreferences); // Dispatch to update AppStateContext.ui.preferences
+        } else {
+          console.log('[App pendingWorkspaceLoad] No preferences to restore or loadedPreferences is empty.');
+        }
+        // Note: setExplorerSort is usually a specific part of updatePreferences or handled by it.
+        // If updatePreferences(loadedPreferences) correctly sets sort, explicit setExplorerSort might be redundant
+        // but keeping it for now if it handles defaults or specific logic.
+        setExplorerSort(loadedPreferences.explorerSortBy || 'name', loadedPreferences.explorerSortDirection || 'asc');
+
+        // Log loaded editor-specific states - actual restoration needs context actions
+        console.log('[App pendingWorkspaceLoad] Loaded editor states (require context actions to restore):', 
+          { loadedEditorSelections, loadedEditorCursorPositions, loadedEditorFontSize });
+        if (loadedEditorFontSize !== null && typeof updatePreferences === 'function') {
+            // Example: If editorFontSize is managed within the general preferences object
+            // updatePreferences({ ...loadedPreferences, editor: { ...(loadedPreferences.editor || {}), fontSize: loadedEditorFontSize } });
+            // Or, if AppStateContext has a specific action for editorFontSize, use that.
+            // For now, we assume it might be part of the broader 'preferences' or needs a dedicated action.
+            console.log(`[App pendingWorkspaceLoad] Editor font size to restore: ${loadedEditorFontSize}. Ensure AppStateContext handles this.`);
+        }
 
         // 3. Scan all folders from the loaded state
         if (loadedRootFolders.length > 0) {
@@ -2182,22 +2276,31 @@ function App() {
               }
 
               if (fileToMakeCurrent) {
-                console.log("[App Load Effect] Setting current file to load content:", fileToMakeCurrent);
-                originalOpenFile(fileToMakeCurrent); // Load content
+                console.log(`[App Load Effect] Explicitly setting current file in useFiles and AppStateContext to:`, fileToMakeCurrent);
+                // Explicitly set in useFiles() state
+                setCurrentFile(fileToMakeCurrent); 
+                // Also set in AppStateContext
+                setAppCurrentFile(fileToMakeCurrent);
+
+                console.log("[App Load Effect] Now calling originalOpenFile to load content for:", fileToMakeCurrent);
+                originalOpenFile(fileToMakeCurrent); // Now primarily for content loading and other side effects
               } else {
                 console.warn("[App Load Effect] No file found to make current after attempting to restore active/fallback.");
-                // If no files are to be made current, ensure editor is clear
-                setCurrentFile(null);
+                setCurrentFile(null); // Clear in useFiles state
+                setAppCurrentFile(null); // Clear in AppStateContext
                 updateContent('');
               }
             } else {
               console.warn("[App Load Effect] No valid file objects found to re-open from saved state.");
+              setCurrentFile(null); // Clear in useFiles state
+              setAppCurrentFile(null); // Clear in AppStateContext
+              updateContent('');
             }
           }
         } else {
            console.log("[App Load Effect] Loaded workspace has no root folders.");
-           // Ensure editor is cleared if loading an empty workspace
-           setCurrentFile(null);
+           setCurrentFile(null); // Clear in useFiles state
+           setAppCurrentFile(null); // Clear in AppStateContext
            updateContent('');
         }
 
@@ -2250,7 +2353,9 @@ function App() {
       showError,
       setActiveNamedWorkspace, // Added setActiveNamedWorkspace to dependencies
       clearActiveNamedWorkspace,
-      loadNamedWorkspace // Added loadNamedWorkspace to dependencies
+      loadNamedWorkspace, // Added loadNamedWorkspace to dependencies
+      updatePreferences, // Added updatePreferences to dependencies
+      savedWorkspaceStates // Added savedWorkspaceStates to dependencies
   ]);
   // --- END: useEffect to handle the actual loading process ---
 
@@ -2403,6 +2508,88 @@ function App() {
     }
   }, [savedWorkspaceStates, activeNamedWorkspaceName, renameWorkspace, setActiveNamedWorkspace, showError, showSuccess]);
   // --- END: Handler to Rename a Saved Workspace State ---
+
+  // Callback to gather all relevant state for saving a session/workspace
+  const gatherComprehensiveWorkspaceData = useCallback((nameToSaveWith) => {
+    return {
+      name: nameToSaveWith,
+      timestamp: Date.now(),
+      // Structural info
+      rootFolders: state.ui.activeRootFolders || [],
+      expandedNodes: state.ui.activeExpandedNodes || {},
+      openFiles: state.openFiles.map(f => f.path), // Paths of open files from context
+      activeFilePath: state.currentFile?.path || null, // <-- Use state.currentFile from AppStateContext
+      itemOrder: state.ui.itemOrder || {},
+      // UI Preferences & Editor State from AppStateContext
+      preferences: { ...(state.ui.preferences || {}) }, 
+      editorSelections: { ...(state.editor.selections || {}) },
+      editorCursorPositions: { ...(state.editor.cursorPositions || {}) },
+      editorFontSize: state.editor.fontSize || 14, // Default if undefined
+    };
+  }, [
+    state.ui.activeRootFolders,
+    state.ui.activeExpandedNodes,
+    state.openFiles, // from AppStateContext
+    state.currentFile, // <-- Changed from useFiles().currentFile to AppStateContext.currentFile
+    state.ui.itemOrder,
+    state.ui.preferences,
+    state.editor.selections,
+    state.editor.cursorPositions,
+    state.editor.fontSize
+  ]);
+
+  // Effect to save current workspace state on application close
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const activeNameFromContext = state.activeNamedWorkspaceName; // Current active named workspace in context
+      let nameForLastActiveKey;
+      let dataToSaveForSession;
+
+      if (activeNameFromContext) {
+        // If there's an active named workspace, its current state will be saved under its name.
+        console.log(`[App BeforeUnload] Active named workspace is '${activeNameFromContext}'. Its state will be updated.`);
+        nameForLastActiveKey = activeNameFromContext;
+        dataToSaveForSession = gatherComprehensiveWorkspaceData(activeNameFromContext);
+        // Dispatch to update context state (good for consistency if app doesn't close immediately)
+        saveNamedWorkspace(activeNameFromContext, dataToSaveForSession);
+      } else {
+        // No active named workspace, save current state as __last_session__
+        console.log("[App BeforeUnload] No active named workspace. Saving current state as __last_session__");
+        nameForLastActiveKey = '__last_session__';
+        dataToSaveForSession = gatherComprehensiveWorkspaceData(nameForLastActiveKey);
+        saveNamedWorkspace(nameForLastActiveKey, dataToSaveForSession); // Save __last_session__ to context
+      }
+
+      // Manually prepare and save the 'savedWorkspaceStates' map to localStorage.
+      // This ensures the latest data for 'nameForLastActiveKey' (either the active named one or __last_session__) is included.
+      const currentSavedStatesFromContext = state.savedWorkspaceStates || {};
+      const updatedSavedWorkspaceStates = {
+        ...currentSavedStatesFromContext,
+        [nameForLastActiveKey]: dataToSaveForSession // Overwrites/adds the session being saved
+      };
+
+      try {
+        // Persist the map of all saved workspaces (including the one just processed)
+        localStorage.setItem('savedMdViewerWorkspaceStates', JSON.stringify(updatedSavedWorkspaceStates));
+        // Persist the pointer to the one that should be loaded next time
+        localStorage.setItem('lastActiveMdViewerWorkspaceName', nameForLastActiveKey);
+        console.log(`[App BeforeUnload] Manually saved/updated workspace '${nameForLastActiveKey}' in 'savedMdViewerWorkspaceStates' and set 'lastActiveMdViewerWorkspaceName' in localStorage.`);
+      } catch (e) {
+        console.error('[App BeforeUnload] Error manually saving workspace data to localStorage:', e);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [
+    state.activeNamedWorkspaceName,
+    state.savedWorkspaceStates, // Ensures 'currentSavedStatesFromContext' is up-to-date
+    gatherComprehensiveWorkspaceData,
+    saveNamedWorkspace // The dispatch action from useAppState
+    // Dependencies from gatherComprehensiveWorkspaceData are implicitly handled by its useCallback
+  ]);
 
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">

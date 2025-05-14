@@ -256,9 +256,15 @@ const FileExplorer = ({
     if (y + menuHeight > viewportHeight) {
       y = viewportHeight - menuHeight - 10;
     }
-    setSelectedNodePaths(new Set([node.path]));
+
+    // Preserve multi-selection if right-clicked node is already selected
+    if (!selectedNodePaths.has(node.path) || selectedNodePaths.size <= 1) {
+      setSelectedNodePaths(new Set([node.path]));
+    }
+    // If it is part of a multi-selection, selectedNodePaths remains unchanged.
+
     setContextMenu({ visible: true, x, y, node });
-  }, []);
+  }, [selectedNodePaths]);
   const handleClickOutside = useCallback((event) => {
     if (contextMenu.visible && !event.target.closest('.context-menu')) {
         setContextMenu(prev => ({ ...prev, visible: false }));
@@ -270,12 +276,39 @@ const FileExplorer = ({
       document.removeEventListener('click', handleClickOutside, true);
     };
   }, [handleClickOutside]);
-  const handleDeleteItem = (node) => {
+  const handleDeleteItem = (clickedNode) => {
     setContextMenu(prev => ({ ...prev, visible: false }));
-    if (typeof onDeleteItem === 'function') {
-      onDeleteItem(node.path, node.type === 'folder');
+    if (typeof onDeleteItem !== 'function') {
+      console.warn('onDeleteItem prop is not provided.');
+      return;
+    }
+
+    const itemsToDelete = [];
+    // Create a map for quick lookup of node details (including type)
+    const allNodesMap = new Map();
+    [...files, ...folders].forEach(item => allNodesMap.set(item.path, item));
+
+    if (selectedNodePaths.has(clickedNode.path) && selectedNodePaths.size > 1) {
+      // Multi-selection delete
+      selectedNodePaths.forEach(path => {
+        const nodeDetails = allNodesMap.get(path);
+        if (nodeDetails) {
+          itemsToDelete.push({ path: nodeDetails.path, type: nodeDetails.type });
+        } else {
+          console.warn(`[ArboristFileExplorer] Node details not found for path: ${path}. Inferring type.`);
+          // Basic type inference if node details are missing (e.g. during rapid changes)
+          // This is a fallback; ideally, all selected paths should have details.
+          const isLikelyFolder = !path.includes('.') || path.endsWith('/'); 
+          itemsToDelete.push({ path: path, type: isLikelyFolder ? 'folder' : 'file' });
+        }
+      });
     } else {
-        console.warn('onDeleteItem prop is not provided.');
+      // Single item delete (the clicked node or if selection was cleared to just one)
+      itemsToDelete.push({ path: clickedNode.path, type: clickedNode.type });
+    }
+
+    if (itemsToDelete.length > 0) {
+      onDeleteItem(itemsToDelete); // onDeleteItem now expects an array
     }
   };
   const handleNewFile = async (folderNode) => {
