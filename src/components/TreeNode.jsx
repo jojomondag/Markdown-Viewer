@@ -336,7 +336,6 @@ const TreeNode = ({
             onKeyDown={handleRenameKeyDown}
             onBlur={handleRenameBlur}
             className="flex-grow bg-white dark:bg-surface-800 border border-primary-500 rounded px-1 py-0 text-sm outline-none"
-            autoFocus
           />
         ) : (
           <div className="flex-grow truncate" data-testid="node-name">

@@ -197,6 +197,7 @@ const FileExplorer = ({
     });
   }, [onFileSelect, onFolderToggle, handleRenameStart, shiftSelectionAnchorPath, getVisibleNodes]);
   const handleRenameStart = useCallback((node) => {
+    setContextMenu(prev => ({ ...prev, visible: false }));
     setRenamingNodePath(node.path);
   }, []);
   const handleRenameSubmit = async (node, newName) => {
