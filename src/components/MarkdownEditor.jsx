@@ -256,6 +256,14 @@ const MarkdownEditor = forwardRef(({
       return { scrollPercentage: 0, scrollTop: 0, scrollHeight: 0, clientHeight: 0 };
     },
     
+    // Add the focus method here
+    focus: () => {
+      if (viewRef.current) {
+        console.log("[MarkdownEditor] Imperative focus called, focusing viewRef.current");
+        viewRef.current.focus();
+      }
+    },
+    
     // Check if editor is currently in scroll sync mode
     isInScrollSync: () => inScrollSync,
     
