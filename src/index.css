@@ -246,6 +246,27 @@ body.modal-open {
   outline: none;
 }
 
+/* Fullscreen Editor Styles */
+.editor-fullscreen-active {
+  position: fixed !important; /* Important to override other positioning */
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1000 !important; /* Ensure it's on top of everything */
+  background-color: var(--color-surface- FFD700, hsl(var(--surface-100))); /* Match editor background */
+  /* Add any other necessary overrides */
+  padding: 0 !important; /* Remove padding if split pane adds it */
+  margin: 0 !important; /* Remove margin */
+}
+
+/* When editor is fullscreen, the preview pane should be hidden if it's a sibling */
+/* Or ensure the editor pane takes precedence */
+
+/* If the split pane itself needs to be hidden or its gutters */
+/* .split.fullscreen-editor-active > .gutter { display: none !important; } */
+/* .split.fullscreen-editor-active > :not(.editor-pane) { display: none !important; } */
+
 /* Add other custom styles below */ 
 
 /* =========== DRAG-DROP STYLES FOR EDITOR TABS =========== */

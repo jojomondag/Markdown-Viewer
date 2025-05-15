@@ -18,7 +18,7 @@ import { getShortcutTooltip } from '../utils/keyboardShortcuts';
 import SearchReplaceDialog from './SearchReplaceDialog';
 
 const MarkdownToolbar = ({ 
-  onAction, 
+  onAction,
   onUndo, 
   onRedo, 
   onSearch, 
@@ -98,47 +98,52 @@ const MarkdownToolbar = ({
   ];
 
   return (
-    <div className="markdown-toolbar flex items-center space-x-1 p-1 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 relative z-5">
-      {/* All items will now be in a single flex group, left-aligned by default */}
-      <button
-        title={`Undo ${getShortcutTooltip('UNDO')}`}
-        onClick={onUndo}
-        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
-      >
-        <IconArrowBackUp size={18} />
-      </button>
-
-      <button
-        title={`Redo ${getShortcutTooltip('REDO')}`}
-        onClick={onRedo}
-        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
-      >
-        <IconArrowForwardUp size={18} />
-      </button>
-      
-      <div className="h-4 w-px bg-surface-300 dark:bg-surface-700 mx-1"></div>
-
-      {tools.map((tool) => (
+    <div className="markdown-toolbar flex justify-between items-center w-full p-1 border-b border-surface-300 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 relative z-5">
+      {/* Group for undo/redo and formatting tools - ADD flex-grow HERE */}
+      <div className="flex flex-grow items-center space-x-1">
         <button
-          key={tool.id}
-          title={`${tool.title} ${tool.shortcutKey ? getShortcutTooltip(tool.shortcutKey) : ''}`}
-          onClick={tool.action}
+          title={`Undo ${getShortcutTooltip('UNDO')}`}
+          onClick={onUndo}
           className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
         >
-          <tool.icon size={18} />
+          <IconArrowBackUp size={18} />
         </button>
-      ))}
-      
-      <div className="h-4 w-px bg-surface-300 dark:bg-surface-700 mx-1"></div>
-      
-      {/* Search button */}
-      <button
-        title="Search in Text (Ctrl+F)"
-        onClick={() => setIsSearchOpen(true)}
-        className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
-      >
-        <IconSearch size={18} />
-      </button>
+
+        <button
+          title={`Redo ${getShortcutTooltip('REDO')}`}
+          onClick={onRedo}
+          className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+        >
+          <IconArrowForwardUp size={18} />
+        </button>
+        
+        <div className="h-4 w-px bg-surface-300 dark:bg-surface-700 mx-1"></div>
+
+        {tools.map((tool) => (
+          <button
+            key={tool.id}
+            title={`${tool.title} ${tool.shortcutKey ? getShortcutTooltip(tool.shortcutKey) : ''}`}
+            onClick={tool.action}
+            className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+          >
+            <tool.icon size={18} />
+          </button>
+        ))}
+      </div>
+
+      {/* Group for search related tools - this will be pushed to the right by justify-between */}
+      <div className="flex items-center space-x-1">
+        <div className="h-4 w-px bg-surface-300 dark:bg-surface-700 mx-1"></div>
+        
+        {/* Search button */}
+        <button
+          title="Search in Text (Ctrl+F)"
+          onClick={() => setIsSearchOpen(true)}
+          className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+        >
+          <IconSearch size={18} />
+        </button>
+      </div>
       
       {/* Search dialog */}
       {isSearchOpen && (

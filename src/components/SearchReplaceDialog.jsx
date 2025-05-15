@@ -68,7 +68,7 @@ const SearchReplaceDialog = ({ isOpen, onClose, onSearch, onReplace, onReplaceAl
   if (!isOpen) return null;
   
   return (
-    <div className="search-replace-dialog fixed top-4 right-4 bg-white dark:bg-surface-800 shadow-lg rounded-lg border border-surface-300 dark:border-surface-600 w-80 z-50">
+    <div className="search-replace-dialog absolute top-full mt-1 right-4 bg-white dark:bg-surface-800 shadow-lg rounded-lg border border-surface-300 dark:border-surface-600 w-80 z-50">
       <div className="flex justify-between items-center p-2 border-b border-surface-300 dark:border-surface-700">
         <h3 className="text-sm font-medium">Search & Replace</h3>
         <button 

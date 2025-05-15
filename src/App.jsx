@@ -9,15 +9,17 @@ import {
   IconFiles,
   IconHistory,
   IconFolderOff,
-  IconEyeOff, // <-- Add IconEyeOff
-  IconEye,    // <-- Add IconEye (likely needed too)
-  IconLink,   // <-- Add IconLink
-  IconUnlink, // <-- Add IconUnlink
-  IconZoomIn, // <-- Add IconZoomIn
-  IconZoomOut,// <-- Add IconZoomOut
-  IconZoomReset, // <-- Add IconZoomReset
-  IconPrinter, // <-- Add IconPrinter
-  IconEraser // <-- NEW: Icon for Clear Workspace
+  IconEyeOff,
+  IconEye,
+  IconLink,
+  IconUnlink,
+  IconZoomIn,
+  IconZoomOut,
+  IconZoomReset,
+  IconPrinter,
+  IconEraser,
+  IconArrowsMaximize, // For fullscreen
+  IconArrowsMinimize // For exit fullscreen
 } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
@@ -66,6 +68,8 @@ function App() {
   // isProjectOpen will be derived from context state later
   const [isProjectOpen, setIsProjectOpen] = useState(false); 
   const [itemOrderVersion, setItemOrderVersion] = useState(0); // Add this state
+  const [isEditorFullscreen, setIsEditorFullscreen] = useState(false); // Fullscreen state
+  const [isEditorVisible, setIsEditorVisible] = useState(true); // This is the correct declaration for editor component visibility
 
   const {
     files,
@@ -1421,9 +1425,6 @@ function App() {
     setActiveExpandedNodes({});
     setItemOrder({});
   };
-
-  // Add a new state for editor visibility
-  const [isEditorVisible, setIsEditorVisible] = useState(true);
 
   // Add handler for search and replace
   const handleSearch = (searchTerm, options) => {
@@ -2800,7 +2801,7 @@ function App() {
           }}
         >
           {/* Pane 1: Sidebar */}
-          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 flex flex-col ${!sidebarVisible ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
+          <aside className={`bg-surface-100 dark:bg-surface-800 border-r border-surface-300 dark:border-surface-700 overflow-hidden flex-shrink-0 flex flex-col ${!sidebarVisible ? 'hidden' : ''} ${isEditorFullscreen ? 'hidden' : ''}`} role="complementary" aria-label="Sidebar">
             
             {/* --- START: Add Save State Button to Sidebar Top --- */}
             {isProjectOpen && (
@@ -2905,10 +2906,11 @@ function App() {
           
           {/* Pane 2: Editor - Moved from nested split */}
           <div 
-             className={`editor-pane flex flex-col h-full overflow-auto ${!isEditorContainerVisible ? 'hidden' : ''}`} // ADDED overflow-auto
+             className={`editor-pane flex flex-col h-full overflow-auto ${!isEditorContainerVisible ? 'hidden' : ''} ${isEditorFullscreen ? 'editor-fullscreen-active' : ''}`} 
              role="region" 
              aria-label="Editor"
           >
+            {/* div.editor-area-wrapper is removed. Its children are now direct children of editor-pane. */}
             {/* Editor Tabs */}
             <div className="editor-tabs-container flex-shrink-0 pointer-events-auto"> {/* Ensure tabs don't grow */}
               <EditorTabs 
@@ -2920,20 +2922,25 @@ function App() {
                 onTabReorder={handleTabReorder} // <-- Pass the new handler
                 onToggleEditorVisibility={toggleEditorEye} // <-- ADDED: This controls preview
                 isPreviewVisible={previewVisible} // <-- ADDED: State for preview visibility
+                // Props for fullscreen button
+                isEditorFullscreen={isEditorFullscreen}
+                onToggleFullscreen={() => setIsEditorFullscreen(!isEditorFullscreen)}
+                FullscreenMaximizeIcon={IconArrowsMaximize}
+                FullscreenMinimizeIcon={IconArrowsMinimize}
               />
             </div>
             
             {/* Toolbar */}
-            <div className="toolbar-container flex-shrink-0"> {/* Ensure toolbar doesn't grow */}
+            <div className="toolbar-container flex-shrink-0 flex items-center w-full"> {/* Ensure toolbar doesn't grow, added flex items-center AND w-full */}
               <MarkdownToolbar 
                 onAction={handleToolbarAction} 
                 onUndo={handleUndo}
                 onRedo={handleRedo}
-                // onToggleEditorVisibility, isEditorVisible, onTogglePreviewVisibility, isPreviewVisible REMOVED
                 onSearch={handleSearch}
                 onReplace={handleReplace}
                 onReplaceAll={handleReplaceAll}
               />
+              {/* Fullscreen Toggle Button REMOVED from here */}
             </div>
             
             {/* EDITOR Component Container */}
@@ -2964,7 +2971,7 @@ function App() {
 
           {/* Pane 3: Preview - Moved from nested split */}
           <div 
-            className={`preview-pane flex flex-col h-full overflow-auto ${!previewVisible ? 'hidden' : ''}`} // ADDED overflow-auto
+            className={`preview-pane flex flex-col h-full overflow-auto ${!previewVisible ? 'hidden' : ''} ${isEditorFullscreen ? 'hidden' : ''}`} // ADDED: ${isEditorFullscreen ? 'hidden' : ''}
             role="region" 
             aria-label="Preview"
            >

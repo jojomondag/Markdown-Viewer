@@ -160,7 +160,11 @@ const EditorTabs = ({
   onTabClose,
   onTabReorder,
   onToggleEditorVisibility,
-  isPreviewVisible
+  isPreviewVisible,
+  isEditorFullscreen,
+  onToggleFullscreen,
+  FullscreenMaximizeIcon,
+  FullscreenMinimizeIcon
 }) => {
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, file: null });
   const { showInfo } = useNotification();
@@ -252,7 +256,7 @@ const EditorTabs = ({
     );
   };
 
-  // Toggle Preview Visibility Button
+  // Preview toggle button
   const previewToggleButton = typeof onToggleEditorVisibility === 'function' && (
     <button
       title={isPreviewVisible ? "Hide Preview" : "Show Preview"}
@@ -263,7 +267,19 @@ const EditorTabs = ({
       {isPreviewVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
     </button>
   );
-  
+
+  // Fullscreen toggle button
+  const fullscreenToggleButton = FullscreenMaximizeIcon && FullscreenMinimizeIcon && typeof onToggleFullscreen === 'function' && (
+    <button
+      title={isEditorFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+      onClick={onToggleFullscreen}
+      className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 flex-shrink-0 ml-2 mr-1"
+      aria-label={isEditorFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+    >
+      {isEditorFullscreen ? <FullscreenMinimizeIcon size={16} /> : <FullscreenMaximizeIcon size={16} />}
+    </button>
+  );
+
   const editorContextMenuItems = contextMenu.file ? [
     { label: 'Close Others', onClick: handleMenuCloseOthers, disabled: openFiles.length <= 1 },
     { label: 'Close All', onClick: handleMenuCloseAll, disabled: openFiles.length === 0 },
@@ -271,18 +287,22 @@ const EditorTabs = ({
 
   return (
     <>
-      <SortableTabs
-        items={openFiles}
-        getItemId={(file) => file.path}
-        onItemClick={handleTabClick}
-        onItemContextMenu={handleContextMenu}
-        onReorder={onTabReorder}
-        renderItem={renderTabContent}
-        activeItemId={currentFile?.path}
-        className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-1 min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto dnd-tabs-container"
-        dragConstraints={{ delay: 150, distance: 5, tolerance: 5 }}
-        extraContent={previewToggleButton}
-      />
+      <div className="editor-tabs-bar-wrapper flex items-center min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto">
+        {fullscreenToggleButton}
+        
+        <SortableTabs
+          items={openFiles}
+          getItemId={(file) => file.path}
+          onItemClick={handleTabClick}
+          onItemContextMenu={handleContextMenu}
+          onReorder={onTabReorder}
+          renderItem={renderTabContent}
+          activeItemId={currentFile?.path}
+          className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-1"
+          dragConstraints={{ delay: 150, distance: 5, tolerance: 5 }}
+          extraContent={previewToggleButton}
+        />
+      </div>
 
       <ContextMenu 
         visible={contextMenu.visible}
@@ -290,7 +310,7 @@ const EditorTabs = ({
         y={contextMenu.y}
         items={editorContextMenuItems}
         onClose={() => setContextMenu({ visible: false, x: 0, y: 0, file: null })}
-        transform="translate(0,0)" // Position relative to cursor, adjust if needed
+        transform="translate(0,0)"
       />
     </>
   );
