@@ -10,6 +10,15 @@ const store = new Store();
 // Create a map to store file watchers
 const fileWatchers = new Map();
 
+// Keep track of imported folder paths to prevent duplicate file creation
+const importedFolderPaths = [];
+
+// Keep track of detached windows
+const detachedWindows = new Map();
+
+// Create a variable to hold the main window reference
+let mainWindow;
+
 // Set up custom app data path to avoid permission issues
 const userDataPath = path.join(app.getPath('documents'), 'MarkdownViewer');
 try {
@@ -20,9 +29,6 @@ try {
 } catch (error) {
   console.error('Failed to set up user data directory:', error);
 }
-
-// Keep track of imported folder paths to prevent duplicate file creation
-const importedFolderPaths = [];
 
 // Get stored window size and position
 function getStoredWindowBounds() {
@@ -126,12 +132,69 @@ function createWindow() {
   return mainWindow;
 }
 
+// Create a detached window for editor
+function createDetachedWindow(options) {
+  const { title = 'Detached Editor', width = 800, height = 600, contentId, fileInfo } = options;
+  
+  // Use Markdown Editor in the window title
+  const windowTitle = fileInfo?.name ? `${fileInfo.name} - Markdown Editor` : 'Markdown Editor';
+  
+  const detachedWindow = new BrowserWindow({
+    width,
+    height,
+    title: windowTitle,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  // Load the app with query parameters to identify this as a detached window
+  const startUrl = process.env.ELECTRON_START_URL || 
+                  `file://${path.join(__dirname, '../index.html')}`;
+  
+  // Add query parameters to indicate this is a detached window
+  const url = new URL(startUrl);
+  url.searchParams.append('detached', 'true');
+  url.searchParams.append('contentId', contentId);
+  
+  // If we have file info, add that too
+  if (fileInfo) {
+    url.searchParams.append('filePath', fileInfo.path);
+    url.searchParams.append('fileName', fileInfo.name);
+  }
+  
+  detachedWindow.loadURL(url.toString());
+  
+  // Open DevTools in development
+  if (process.env.NODE_ENV === 'development') {
+    detachedWindow.webContents.openDevTools();
+  }
+  
+  // Store the window reference
+  detachedWindows.set(contentId, detachedWindow);
+  
+  // Remove from our tracking when closed
+  detachedWindow.on('closed', () => {
+    detachedWindows.delete(contentId);
+    // Notify the main window that this detached window has been closed
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('detached-window-closed', contentId);
+    }
+  });
+  
+  return detachedWindow;
+}
+
 // Create window when Electron is ready
 app.whenReady().then(() => {
-  const mainWindow = createWindow();
+  mainWindow = createWindow();
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      mainWindow = createWindow();
+    }
   });
 
   // Add IPC handler to access store from renderer
@@ -865,4 +928,54 @@ ipcMain.handle('show-item-in-folder', (event, itemPath) => {
   } else {
     console.error('[IPC Main] Received show-item-in-folder request without a path.');
   }
+});
+
+// IPC Handlers for detached windows
+ipcMain.handle('create-detached-window', async (event, options) => {
+  try {
+    const detachedWindow = createDetachedWindow(options);
+    return { 
+      success: true, 
+      windowId: detachedWindow.id 
+    };
+  } catch (error) {
+    console.error('Error creating detached window:', error);
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
+});
+
+// Get detached content from main window
+ipcMain.handle('get-detached-content', async (event, contentId) => {
+  // Get content from the main window
+  const content = await mainWindow.webContents.executeJavaScript(
+    `window.detachedAPI.getContent('${contentId}')`
+  );
+  return content;
+});
+
+// Update content in detached windows from main window
+ipcMain.handle('update-detached-content', async (event, contentId, content, cursorPosition) => {
+  const window = detachedWindows.get(contentId);
+  if (window && !window.isDestroyed()) {
+    window.webContents.send('update-content', { 
+      contentId, 
+      content, 
+      cursorPosition 
+    });
+    return { success: true };
+  }
+  return { success: false, error: 'Window not found or destroyed' };
+});
+
+// Close a detached window
+ipcMain.handle('close-detached-window', async (event, contentId) => {
+  const window = detachedWindows.get(contentId);
+  if (window && !window.isDestroyed()) {
+    window.close();
+    return { success: true };
+  }
+  return { success: false, error: 'Window not found or destroyed' };
 });

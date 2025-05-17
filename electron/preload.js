@@ -80,11 +80,84 @@ contextBridge.exposeInMainWorld(
     getStoreValue: (key) => ipcRenderer.invoke('get-store-value', key),
     setStoreValue: (key, value) => ipcRenderer.invoke('set-store-value', key, value),
     
+    // --- Detached Window API ---
+    createDetachedWindow: (options) => ipcRenderer.invoke('create-detached-window', options),
+    getDetachedContent: (contentId) => ipcRenderer.invoke('get-detached-content', contentId),
+    updateDetachedContent: (contentId, content, cursorPosition) => 
+      ipcRenderer.invoke('update-detached-content', contentId, content, cursorPosition),
+    closeDetachedWindow: (contentId) => ipcRenderer.invoke('close-detached-window', contentId),
+    
+    // Listen for content updates from detached windows in the main window
+    onDetachedContentUpdate: (callback) => {
+      const subscription = (event, data) => callback(data);
+      ipcRenderer.on('update-content', subscription);
+      return () => {
+        ipcRenderer.removeListener('update-content', subscription);
+      };
+    },
+    
+    // Listen for detached window closed events
+    onDetachedWindowClosed: (callback) => {
+      const subscription = (event, contentId) => callback(contentId);
+      ipcRenderer.on('detached-window-closed', subscription);
+      return () => {
+        ipcRenderer.removeListener('detached-window-closed', subscription);
+      };
+    },
+
+    // Remove detached window closed listener
+    removeDetachedWindowClosedListener: (callback) => {
+      ipcRenderer.removeListener('detached-window-closed', callback);
+    },
+    
     // --- Other APIs (Add more as needed) ---
     // Example: openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
     // Example: readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     // ... etc.
   }
 ); 
+
+// Set up detached window communication
+contextBridge.exposeInMainWorld(
+  'detachedAPI',
+  {
+    // Used to get content from the parent window when a detached window is created
+    getContent: (contentId) => {
+      // This function will be called by executeJavaScript from the main process
+      // to retrieve content for a detached window
+      return window.__DETACHED_CONTENT__ && window.__DETACHED_CONTENT__[contentId];
+    },
+    
+    // Listen for content updates from other windows
+    onContentUpdate: (callback) => {
+      const subscription = (event, data) => callback(data);
+      ipcRenderer.on('update-content', subscription);
+      return () => {
+        ipcRenderer.removeListener('update-content', subscription);
+      };
+    },
+    
+    // Check if this is a detached window
+    isDetachedWindow: () => {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('detached') === 'true';
+    },
+    
+    // Get the content ID for this detached window
+    getContentId: () => {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('contentId');
+    },
+    
+    // Get file info for this detached window
+    getFileInfo: () => {
+      const url = new URL(window.location.href);
+      return {
+        path: url.searchParams.get('filePath'),
+        name: url.searchParams.get('fileName')
+      };
+    }
+  }
+);
 
 console.log('[Preload] Script loaded and API exposed.'); 

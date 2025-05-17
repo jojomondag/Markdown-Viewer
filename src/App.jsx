@@ -19,7 +19,8 @@ import {
   IconPrinter,
   IconEraser,
   IconArrowsMaximize, // For fullscreen
-  IconArrowsMinimize // For exit fullscreen
+  IconArrowsMinimize, // For exit fullscreen
+  IconExternalLink, // Add this for detach button
 } from '@tabler/icons-react';
 import Split from 'react-split';
 import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
@@ -48,6 +49,7 @@ import { getDirname, getBasename } from './utils/pathUtils'; // Import path util
 import { arrayMove } from '@dnd-kit/sortable'; // <-- Import arrayMove
 
 import WorkspaceStateTabs from './components/WorkspaceStateTabs'; // <-- Import the new component
+import './detachedEditor.css'; // Import detached editor styling
 
 function App() {
   console.log('[App] Component rendering');
@@ -794,8 +796,14 @@ function App() {
   };
   
   // Handle cursor position changes
+  // Add state to track cursor position at the application level
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
+  
+  // Update cursor position state when it changes
   const handleCursorChange = (position) => {
-    // Optional: Update app state or perform actions based on cursor position
+    // Update the cursor position state
+    setCursorPosition(position);
+    // Optional: Log for debugging
     console.log('Cursor position:', position);
   };
 
@@ -996,6 +1004,26 @@ function App() {
     // Mark file as dirty (unsaved changes)
     if (currentFile) {
       setFileDirty(currentFile, true);
+    }
+    
+    // If we're in a detached window, sync back to main
+    if (window.detachedAPI && window.detachedAPI.isDetachedWindow()) {
+      const contentId = window.detachedAPI.getContentId();
+      
+      // Get cursor position safely
+      let cursorPosition = null;
+      try {
+        if (editorRef.current && typeof editorRef.current.getCursorPosition === 'function') {
+          cursorPosition = editorRef.current.getCursorPosition();
+        } else if (editorRef.current && typeof editorRef.current.getCurrentCursorPosition === 'function') {
+          // Fallback to getCurrentCursorPosition if getCursorPosition is not available
+          cursorPosition = editorRef.current.getCurrentCursorPosition();
+        }
+      } catch (error) {
+        console.error('Error getting cursor position in detached window:', error);
+      }
+      
+      window.api.updateDetachedContent(contentId, newContent, cursorPosition);
     }
   };
   
@@ -2723,10 +2751,260 @@ function App() {
     }
   };
 
+  // Add state for tracking detached windows
+  const [detachedEditors, setDetachedEditors] = useState(new Map());
+  const [isEditorDetached, setIsEditorDetached] = useState(false);
+  
+  // Generate a unique content ID for a file
+  const getContentId = useCallback((file) => {
+    return file ? `editor-${file.path}` : 'editor-untitled';
+  }, []);
+  
+  // Check if current file's editor is detached
+  useEffect(() => {
+    if (currentFile) {
+      const contentId = getContentId(currentFile);
+      setIsEditorDetached(detachedEditors.has(contentId));
+    } else {
+      setIsEditorDetached(false);
+    }
+  }, [currentFile, detachedEditors, getContentId]);
+  
+  // Function to detach the editor into a separate window
+  const handleDetachEditor = useCallback(async () => {
+    if (!currentFile) return;
+    
+    // If editor is already detached, just return (clicking the button when detached doesn't do anything)
+    if (isEditorDetached) return;
+    
+    const contentId = getContentId(currentFile);
+    
+    // Get cursor position safely
+    let cursorPosition = null;
+    try {
+      if (editorRef.current && typeof editorRef.current.getCursorPosition === 'function') {
+        cursorPosition = editorRef.current.getCursorPosition();
+      } else if (editorRef.current && typeof editorRef.current.getCurrentCursorPosition === 'function') {
+        // Fallback to getCurrentCursorPosition if getCursorPosition is not available
+        cursorPosition = editorRef.current.getCurrentCursorPosition();
+      }
+    } catch (error) {
+      console.error('Error getting cursor position:', error);
+    }
+    
+    // Store content for the detached window to access
+    window.__DETACHED_CONTENT__ = window.__DETACHED_CONTENT__ || {};
+    window.__DETACHED_CONTENT__[contentId] = {
+      content,
+      cursorPosition,
+      file: currentFile
+    };
+    
+    // Create the detached window
+    const result = await window.api.createDetachedWindow({
+      title: `Editor - ${currentFile.name}`,
+      width: 800,
+      height: 600,
+      contentId,
+      fileInfo: currentFile
+    });
+    
+    if (result.success) {
+      // Track this detached window
+      setDetachedEditors(prev => {
+        const newMap = new Map(prev);
+        newMap.set(contentId, result.windowId);
+        return newMap;
+      });
+      
+      // Set the editor as detached
+      setIsEditorDetached(true);
+    }
+  }, [currentFile, content, editorRef]);
+  
+  // Set up listener for content updates from detached windows
+  useEffect(() => {
+    if (window.detachedAPI) {
+      // We're in a detached window
+      const isDetached = window.detachedAPI.isDetachedWindow();
+      if (isDetached) {
+        const contentId = window.detachedAPI.getContentId();
+        const fileInfo = window.detachedAPI.getFileInfo();
+        
+        // Get initial content from main window
+        window.api.getDetachedContent(contentId).then(data => {
+          if (data) {
+            // Set content
+            setContent(data.content);
+            
+            // Set cursor position in state and editor
+            if (data.cursorPosition) {
+              // Update the cursor position state directly
+              setCursorPosition(data.cursorPosition);
+              
+              // Also update the editor cursor if available
+              if (editorRef.current) {
+                editorRef.current.setCursorPosition(data.cursorPosition);
+              }
+            }
+            
+            // Load the file
+            if (fileInfo.path) {
+              // Find the file in the file tree or create a new file object
+              const detachedFile = {
+                path: fileInfo.path,
+                name: fileInfo.name
+              };
+              
+              setCurrentFile(detachedFile);
+            }
+          }
+        });
+        
+        // Listen for content updates
+        const unsubscribe = window.detachedAPI.onContentUpdate(data => {
+          if (data.contentId === contentId) {
+            // Update content
+            setContent(data.content);
+            
+            // Update cursor position state and editor
+            if (data.cursorPosition) {
+              // Update state first
+              setCursorPosition(data.cursorPosition);
+              
+              // Then try to update the editor
+              if (editorRef.current) {
+                editorRef.current.setCursorPosition(data.cursorPosition);
+              }
+            }
+          }
+        });
+        
+        return () => unsubscribe();
+      } else {
+        // We're in the main window - set up a listener for updates from detached windows
+        const handleUpdatesFromDetachedWindows = (data) => {
+          const { contentId, content: newContent, cursorPosition } = data;
+          
+          // Find the file that corresponds to this contentId
+          const file = openFiles.find(file => getContentId(file) === contentId);
+          
+          if (file && file.path === currentFile?.path) {
+            // If this is the currently open file, update the content
+            console.log('Received content update from detached window');
+            updateContent(newContent);
+            
+            // Also update cursor position if available
+            if (cursorPosition && editorRef.current) {
+              editorRef.current.setCursorPosition(cursorPosition);
+              setCursorPosition(cursorPosition);
+            }
+          }
+        };
+
+        // Register the listener using the API we defined in preload.js
+        const unsubscribe = window.api.onDetachedContentUpdate(handleUpdatesFromDetachedWindows);
+        
+        // Clean up listener on unmount
+        return () => {
+          unsubscribe();
+        };
+      }
+    }
+  }, [getContentId, currentFile, openFiles, editorRef]);
+  
+  // Sync content changes to detached windows
+  useEffect(() => {
+    if (currentFile && content && detachedEditors.size > 0) {
+      const contentId = getContentId(currentFile);
+      
+      // Get cursor position safely
+      let cursorPosition = null;
+      try {
+        if (editorRef.current && typeof editorRef.current.getCursorPosition === 'function') {
+          cursorPosition = editorRef.current.getCursorPosition();
+        } else if (editorRef.current && typeof editorRef.current.getCurrentCursorPosition === 'function') {
+          // Fallback to getCurrentCursorPosition if getCursorPosition is not available
+          cursorPosition = editorRef.current.getCurrentCursorPosition();
+        }
+      } catch (error) {
+        console.error('Error getting cursor position for sync:', error);
+      }
+      
+      // If we have a detached window for this file, update its content
+      if (detachedEditors.has(contentId)) {
+        window.api.updateDetachedContent(contentId, content, cursorPosition);
+      }
+    }
+  }, [content, currentFile, detachedEditors, editorRef, getContentId]);
+  
+  // Original handleContentChange will be updated instead of duplicated
+
+  // Apply detached window class to body if needed
+  useEffect(() => {
+    if (window.detachedAPI && window.detachedAPI.isDetachedWindow()) {
+      document.body.classList.add('detached-window');
+      
+      // Set the document title to include the file name
+      const fileInfo = window.detachedAPI.getFileInfo();
+      if (fileInfo && fileInfo.name) {
+        document.title = `${fileInfo.name} - Detached Editor`;
+      } else {
+        document.title = "Detached Editor";
+      }
+      
+      // Cleanup function to remove class when component unmounts
+      return () => {
+        document.body.classList.remove('detached-window');
+      };
+    }
+  }, []);
+
+  // Check if this is a detached window
+  const isDetachedWindow = window.detachedAPI && window.detachedAPI.isDetachedWindow();
+  
+  // If this is a detached window, only render the editor pane
+  if (isDetachedWindow) {
+    const contentId = window.detachedAPI.getContentId();
+    const fileInfo = window.detachedAPI.getFileInfo();
+    
+    // Make sure cursor position is initialized (safeguard against the error)
+    useEffect(() => {
+      if (!cursorPosition) {
+        setCursorPosition({ line: 1, column: 1 });
+      }
+    }, []);
+    
+    // Simplified layout for detached window
+    return (
+      <div className="detached-editor-container">
+        <div className="detached-editor-header">
+          <h2>{fileInfo?.name || 'Detached Editor'}</h2>
+        </div>
+        <div className="detached-editor-content">
+          <MarkdownEditor
+            ref={editorRef}
+            content={content}
+            filePath={fileInfo?.path}
+            onChange={handleContentChange}
+            onCursorChange={handleCursorChange}
+            onScroll={handleEditorScroll}
+            className="w-full h-full absolute inset-0"
+          />
+        </div>
+        <div className="detached-editor-footer">
+          <div>{fileInfo?.path || ''}</div>
+          <div>
+            Line: {cursorPosition?.line || 1}, Column: {cursorPosition?.column || 1}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Regular app rendering for the main window
   return (
     <div className="app-container h-full flex flex-col bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100">
-      {/* <AccessibilityHelper /> */}
-      
       <header className="bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 p-2 border-b border-surface-200 dark:border-surface-700" role="banner">
          {/* Main flex container spanning full width, with responsive gap */}
          <div className="w-full flex items-center justify-between gap-2 md:gap-4"> {/* Changed container to w-full, responsive gap */}
@@ -2913,21 +3191,25 @@ function App() {
             {/* div.editor-area-wrapper is removed. Its children are now direct children of editor-pane. */}
             {/* Editor Tabs */}
             <div className="editor-tabs-container flex-shrink-0 pointer-events-auto"> {/* Ensure tabs don't grow */}
-              <EditorTabs 
-                currentFile={currentFile}
-                openFiles={openFiles} // This comes from useAppState
-                onTabChange={handleTabChange}
-                onTabClose={handleTabClose}
-                onNewTab={handleNewTab}
-                onTabReorder={handleTabReorder} // <-- Pass the new handler
-                onToggleEditorVisibility={toggleEditorEye} // <-- ADDED: This controls preview
-                isPreviewVisible={previewVisible} // <-- ADDED: State for preview visibility
-                // Props for fullscreen button
-                isEditorFullscreen={isEditorFullscreen}
-                onToggleFullscreen={() => setIsEditorFullscreen(!isEditorFullscreen)}
-                FullscreenMaximizeIcon={IconArrowsMaximize}
-                FullscreenMinimizeIcon={IconArrowsMinimize}
-              />
+              <div className="flex justify-between items-center">
+                <EditorTabs 
+                  currentFile={currentFile}
+                  openFiles={openFiles}
+                  onTabChange={handleTabChange}
+                  onTabClose={handleTabClose}
+                  onNewTab={handleNewTab}
+                  onTabReorder={handleTabReorder}
+                  onToggleEditorVisibility={toggleEditorEye}
+                  isPreviewVisible={previewVisible}
+                  isEditorFullscreen={isEditorFullscreen}
+                  onToggleFullscreen={() => setIsEditorFullscreen(!isEditorFullscreen)}
+                  FullscreenMaximizeIcon={IconArrowsMaximize}
+                  FullscreenMinimizeIcon={IconArrowsMinimize}
+                  onDetachEditor={handleDetachEditor}
+                  isEditorDetached={isEditorDetached}
+                />
+                {/* Detach button moved to EditorTabs component */}
+              </div>
             </div>
             
             {/* Toolbar */}

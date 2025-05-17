@@ -33,7 +33,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { IconX, IconEye, IconEyeOff } from '@tabler/icons-react';
+import { IconX, IconEye, IconEyeOff, IconPlus, IconExternalLink } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
 import SortableTabs from './common/SortableTabs';
 import ContextMenu from './common/ContextMenu';
@@ -164,7 +164,9 @@ const EditorTabs = ({
   isEditorFullscreen,
   onToggleFullscreen,
   FullscreenMaximizeIcon,
-  FullscreenMinimizeIcon
+  FullscreenMinimizeIcon,
+  onDetachEditor,
+  isEditorDetached
 }) => {
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, file: null });
   const { showInfo } = useNotification();
@@ -279,6 +281,22 @@ const EditorTabs = ({
       {isEditorFullscreen ? <FullscreenMinimizeIcon size={16} /> : <FullscreenMaximizeIcon size={16} />}
     </button>
   );
+  
+  // Detach editor button
+  const detachButton = typeof onDetachEditor === 'function' && !window.detachedAPI?.isDetachedWindow() && (
+    <button
+      className={`p-1 rounded flex-shrink-0 ${
+        isEditorDetached
+          ? 'text-primary-600 dark:text-primary-400 bg-primary-100 dark:bg-primary-900'
+          : 'text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600'
+      }`}
+      onClick={onDetachEditor}
+      title={isEditorDetached ? "Editor Detached" : "Detach Editor"}
+      disabled={!currentFile}
+    >
+      <IconExternalLink size={16} />
+    </button>
+  );
 
   const editorContextMenuItems = contextMenu.file ? [
     { label: 'Close Others', onClick: handleMenuCloseOthers, disabled: openFiles.length <= 1 },
@@ -300,7 +318,13 @@ const EditorTabs = ({
           activeItemId={currentFile?.path}
           className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-1"
           dragConstraints={{ delay: 150, distance: 5, tolerance: 5 }}
-          extraContent={previewToggleButton}
+          extraContent={
+            <>
+              {previewToggleButton}
+              {/* Add detach button here */}
+              {detachButton}
+            </>
+          }
         />
       </div>
 

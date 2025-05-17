@@ -1,0 +1,69 @@
+/* Styles for the detached editor window */
+
+.detached-editor-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detached-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background-color: var(--surface-100);
+  border-bottom: 1px solid var(--surface-300);
+}
+
+.detached-editor-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detached-editor-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.detached-editor-footer {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--surface-600);
+  background-color: var(--surface-100);
+  border-top: 1px solid var(--surface-300);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .detached-editor-header {
+    background-color: var(--surface-800);
+    border-color: var(--surface-700);
+  }
+  
+  .detached-editor-footer {
+    color: var(--surface-400);
+    background-color: var(--surface-800);
+    border-color: var(--surface-700);
+  }
+}
+
+/* Add a subtle indicator that this is a detached window */
+body.detached-window .app-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--primary-500);
+  z-index: 1000;
+} 

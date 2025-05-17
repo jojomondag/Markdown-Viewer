@@ -216,6 +216,47 @@ const MarkdownEditor = forwardRef(({
       return cursorPosition;
     },
     
+    // Add getCursorPosition method for compatibility with detached window code
+    getCursorPosition: () => {
+      // Return cursor position with selection info
+      if (viewRef.current) {
+        const selection = viewRef.current.state.selection.main;
+        return {
+          ...cursorPosition,
+          anchor: selection.anchor,
+          head: selection.head
+        };
+      }
+      return cursorPosition;
+    },
+    
+    // Set cursor position programmatically
+    setCursorPosition: (pos) => {
+      if (!viewRef.current || !pos) return;
+      
+      try {
+        // Handle different position formats
+        if (pos.anchor !== undefined && pos.head !== undefined) {
+          // Selection range format
+          const selection = EditorSelection.create([EditorSelection.range(pos.anchor, pos.head)]);
+          viewRef.current.dispatch({
+            selection
+          });
+        } else if (pos.line !== undefined && pos.column !== undefined) {
+          // Line/column format
+          const line = Math.max(1, Math.min(pos.line, viewRef.current.state.doc.lines));
+          const lineStart = viewRef.current.state.doc.line(line).from;
+          const position = lineStart + Math.max(0, pos.column - 1);
+          
+          viewRef.current.dispatch({
+            selection: {anchor: position, head: position}
+          });
+        }
+      } catch (error) {
+        console.error('Error setting cursor position:', error);
+      }
+    },
+    
     // Scroll to a specific percentage of the content
     scrollToPosition: (scrollPercentage) => {
       if (!viewRef.current || !viewRef.current.scrollDOM) return;
