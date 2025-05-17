@@ -256,14 +256,12 @@ const EditorTabs = ({
         </button>
       </div>
     );
-  };
-
-  // Preview toggle button
+  };  // Preview toggle button
   const previewToggleButton = typeof onToggleEditorVisibility === 'function' && (
     <button
       title={isPreviewVisible ? "Hide Preview" : "Show Preview"}
       onClick={onToggleEditorVisibility}
-      className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 flex-shrink-0 ml-auto mr-1"
+      className="p-1.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 flex-shrink-0 mr-1.5"
       aria-label={isPreviewVisible ? "Hide Preview" : "Show Preview"}
     >
       {isPreviewVisible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
@@ -285,7 +283,7 @@ const EditorTabs = ({
   // Detach editor button
   const detachButton = typeof onDetachEditor === 'function' && !window.detachedAPI?.isDetachedWindow() && (
     <button
-      className={`p-1 rounded flex-shrink-0 ${
+      className={`p-1.5 rounded flex-shrink-0 ${
         isEditorDetached
           ? 'text-primary-600 dark:text-primary-400 bg-primary-100 dark:bg-primary-900'
           : 'text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600'
@@ -300,35 +298,31 @@ const EditorTabs = ({
 
   const editorContextMenuItems = contextMenu.file ? [
     { label: 'Close Others', onClick: handleMenuCloseOthers, disabled: openFiles.length <= 1 },
-    { label: 'Close All', onClick: handleMenuCloseAll, disabled: openFiles.length === 0 },
-  ] : [];
-
+    { label: 'Close All', onClick: handleMenuCloseAll, disabled: openFiles.length === 0 },  ] : [];
   return (
-    <>
-      <div className="editor-tabs-bar-wrapper flex items-center min-h-[38px] bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto">
-        {fullscreenToggleButton}
-        
-        <SortableTabs
-          items={openFiles}
-          getItemId={(file) => file.path}
-          onItemClick={handleTabClick}
-          onItemContextMenu={handleContextMenu}
-          onReorder={onTabReorder}
-          renderItem={renderTabContent}
-          activeItemId={currentFile?.path}
-          className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600 pr-1"
-          dragConstraints={{ delay: 150, distance: 5, tolerance: 5 }}
-          extraContent={
-            <>
-              {previewToggleButton}
-              {/* Add detach button here */}
-              {detachButton}
-            </>
-          }
-        />
+    <>      <div className="editor-tabs-bar-wrapper flex items-center justify-between min-h-[38px] w-full bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto">
+        <div className="flex flex-grow items-center min-w-0 overflow-hidden">
+          {fullscreenToggleButton}
+          
+          <SortableTabs
+            items={openFiles}
+            getItemId={(file) => file.path}
+            onItemClick={handleTabClick}
+            onItemContextMenu={handleContextMenu}
+            onReorder={onTabReorder}
+            renderItem={renderTabContent}
+            activeItemId={currentFile?.path}
+            className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600"
+            dragConstraints={{ delay: 150, distance: 5, tolerance: 5 }}        
+          />        </div>
+        {/* Action buttons fixed at right edge */}
+        <div className="flex-shrink-0 flex items-center px-2">
+          {previewToggleButton}
+          {detachButton}
+        </div>
       </div>
 
-      <ContextMenu 
+      <ContextMenu
         visible={contextMenu.visible}
         x={contextMenu.x}
         y={contextMenu.y}
