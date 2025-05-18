@@ -900,35 +900,34 @@ function App() {
         // 3. Read the file directly from the filesystem
         window.api.readMarkdownFile(file.path)
           .then(fileContent => {
-            console.log(
-              `[App] File content loaded successfully! ` +
-              `Length: ${fileContent?.length || 0}, ` + 
-              `First 20 chars: "${(fileContent || '').substring(0, 20)}..."`
-            );
+            console.log(`[App] File content loaded successfully! Length: ${fileContent?.length}, First 20 chars: "${fileContent?.substring(0, 20)}..."`);
             
-            // 4. Update both content and currentFile states in correct order
+            // 4. Set it in the state
             console.log(`[App] Setting content state`);
-            updateContent(fileContent || '');
+            setContent(fileContent);
             
             console.log(`[App] Setting currentFile state to:`, file);
             setCurrentFile(file);
-            // Also update the AppStateContext current file
-            setAppCurrentFile(file);
             
-            // 5. Focus editor after content is loaded
+            // 5. Focus and clear loading state
             console.log(`[App] Focusing editor and clearing loading state`);
-            if (editorRef.current && editorRef.current.focus) {
-              setTimeout(() => {
-                console.log(`[App] Editor focus timeout triggered`);
+            setAppLoading({ content: false });
+            
+            // Use a ref to track if we've already focused the editor for this tab change
+            const focusTimeoutId = setTimeout(() => {
+              console.log(`[App] Editor focus timeout triggered`);
+              if (editorRef.current) {
                 editorRef.current.focus();
-                setAppLoading({ content: false });
                 console.log(`[App] Tab change complete! Editor focused and ready.`);
-              }, 50);
-            } else {
-              console.log(`[App] No editor ref available for focus`);
-              setAppLoading({ content: false });
-              console.log(`[App] Tab change complete! (No editor focus)`);
-            }
+              }
+            }, 150);
+            
+            // 6. Notify all detached windows about the tab change
+            console.log('[App] Notifying all detached windows of tab change');
+            detachedEditors.forEach((value, contentId) => {
+              console.log(`[App] Notifying detached window ${contentId} of tab change to ${file.path}`);
+              window.api.updateDetachedTab(contentId, file.path);
+            });
           })
           .catch(err => {
             console.error(`[App] Error reading file directly: ${err.message}`);
@@ -2822,7 +2821,10 @@ function App() {
     window.__DETACHED_CONTENT__[contentId] = {
       content,
       cursorPosition,
-      file: currentFile
+      file: currentFile,
+      allOpenFiles: openFiles, // Add all open files
+      // Add currentFilePath so detached window knows which tab is active
+      currentFilePath: currentFile.path
     };
     
     // Create the detached window
@@ -2831,7 +2833,8 @@ function App() {
       width: 800,
       height: 600,
       contentId,
-      fileInfo: currentFile
+      fileInfo: currentFile,
+      allOpenFilePaths: openFiles.map(f => f.path) // Pass all open file paths
     });
     
     if (result.success) {
@@ -2845,7 +2848,7 @@ function App() {
       // Set the editor as detached
       setIsEditorDetached(true);
     }
-  }, [currentFile, content, editorRef]);
+  }, [currentFile, content, editorRef, openFiles, getContentId]);
   
   // Set up listener for content updates from detached windows
   useEffect(() => {
@@ -3011,6 +3014,47 @@ function App() {
     }
   }, [currentFile, openFiles, getContentId]);
   
+  // Listen for tab change notifications from detached windows
+  useEffect(() => {
+    if (!window.detachedAPI || !window.detachedAPI.isDetachedWindow()) {
+      // Only run this in the main window
+      const handleDetachedTabChange = (contentId, filePath) => {
+        console.log(`[App] Received tab change from detached window: contentId=${contentId}, filePath=${filePath}`);
+        
+        // Find the file in open files
+        const fileToSwitch = openFiles.find(file => file.path === filePath);
+        if (fileToSwitch && (!currentFile || currentFile.path !== filePath)) {
+          console.log(`[App] Switching main window tab to: ${filePath}`);
+          handleTabChange(fileToSwitch);
+        }
+      };
+      
+      // Register the listener using the preload API
+      const onTabChange = (event, contentId, filePath) => handleDetachedTabChange(contentId, filePath);
+      
+      // Only add this listener if we're in the main window and the app is initialized
+      if (window.api && window.api.onDetachedTabChange) {
+        window.api.onDetachedTabChange(handleDetachedTabChange);
+        return () => {
+          if (window.api && window.api.removeDetachedTabChangeListener) {
+            window.api.removeDetachedTabChangeListener(handleDetachedTabChange);
+          }
+        };
+      } else {
+        console.warn('[App] Tab change API not available');
+        // Fallback for when the API isn't available yet
+        document.addEventListener('detached-tab-change', (e) => {
+          if (e.detail && e.detail.contentId && e.detail.filePath) {
+            handleDetachedTabChange(e.detail.contentId, e.detail.filePath);
+          }
+        });
+        return () => {
+          document.removeEventListener('detached-tab-change', handleDetachedTabChange);
+        };
+      }
+    }
+  }, [openFiles, currentFile, handleTabChange]);
+  
   // Original handleContentChange will be updated instead of duplicated
 
   // Apply detached window class to body if needed
@@ -3041,12 +3085,211 @@ function App() {
     const contentId = window.detachedAPI.getContentId();
     const fileInfo = window.detachedAPI.getFileInfo();
     
+    // Get all open files and filter out duplicates and invalid entries
+    const allOpenFiles = window.detachedAPI.getAllOpenFiles();
+    console.log('[Detached Window] Retrieved open files:', allOpenFiles);
+    
+    // Filter out any files without paths and ensure no duplicates
+    const validOpenFiles = allOpenFiles
+      .filter(file => file && file.path)
+      .reduce((unique, file) => {
+        // Check if this path is already in our unique array
+        const exists = unique.some(f => f.path === file.path);
+        if (!exists) {
+          unique.push(file);
+        }
+        return unique;
+      }, []);
+    
+    console.log('[Detached Window] Filtered valid files:', validOpenFiles);
+    
+    // State to track which file is currently displayed in the detached window
+    const [detachedCurrentFile, setDetachedCurrentFile] = useState(fileInfo);
+    const [detachedOpenFiles, setDetachedOpenFiles] = useState(validOpenFiles.length > 0 ? validOpenFiles : [fileInfo]);
+    
     // Make sure cursor position is initialized (safeguard against the error)
     useEffect(() => {
       if (!cursorPosition) {
         setCursorPosition({ line: 1, column: 1 });
       }
     }, [cursorPosition]);
+    
+    // Handler to change tabs in the detached window
+    const handleDetachedTabChange = (tabFile) => {
+      if (!tabFile || tabFile.path === detachedCurrentFile?.path) return;
+      
+      console.log(`[Detached Window] Changing tab to: ${tabFile.path}`);
+      
+      // Set a flag to track this tab change operation and prevent excessive updates
+      const tabChangeId = Date.now();
+      window._lastTabChangeId = tabChangeId;
+      
+      // Request content for the selected file from the main window
+      window.api.getDetachedContent(getContentId(tabFile))
+        .then(data => {
+          // Skip if another tab change happened after this one started
+          if (window._lastTabChangeId !== tabChangeId) {
+            console.log('[Detached Window] Skipping outdated tab change');
+            return;
+          }
+          
+          if (data) {
+            // Update state with the new file's content
+            console.log(`[Detached Window] Received content from main window: ${data.content?.length || 0} characters`);
+            
+            // First update the current file
+            setDetachedCurrentFile(tabFile);
+            
+            // Then update content immediately to reduce delay
+            updateContent(data.content || '');
+            
+            // Schedule preview refresh after state updates have been applied
+            setTimeout(() => {
+              // Skip if another tab change happened after this one
+              if (window._lastTabChangeId !== tabChangeId) return;
+              
+              // Force refresh preview if it's visible
+              if (detachedPreviewVisible && previewRef.current) {
+                console.log('[Detached Window] Refreshing preview after tab change');
+                try {
+                  if (typeof previewRef.current.refreshContent === 'function') {
+                    previewRef.current.refreshContent();
+                  } else if (typeof previewRef.current.refreshLayout === 'function') {
+                    previewRef.current.refreshLayout();
+                  } else {
+                    // Fallback method
+                    const previewContainer = previewRef.current.getContainer();
+                    if (previewContainer) {
+                      // Force reflow
+                      previewContainer.style.display = 'none';
+                      previewContainer.offsetHeight; // Force reflow
+                      previewContainer.style.display = '';
+                    }
+                  }
+                  
+                  // Dispatch resize event to ensure layout recalculates
+                  window.dispatchEvent(new Event('resize'));
+                } catch (error) {
+                  console.error('[Detached Window] Error refreshing preview:', error);
+                }
+              }
+              
+              // Update cursor position if available
+              if (data.cursorPosition) {
+                setCursorPosition(data.cursorPosition);
+                if (editorRef.current) {
+                  editorRef.current.setCursorPosition(data.cursorPosition);
+                }
+              }
+            }, 100);
+            
+            // Notify main window about tab change
+            console.log(`[Detached Window] Notifying main window of tab change to: ${tabFile.path}`);
+            window.api.notifyMainWindowTabChange(contentId, tabFile.path);
+          } else {
+            // Fallback: request the file content directly if not available in detached content
+            console.log(`[Detached Window] No content from main window, loading file directly`);
+            window.api.readMarkdownFile(tabFile.path)
+              .then(fileContent => {
+                // Skip if another tab change happened after this one started
+                if (window._lastTabChangeId !== tabChangeId) {
+                  console.log('[Detached Window] Skipping outdated file load');
+                  return;
+                }
+                
+                // First update the current file
+                setDetachedCurrentFile(tabFile);
+                
+                // Then update content immediately
+                updateContent(fileContent || '');
+                
+                // Schedule preview refresh after state updates have been applied
+                setTimeout(() => {
+                  // Skip if another tab change happened after this one
+                  if (window._lastTabChangeId !== tabChangeId) return;
+                  
+                  // Force refresh preview if it's visible
+                  if (detachedPreviewVisible && previewRef.current) {
+                    console.log('[Detached Window] Refreshing preview after direct file load');
+                    try {
+                      if (typeof previewRef.current.refreshContent === 'function') {
+                        previewRef.current.refreshContent();
+                      } else if (typeof previewRef.current.refreshLayout === 'function') {
+                        previewRef.current.refreshLayout();
+                      } else {
+                        // Fallback method
+                        const previewContainer = previewRef.current.getContainer();
+                        if (previewContainer) {
+                          // Force reflow
+                          previewContainer.style.display = 'none';
+                          previewContainer.offsetHeight; // Force reflow
+                          previewContainer.style.display = '';
+                        }
+                      }
+                      
+                      // Dispatch resize event to ensure layout recalculates
+                      window.dispatchEvent(new Event('resize'));
+                    } catch (error) {
+                      console.error('[Detached Window] Error refreshing preview:', error);
+                    }
+                  }
+                }, 100);
+                
+                // Notify main window about tab change
+                console.log(`[Detached Window] Notifying main window of tab change to: ${tabFile.path}`);
+                window.api.notifyMainWindowTabChange(contentId, tabFile.path);
+              })
+              .catch(err => console.error('Error loading file in detached window:', err));
+          }
+        })
+        .catch(err => console.error('Error getting detached content:', err));
+    };
+    
+    // Listen for tab change notifications from main window
+    useEffect(() => {
+      console.log('[Detached Window] Setting up tab change listener from main window');
+      
+      // Clear any previous listeners to prevent memory leaks
+      if (window.detachedAPI && window.detachedAPI._clearTabChangeListeners) {
+        window.detachedAPI._clearTabChangeListeners();
+      }
+      
+      const unsubscribe = window.detachedAPI.onTabChange((filePath) => {
+        console.log(`[Detached Window] Received tab change from main window: ${filePath}`);
+        
+        // Find the matching file in our open files
+        const fileToSwitch = detachedOpenFiles.find(file => file.path === filePath);
+        if (fileToSwitch && fileToSwitch.path !== detachedCurrentFile?.path) {
+          console.log(`[Detached Window] Switching to tab: ${fileToSwitch.path}`);
+          
+          // Call handleDetachedTabChange to perform the actual tab change
+          // This will handle both editor and preview updates
+          handleDetachedTabChange(fileToSwitch);
+          
+          // Force an additional preview refresh after a delay to ensure it's updated
+          // This helps in case the normal update path misses
+          if (detachedPreviewVisible && previewRef.current) {
+            setTimeout(() => {
+              console.log('[Detached Window] Extra preview refresh after tab change from main window');
+              try {
+                if (typeof previewRef.current.refreshContent === 'function') {
+                  previewRef.current.refreshContent();
+                } else if (typeof previewRef.current.refreshLayout === 'function') {
+                  previewRef.current.refreshLayout();
+                }
+              } catch (error) {
+                console.error('[Detached Window] Error in extra preview refresh:', error);
+              }
+            }, 200);
+          }
+        }
+      });
+      
+      return () => {
+        console.log('[Detached Window] Cleaning up tab change listener');
+        unsubscribe();
+      };
+    }, [detachedOpenFiles, detachedCurrentFile?.path, detachedPreviewVisible]);
     
     // Additional useEffect to ensure immediate synchronization when content changes in detached window
     useEffect(() => {
@@ -3077,24 +3320,69 @@ function App() {
         }
       }
     }, [content, contentId, editorRef]);
-
-    // Create a single-item array for tabs display
-    const detachedOpenFiles = fileInfo ? [fileInfo] : [];
+    
+    // Special effect to handle preview updates when content or file changes
+    useEffect(() => {
+      // Only run if the preview is visible
+      if (detachedPreviewVisible && previewRef.current && detachedCurrentFile) {
+        console.log('[Detached Window] Updating preview for content or file change');
+        
+        // Force a refresh of the preview with a small delay to ensure content has been set
+        setTimeout(() => {
+          try {
+            // Try to use the new refreshContent method first
+            if (typeof previewRef.current.refreshContent === 'function') {
+              console.log('[Detached Window] Calling refreshContent method');
+              previewRef.current.refreshContent();
+            } else if (typeof previewRef.current.refreshLayout === 'function') {
+              console.log('[Detached Window] Calling refreshLayout method');
+              previewRef.current.refreshLayout();
+            } else {
+              // Fallback - force reflow by toggling display
+              console.log('[Detached Window] Using fallback refresh method');
+              const previewContainer = previewRef.current.getContainer();
+              if (previewContainer) {
+                previewContainer.style.display = 'none';
+                previewContainer.offsetHeight; // Force reflow
+                previewContainer.style.display = '';
+              }
+            }
+            
+            // Also dispatch a resize event to ensure layout recalculation
+            window.dispatchEvent(new Event('resize'));
+          } catch (error) {
+            console.error('[Detached Window] Error refreshing preview:', error);
+          }
+        }, 100); // Longer timeout for more reliable updates
+      }
+    }, [content, detachedCurrentFile, detachedPreviewVisible]);
     
     // Simplified layout for detached window
+    const [detachedPreviewVisible, setDetachedPreviewVisible] = useState(false);
+    
+    // Toggle preview visibility in detached window
+    const toggleDetachedPreview = () => {
+      setDetachedPreviewVisible(!detachedPreviewVisible);
+      
+      // Force layout recalculation
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 10);
+    };
+    
     return (
       <div className="detached-editor-container h-full flex flex-col">
         {/* Tabs section */}
         <div className="editor-tabs-container flex-shrink-0">
           <EditorTabs 
-            currentFile={fileInfo}
+            currentFile={detachedCurrentFile}
             openFiles={detachedOpenFiles}
-            onTabChange={() => {}} // No-op since there's only one tab
-            onTabClose={() => {}} // No-op, can't close the only tab
+            onTabChange={handleDetachedTabChange}
+            onTabClose={() => {}} // No-op, can't close tabs in detached window
             onNewTab={() => {}}   // No-op in detached mode
-            isPreviewVisible={false}
+            isPreviewVisible={detachedPreviewVisible}
             isEditorFullscreen={false}
-            onToggleEditorVisibility={() => {}}
+            onToggleEditorVisibility={toggleDetachedPreview}
             onToggleFullscreen={() => {}}
             onDetachEditor={() => {}}
             isEditorDetached={true}
@@ -3113,22 +3401,41 @@ function App() {
           />
         </div>
         
-        {/* Editor section */}
-        <div className="detached-editor-content flex-grow relative">
-          <MarkdownEditor
-            ref={editorRef}
-            content={content}
-            filePath={fileInfo?.path}
-            onChange={handleContentChange}
-            onCursorChange={handleCursorChange}
-            onScroll={handleEditorScroll}
-            className="w-full h-full absolute inset-0"
-          />
+        {/* Main content area with editor and preview */}
+        <div className="detached-editor-main-content flex-grow flex overflow-hidden">
+          {/* Editor section */}
+          <div className={`detached-editor-content ${detachedPreviewVisible ? 'w-1/2' : 'w-full'} relative`}>
+            <MarkdownEditor
+              ref={editorRef}
+              content={content}
+              filePath={detachedCurrentFile?.path}
+              onChange={handleContentChange}
+              onCursorChange={handleCursorChange}
+              onScroll={handleEditorScroll}
+              className="w-full h-full absolute inset-0"
+              inScrollSync={scrollSyncEnabled}
+              scrollSource={scrollSource}
+            />
+          </div>
+          
+          {/* Preview section */}
+          {detachedPreviewVisible && (
+            <div className="detached-preview-content w-1/2 relative" onWheel={handlePreviewWheel}>
+              <MarkdownPreview 
+                ref={previewRef}
+                content={content}
+                onScroll={handlePreviewScroll}
+                inScrollSync={scrollSyncEnabled}
+                scrollSource={scrollSource}
+                currentFilePath={detachedCurrentFile?.path}
+              />
+            </div>
+          )}
         </div>
         
         {/* Footer with file info */}
         <div className="detached-editor-footer flex justify-between bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700 text-sm text-surface-600 dark:text-surface-400">
-          <div>{fileInfo?.path || ''}</div>
+          <div>{detachedCurrentFile?.path || ''}</div>
           <div>
             Line: {cursorPosition?.line || 1}, Column: {cursorPosition?.column || 1}
           </div>

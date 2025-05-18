@@ -87,34 +87,45 @@ contextBridge.exposeInMainWorld(
       console.log(`[Preload] Sending update-detached-content for contentId: ${contentId}, content length: ${content?.length}`);
       return ipcRenderer.invoke('update-detached-content', contentId, content, cursorPosition);
     },
+    updateMainContent: (contentId, content, cursorPosition) => {
+      console.log(`[Preload] Sending direct update-main-content for contentId: ${contentId}, content length: ${content?.length}`);
+      return ipcRenderer.invoke('update-main-content', contentId, content, cursorPosition);
+    },
     closeDetachedWindow: (contentId) => ipcRenderer.invoke('close-detached-window', contentId),
     
-    // Listen for content updates from detached windows in the main window
-    onDetachedContentUpdate: (callback) => {
-      console.log('[Preload] Registering update-content listener');
-      const subscription = (event, data) => {
-        console.log('[Preload] Received update-content event in main window', {
-          contentId: data.contentId,
-          contentLength: data.content?.length,
-          hasCursorPosition: !!data.cursorPosition
-        });
-        callback(data);
-      };
-      
-      ipcRenderer.on('update-content', subscription);
-      return () => {
-        console.log('[Preload] Removing update-content listener');
-        ipcRenderer.removeListener('update-content', subscription);
-      };
+    // Tab synchronization methods
+    updateDetachedTab: (contentId, filePath) => {
+      console.log(`[Preload] Sending update-detached-tab for contentId: ${contentId}, filePath: ${filePath}`);
+      return ipcRenderer.invoke('update-detached-tab', contentId, filePath);
     },
-    
-    // Listen for detached window closed events
+    notifyMainWindowTabChange: (contentId, filePath) => {
+      console.log(`[Preload] Notifying main window of tab change: ${filePath}`);
+      return ipcRenderer.invoke('notify-main-tab-change', contentId, filePath);
+    },
+
+    // --- Event Listeners ---
+    onDetachedContentUpdate: (callback) => {
+      const subscription = (event, data) => callback(data);
+      ipcRenderer.on('update-content', subscription);
+      return () => ipcRenderer.removeListener('update-content', subscription);
+    },
     onDetachedWindowClosed: (callback) => {
       const subscription = (event, contentId) => callback(contentId);
       ipcRenderer.on('detached-window-closed', subscription);
-      return () => {
-        ipcRenderer.removeListener('detached-window-closed', subscription);
-      };
+      return () => ipcRenderer.removeListener('detached-window-closed', subscription);
+    },
+
+    // Add listener for tab changes from detached windows
+    onDetachedTabChange: (callback) => {
+      console.log('[Preload] Registering detached-tab-change listener in main window');
+      const subscription = (event, contentId, filePath) => callback(contentId, filePath);
+      ipcRenderer.on('detached-tab-change', subscription);
+      return () => ipcRenderer.removeListener('detached-tab-change', subscription);
+    },
+    
+    // Remove tab change listener
+    removeDetachedTabChangeListener: (callback) => {
+      ipcRenderer.removeListener('detached-tab-change', callback);
     },
 
     // Remove detached window closed listener
@@ -126,12 +137,6 @@ contextBridge.exposeInMainWorld(
     // Example: openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
     // Example: readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     // ... etc.
-
-    // New IPC method for detached window to update main window directly
-    updateMainContent: (contentId, content, cursorPosition) => {
-      console.log(`[Preload] Sending direct update-main-content for contentId: ${contentId}, content length: ${content?.length}`);
-      return ipcRenderer.invoke('update-main-content', contentId, content, cursorPosition);
-    },
   }
 ); 
 
@@ -153,22 +158,35 @@ contextBridge.exposeInMainWorld(
         console.log('[Preload] Received update-content event in detached window', {
           contentId: data.contentId,
           contentLength: data.content?.length,
-          hasCursorPosition: !!data.cursorPosition
+          cursorPosition: data.cursorPosition
         });
         callback(data);
       };
-      
       ipcRenderer.on('update-content', subscription);
-      return () => {
-        console.log('[Preload] Removing update-content listener in detached window');
-        ipcRenderer.removeListener('update-content', subscription);
+      return () => ipcRenderer.removeListener('update-content', subscription);
+    },
+    
+    // Listen for tab change notifications from main window
+    onTabChange: (callback) => {
+      console.log('[Preload] Registering tab-change listener in detached window');
+      const subscription = (event, filePath) => {
+        console.log(`[Preload] Received tab-change event for path: ${filePath}`);
+        callback(filePath);
       };
+      ipcRenderer.on('tab-change', subscription);
+      return () => ipcRenderer.removeListener('tab-change', subscription);
+    },
+    
+    // Clear all tab change listeners to prevent memory leaks
+    _clearTabChangeListeners: () => {
+      console.log('[Preload] Clearing all tab-change listeners');
+      ipcRenderer.removeAllListeners('tab-change');
     },
     
     // Check if this is a detached window
     isDetachedWindow: () => {
       const url = new URL(window.location.href);
-      return url.searchParams.get('detached') === 'true';
+      return url.searchParams.has('detached') && url.searchParams.has('contentId');
     },
     
     // Get the content ID for this detached window
@@ -177,13 +195,74 @@ contextBridge.exposeInMainWorld(
       return url.searchParams.get('contentId');
     },
     
-    // Get file info for this detached window
+    // Get the file info for this detached window
     getFileInfo: () => {
       const url = new URL(window.location.href);
+      const contentId = url.searchParams.get('contentId');
+      
+      // If we have detached content with file info, use that
+      if (window.__DETACHED_CONTENT__ && 
+          window.__DETACHED_CONTENT__[contentId] && 
+          window.__DETACHED_CONTENT__[contentId].file) {
+        return window.__DETACHED_CONTENT__[contentId].file;
+      }
+      
+      // Otherwise, create minimal file info from URL params
       return {
-        path: url.searchParams.get('filePath'),
-        name: url.searchParams.get('fileName')
+        path: url.searchParams.get('filePath') || '',
+        name: url.searchParams.get('fileName') || 'Untitled'
       };
+    },
+    
+    // Get all open files for this detached window
+    getAllOpenFiles: () => {
+      const url = new URL(window.location.href);
+      // Get the content ID to access the detached content
+      const contentId = url.searchParams.get('contentId');
+      
+      // If we have detached content with allOpenFiles, use that
+      if (window.__DETACHED_CONTENT__ && 
+          window.__DETACHED_CONTENT__[contentId] && 
+          window.__DETACHED_CONTENT__[contentId].allOpenFiles) {
+        console.log('[Preload] Using allOpenFiles from detached content');
+        return window.__DETACHED_CONTENT__[contentId].allOpenFiles;
+      }
+      
+      // Check if we have allOpenFilePaths in the URL
+      const openFilePathsParam = url.searchParams.get('allOpenFilePaths');
+      if (openFilePathsParam) {
+        console.log('[Preload] Using file paths from URL parameter');
+        // Split the paths using the delimiter
+        const filePaths = openFilePathsParam.split('|').filter(Boolean);
+        
+        if (filePaths.length === 0) {
+          console.log('[Preload] No valid file paths found in URL parameter');
+          return [];
+        }
+        
+        // Create file objects for each path
+        const fileObjects = filePaths.map(path => {
+          const name = path.split('/').pop() || path.split('\\').pop() || 'Untitled';
+          return {
+            path,
+            name,
+            type: 'file'
+          };
+        });
+        
+        console.log('[Preload] Created file objects from paths:', fileObjects);
+        return fileObjects;
+      }
+      
+      // Fallback: just return an array with the current file
+      const fileInfo = this.getFileInfo();
+      if (fileInfo && fileInfo.path) {
+        console.log('[Preload] Falling back to single file:', fileInfo);
+        return [fileInfo];
+      }
+      
+      console.log('[Preload] No files found, returning empty array');
+      return [];
     }
   }
 );

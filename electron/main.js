@@ -134,7 +134,7 @@ function createWindow() {
 
 // Create a detached window for editor
 function createDetachedWindow(options) {
-  const { title = 'Detached Editor', width = 800, height = 600, contentId, fileInfo } = options;
+  const { title = 'Detached Editor', width = 800, height = 600, contentId, fileInfo, allOpenFilePaths = [] } = options;
   
   // Use Markdown Editor in the window title
   const windowTitle = fileInfo?.name ? `${fileInfo.name} - Markdown Editor` : 'Markdown Editor';
@@ -163,6 +163,13 @@ function createDetachedWindow(options) {
   if (fileInfo) {
     url.searchParams.append('filePath', fileInfo.path);
     url.searchParams.append('fileName', fileInfo.name);
+  }
+  
+  // Add the open file paths as a query parameter
+  if (allOpenFilePaths && allOpenFilePaths.length > 0) {
+    // Join the paths with a delimiter that's unlikely to appear in file paths
+    const joinedPaths = allOpenFilePaths.join('|');
+    url.searchParams.append('allOpenFilePaths', joinedPaths);
   }
   
   detachedWindow.loadURL(url.toString());
@@ -1014,6 +1021,52 @@ ipcMain.handle('update-main-content', async (event, contentId, content, cursorPo
     }
   } catch (error) {
     console.error(`[Main Process] Error relaying update to main window:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Update tab in detached window from main window
+ipcMain.handle('update-detached-tab', async (event, contentId, filePath) => {
+  console.log(`[Main Process] Updating tab in detached window for contentId: ${contentId}, file: ${filePath}`);
+  
+  try {
+    const window = detachedWindows.get(contentId);
+    if (window && !window.isDestroyed() && window.webContents) {
+      console.log(`[Main Process] Found detached window, sending tab-change event`);
+      window.webContents.send('tab-change', filePath);
+      return { success: true };
+    } else if (!window) {
+      console.warn(`[Main Process] No detached window found for contentId: ${contentId}`);
+      return { success: false, error: 'Detached window not found' };
+    } else if (window.isDestroyed()) {
+      console.warn(`[Main Process] Window for contentId ${contentId} was destroyed`);
+      detachedWindows.delete(contentId); // Clean up the reference
+      return { success: false, error: 'Detached window was destroyed' };
+    } else {
+      console.warn(`[Main Process] Window for contentId ${contentId} has no webContents`);
+      return { success: false, error: 'Detached window has no webContents' };
+    }
+  } catch (error) {
+    console.error(`[Main Process] Error updating tab in detached window:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Notify main window of tab change in detached window
+ipcMain.handle('notify-main-tab-change', async (event, contentId, filePath) => {
+  console.log(`[Main Process] Received tab change notification from detached window: ${filePath}`);
+  
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log(`[Main Process] Sending tab change notification to main window`);
+      mainWindow.webContents.send('detached-tab-change', contentId, filePath);
+      return { success: true };
+    } else {
+      console.warn(`[Main Process] Main window not available for tab change notification`);
+      return { success: false, error: 'Main window not available' };
+    }
+  } catch (error) {
+    console.error(`[Main Process] Error notifying main window of tab change:`, error);
     return { success: false, error: error.message };
   }
 });

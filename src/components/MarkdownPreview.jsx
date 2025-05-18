@@ -371,6 +371,37 @@ const MarkdownPreview = forwardRef(({
       return ZOOM_LEVELS[DEFAULT_ZOOM_INDEX];
     },
     
+    // Force a refresh of the content
+    refreshContent: () => {
+      // Use a state update hack to force re-render
+      if (previewRef.current) {
+        try {
+          // First force a reflow
+          previewRef.current.style.display = 'none';
+          previewRef.current.offsetHeight; // Forces a reflow
+          
+          // Then restore display and force another reflow
+          setTimeout(() => {
+            if (previewRef.current) {
+              previewRef.current.style.display = '';
+              previewRef.current.offsetHeight; // Forces another reflow
+              
+              // If there are images, reload them
+              const images = previewRef.current.querySelectorAll('img');
+              images.forEach(img => {
+                const src = img.getAttribute('src');
+                if (src) {
+                  img.setAttribute('src', src + '?t=' + new Date().getTime());
+                }
+              });
+            }
+          }, 10);
+        } catch (error) {
+          console.error('Error refreshing preview content:', error);
+        }
+      }
+    },
+    
     // Force layout recalculation
     refreshLayout: () => {
       if (previewRef.current) {
