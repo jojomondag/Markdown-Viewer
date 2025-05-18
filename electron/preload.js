@@ -83,15 +83,27 @@ contextBridge.exposeInMainWorld(
     // --- Detached Window API ---
     createDetachedWindow: (options) => ipcRenderer.invoke('create-detached-window', options),
     getDetachedContent: (contentId) => ipcRenderer.invoke('get-detached-content', contentId),
-    updateDetachedContent: (contentId, content, cursorPosition) => 
-      ipcRenderer.invoke('update-detached-content', contentId, content, cursorPosition),
+    updateDetachedContent: (contentId, content, cursorPosition) => {
+      console.log(`[Preload] Sending update-detached-content for contentId: ${contentId}, content length: ${content?.length}`);
+      return ipcRenderer.invoke('update-detached-content', contentId, content, cursorPosition);
+    },
     closeDetachedWindow: (contentId) => ipcRenderer.invoke('close-detached-window', contentId),
     
     // Listen for content updates from detached windows in the main window
     onDetachedContentUpdate: (callback) => {
-      const subscription = (event, data) => callback(data);
+      console.log('[Preload] Registering update-content listener');
+      const subscription = (event, data) => {
+        console.log('[Preload] Received update-content event in main window', {
+          contentId: data.contentId,
+          contentLength: data.content?.length,
+          hasCursorPosition: !!data.cursorPosition
+        });
+        callback(data);
+      };
+      
       ipcRenderer.on('update-content', subscription);
       return () => {
+        console.log('[Preload] Removing update-content listener');
         ipcRenderer.removeListener('update-content', subscription);
       };
     },
@@ -114,6 +126,12 @@ contextBridge.exposeInMainWorld(
     // Example: openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
     // Example: readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     // ... etc.
+
+    // New IPC method for detached window to update main window directly
+    updateMainContent: (contentId, content, cursorPosition) => {
+      console.log(`[Preload] Sending direct update-main-content for contentId: ${contentId}, content length: ${content?.length}`);
+      return ipcRenderer.invoke('update-main-content', contentId, content, cursorPosition);
+    },
   }
 ); 
 
@@ -130,9 +148,19 @@ contextBridge.exposeInMainWorld(
     
     // Listen for content updates from other windows
     onContentUpdate: (callback) => {
-      const subscription = (event, data) => callback(data);
+      console.log('[Preload] Registering update-content listener in detached window');
+      const subscription = (event, data) => {
+        console.log('[Preload] Received update-content event in detached window', {
+          contentId: data.contentId,
+          contentLength: data.content?.length,
+          hasCursorPosition: !!data.cursorPosition
+        });
+        callback(data);
+      };
+      
       ipcRenderer.on('update-content', subscription);
       return () => {
+        console.log('[Preload] Removing update-content listener in detached window');
         ipcRenderer.removeListener('update-content', subscription);
       };
     },

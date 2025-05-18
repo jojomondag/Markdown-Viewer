@@ -999,6 +999,7 @@ function App() {
 
   // Update content and mark file as dirty
   const handleContentChange = (newContent) => {
+    // Always update local content state first
     updateContent(newContent);
     
     // Mark file as dirty (unsaved changes)
@@ -1023,7 +1024,31 @@ function App() {
         console.error('Error getting cursor position in detached window:', error);
       }
       
-      window.api.updateDetachedContent(contentId, newContent, cursorPosition);
+      // Send the update to the main window
+      console.log(`[Detached Window] Sending content update to main. Content length: ${newContent?.length}`);
+      
+      // Try both update methods for redundancy
+      // 1. Update the detached content record in main process (for any future windows)
+      window.api.updateDetachedContent(contentId, newContent, cursorPosition)
+        .then(result => {
+          if (!result.success) {
+            console.error(`[Detached Window] Failed to send updateDetachedContent: ${result.error}`);
+          }
+        })
+        .catch(err => {
+          console.error(`[Detached Window] Error sending updateDetachedContent:`, err);
+        });
+        
+      // 2. Send update directly to main window (for immediate sync)
+      window.api.updateMainContent(contentId, newContent, cursorPosition)
+        .then(result => {
+          if (!result.success) {
+            console.error(`[Detached Window] Failed to send updateMainContent: ${result.error}`);
+          }
+        })
+        .catch(err => {
+          console.error(`[Detached Window] Error sending updateMainContent:`, err);
+        });
     }
   };
   
@@ -2889,15 +2914,25 @@ function App() {
           // Find the file that corresponds to this contentId
           const file = openFiles.find(file => getContentId(file) === contentId);
           
-          if (file && file.path === currentFile?.path) {
-            // If this is the currently open file, update the content
-            console.log('Received content update from detached window');
-            updateContent(newContent);
+          if (file) {
+            console.log('Received content update from detached window for file:', file.path);
             
-            // Also update cursor position if available
-            if (cursorPosition && editorRef.current) {
-              editorRef.current.setCursorPosition(cursorPosition);
-              setCursorPosition(cursorPosition);
+            // Mark file as dirty (unsaved changes)
+            if (file.path) {
+              setFileDirty(file, true);
+              
+              // If this is the currently open file, also update the editor content
+              if (file.path === currentFile?.path) {
+                // Use updateContent to update the content in the editor
+                console.log('Updating editor content with content from detached window');
+                updateContent(newContent);
+                
+                // Also update cursor position if available
+                if (cursorPosition && editorRef.current) {
+                  editorRef.current.setCursorPosition(cursorPosition);
+                  setCursorPosition(cursorPosition);
+                }
+              }
             }
           }
         };
@@ -2911,11 +2946,11 @@ function App() {
         };
       }
     }
-  }, [getContentId, currentFile, openFiles, editorRef]);
+  }, [getContentId, currentFile, openFiles, editorRef, updateContent]);
   
   // Sync content changes to detached windows
   useEffect(() => {
-    if (currentFile && content && detachedEditors.size > 0) {
+    if (currentFile && detachedEditors.size > 0) {
       const contentId = getContentId(currentFile);
       
       // Get cursor position safely
@@ -2933,10 +2968,48 @@ function App() {
       
       // If we have a detached window for this file, update its content
       if (detachedEditors.has(contentId)) {
+        console.log('Sending content update to detached window for file:', currentFile.path);
         window.api.updateDetachedContent(contentId, content, cursorPosition);
       }
     }
   }, [content, currentFile, detachedEditors, editorRef, getContentId]);
+  
+  // Listen for detached window closed events
+  useEffect(() => {
+    if (!window.detachedAPI || !window.detachedAPI.isDetachedWindow()) {
+      // Only run this in the main window
+      const handleDetachedWindowClosed = (contentId) => {
+        console.log(`Detached window closed for contentId: ${contentId}`);
+        
+        // Find the file associated with this contentId
+        const fileWithThisContentId = openFiles.find(file => getContentId(file) === contentId);
+        
+        if (fileWithThisContentId) {
+          console.log(`Resetting detached state for file: ${fileWithThisContentId.path}`);
+          
+          // Remove from detached editors map
+          setDetachedEditors(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(contentId);
+            return newMap;
+          });
+          
+          // Reset detached state if this is the current file
+          if (currentFile && getContentId(currentFile) === contentId) {
+            setIsEditorDetached(false);
+          }
+        }
+      };
+      
+      // Register the listener
+      const unsubscribe = window.api.onDetachedWindowClosed(handleDetachedWindowClosed);
+      
+      // Clean up listener on unmount
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [currentFile, openFiles, getContentId]);
   
   // Original handleContentChange will be updated instead of duplicated
 
@@ -2973,15 +3046,75 @@ function App() {
       if (!cursorPosition) {
         setCursorPosition({ line: 1, column: 1 });
       }
-    }, []);
+    }, [cursorPosition]);
+    
+    // Additional useEffect to ensure immediate synchronization when content changes in detached window
+    useEffect(() => {
+      if (content && contentId && window.api) {
+        // Get cursor position safely
+        let currentCursorPosition = null;
+        try {
+          if (editorRef.current && typeof editorRef.current.getCursorPosition === 'function') {
+            currentCursorPosition = editorRef.current.getCursorPosition();
+          } else if (editorRef.current && typeof editorRef.current.getCurrentCursorPosition === 'function') {
+            currentCursorPosition = editorRef.current.getCurrentCursorPosition();
+          }
+        } catch (error) {
+          console.error('Error getting cursor position for detached sync:', error);
+        }
+        
+        // Try both update methods for reliable synchronization
+        // 1. Update the detached content record in main process
+        if (window.api.updateDetachedContent) {
+          window.api.updateDetachedContent(contentId, content, currentCursorPosition)
+            .catch(err => console.error('Error with updateDetachedContent in useEffect:', err));
+        }
+        
+        // 2. Send update directly to main window
+        if (window.api.updateMainContent) {
+          window.api.updateMainContent(contentId, content, currentCursorPosition)
+            .catch(err => console.error('Error with updateMainContent in useEffect:', err));
+        }
+      }
+    }, [content, contentId, editorRef]);
+
+    // Create a single-item array for tabs display
+    const detachedOpenFiles = fileInfo ? [fileInfo] : [];
     
     // Simplified layout for detached window
     return (
-      <div className="detached-editor-container">
-        <div className="detached-editor-header">
-          <h2>{fileInfo?.name || 'Detached Editor'}</h2>
+      <div className="detached-editor-container h-full flex flex-col">
+        {/* Tabs section */}
+        <div className="editor-tabs-container flex-shrink-0">
+          <EditorTabs 
+            currentFile={fileInfo}
+            openFiles={detachedOpenFiles}
+            onTabChange={() => {}} // No-op since there's only one tab
+            onTabClose={() => {}} // No-op, can't close the only tab
+            onNewTab={() => {}}   // No-op in detached mode
+            isPreviewVisible={false}
+            isEditorFullscreen={false}
+            onToggleEditorVisibility={() => {}}
+            onToggleFullscreen={() => {}}
+            onDetachEditor={() => {}}
+            isEditorDetached={true}
+          />
         </div>
-        <div className="detached-editor-content">
+        
+        {/* Toolbar section */}
+        <div className="toolbar-container flex-shrink-0 flex items-center w-full">
+          <MarkdownToolbar 
+            onAction={handleToolbarAction} 
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onSearch={handleSearch}
+            onReplace={handleReplace}
+            onReplaceAll={handleReplaceAll}
+          />
+        </div>
+        
+        {/* Editor section */}
+        <div className="detached-editor-content flex-grow relative">
           <MarkdownEditor
             ref={editorRef}
             content={content}
@@ -2992,7 +3125,9 @@ function App() {
             className="w-full h-full absolute inset-0"
           />
         </div>
-        <div className="detached-editor-footer">
+        
+        {/* Footer with file info */}
+        <div className="detached-editor-footer flex justify-between bg-surface-100 dark:bg-surface-800 p-2 border-t border-surface-200 dark:border-surface-700 text-sm text-surface-600 dark:text-surface-400">
           <div>{fileInfo?.path || ''}</div>
           <div>
             Line: {cursorPosition?.line || 1}, Column: {cursorPosition?.column || 1}

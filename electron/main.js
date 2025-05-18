@@ -958,16 +958,30 @@ ipcMain.handle('get-detached-content', async (event, contentId) => {
 
 // Update content in detached windows from main window
 ipcMain.handle('update-detached-content', async (event, contentId, content, cursorPosition) => {
-  const window = detachedWindows.get(contentId);
-  if (window && !window.isDestroyed()) {
-    window.webContents.send('update-content', { 
-      contentId, 
-      content, 
-      cursorPosition 
-    });
-    return { success: true };
+  console.log(`[Main Process] Updating detached content for ${contentId}`);
+  try {
+    const window = detachedWindows.get(contentId);
+    if (window && !window.isDestroyed() && window.webContents) {
+      console.log(`[Main Process] Found window, sending update-content event`);
+      window.webContents.send('update-content', { 
+        contentId, 
+        content, 
+        cursorPosition 
+      });
+      return { success: true };
+    } else if (!window) {
+      console.warn(`[Main Process] No detached window found for contentId: ${contentId}`);
+    } else if (window.isDestroyed()) {
+      console.warn(`[Main Process] Window for contentId ${contentId} is destroyed`);
+      detachedWindows.delete(contentId);
+    } else {
+      console.warn(`[Main Process] Window for contentId ${contentId} exists but webContents is unavailable`);
+    }
+    return { success: false, error: 'Window not found, destroyed, or unavailable' };
+  } catch (error) {
+    console.error(`[Main Process] Error updating detached content:`, error);
+    return { success: false, error: error.message };
   }
-  return { success: false, error: 'Window not found or destroyed' };
 });
 
 // Close a detached window
@@ -978,4 +992,28 @@ ipcMain.handle('close-detached-window', async (event, contentId) => {
     return { success: true };
   }
   return { success: false, error: 'Window not found or destroyed' };
+});
+
+// Update content in main window from detached window
+ipcMain.handle('update-main-content', async (event, contentId, content, cursorPosition) => {
+  console.log(`[Main Process] Received update from detached window for contentId: ${contentId}`);
+  
+  try {
+    // Relay the update to the main window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log(`[Main Process] Relaying update to main window`);
+      mainWindow.webContents.send('update-content', { 
+        contentId, 
+        content, 
+        cursorPosition 
+      });
+      return { success: true };
+    } else {
+      console.warn(`[Main Process] Main window not available for update`);
+      return { success: false, error: 'Main window not available' };
+    }
+  } catch (error) {
+    console.error(`[Main Process] Error relaying update to main window:`, error);
+    return { success: false, error: error.message };
+  }
 });
