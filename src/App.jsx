@@ -3755,14 +3755,13 @@ function App() {
              {/* PREVIEW Component Container */}
              <div 
                className="preview-component-container flex-grow relative min-h-0" // Use flex-grow for preview itself
-               onScroll={handlePreviewScroll} // This scroll handler is now on the correct element
                onWheel={handlePreviewWheel} 
              >
                <LoadingOverlay isLoading={state.loading.content} message="" transparent preserveChildren={true}>
                  <MarkdownPreview 
                    ref={previewRef}
                    content={content}
-                   onScroll={handlePreviewScroll} // This scroll handler is now on the correct element
+                   onScroll={handlePreviewScroll}
                    inScrollSync={scrollSyncEnabled}
                    scrollSource={scrollSource}
                    currentFilePath={currentFile?.path}

@@ -155,6 +155,9 @@ const MarkdownPreview = forwardRef(({
   // Create ref for the preview container
   const previewRef = useRef(null);
   
+  // Add ref to track if we're in a programmatic scroll to prevent feedback loops
+  const isScrollingRef = useRef(false);
+  
   // State for zoom level
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const currentZoom = ZOOM_LEVELS[zoomIndex];
@@ -431,6 +434,9 @@ const MarkdownPreview = forwardRef(({
   
   // Handle scroll events in the preview
   const handleScroll = (e) => {
+    // Skip if we're in a programmatic scroll to prevent feedback loops
+    if (isScrollingRef.current) return;
+    
     if (onScroll && previewRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = previewRef.current;
       const maxScrollTop = scrollHeight - clientHeight;
