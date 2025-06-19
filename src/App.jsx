@@ -32,7 +32,6 @@ import ThemeToggle from './components/ThemeToggle';
 import StatusBar from './components/StatusBar';
 import MarkdownToolbar from './components/MarkdownToolbar';
 import LoadingOverlay from './components/LoadingOverlay';
-import LoadingSpinner from './components/LoadingSpinner';
 import SettingsPanel from './components/SettingsPanel';
 import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider } from './context/SettingsContext';
@@ -3534,7 +3533,6 @@ function App() {
                 >
                   {loading && !activeNamedWorkspaceName ? ( 
                     <>
-                      <LoadingSpinner size="sm" color="white" className="mr-1" />
                       {!isMobile && "Saving..."}
                     </>
                   ) : activeNamedWorkspaceName ? (
@@ -3559,7 +3557,7 @@ function App() {
                  <SidebarTabs.Pane id="files">
                    {/* Wrap FileHistory and FileExplorer in a flex container that fills height */}
                    <div className="flex flex-col h-full"> {/* This inner div ensures explorer fills the pane space */}
-                     <LoadingOverlay isLoading={state.loading.files} message="Loading files..." transparent preserveChildren={true}>
+                     <LoadingOverlay isLoading={state.loading.files} message="" transparent preserveChildren={true}>
                        {error && (
                          <div className="p-4 text-sm text-error-500 bg-error-100 dark:bg-error-900/20 border-l-4 border-error-500 mb-2">
                            Error: {error}
@@ -3671,14 +3669,7 @@ function App() {
             <div 
               className={`editor-component-container flex-grow relative min-h-0 ${!isEditorVisible ? 'hidden' : ''}`} // Use flex-grow for editor itself
             >
-              {state.loading.content && !forcingScrollRef.current && (
-                 <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-surface-900/70 backdrop-blur-sm z-50 pointer-events-none">
-                   <div className="pointer-events-none">
-                     <LoadingSpinner />
-                     <p className="mt-4 text-surface-700 dark:text-surface-300 font-medium">Loading content...</p>
-                   </div>
-                 </div>
-               )}
+
               <MarkdownEditor
                 ref={editorRef}
                 content={content}
@@ -3767,8 +3758,8 @@ function App() {
                onScroll={handlePreviewScroll} // This scroll handler is now on the correct element
                onWheel={handlePreviewWheel} 
              >
-               <LoadingOverlay isLoading={state.loading.content} message="Generating preview..." transparent preserveChildren={true}>
-                  <MarkdownPreview 
+               <LoadingOverlay isLoading={state.loading.content} message="" transparent preserveChildren={true}>
+                 <MarkdownPreview 
                    ref={previewRef}
                    content={content}
                    onScroll={handlePreviewScroll} // This scroll handler is now on the correct element

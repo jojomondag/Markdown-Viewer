@@ -1,5 +1,4 @@
 import React from "react";
-import LoadingSpinner from "../LoadingSpinner";
 
 const variantStyles = {
   default: "bg-primary-500 hover:bg-primary-600 text-white",
@@ -31,12 +30,6 @@ const Button = React.forwardRef(
   }, ref) => {
     const Comp = "button";
     
-    // Determine the spinner color based on the variant
-    const spinnerColor = 
-      variant === "default" || variant === "destructive" 
-        ? "white" 
-        : "primary";
-    
     return (
       <Comp
         className={`
@@ -50,14 +43,7 @@ const Button = React.forwardRef(
         disabled={disabled || isLoading}
         {...props}
       >
-        {isLoading ? (
-          <>
-            <LoadingSpinner size="sm" color={spinnerColor} className="mr-2" />
-            {loadingText || children}
-          </>
-        ) : (
-          children
-        )}
+        {children}
       </Comp>
     );
   }

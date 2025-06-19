@@ -225,7 +225,6 @@ textarea:focus {
   padding: 8px;
   position: absolute;
   transform: translateY(-100%);
-  transition: transform 0.3s;
   z-index: 100;
 }
 
@@ -282,8 +281,6 @@ body.modal-open {
 .sortable-tab {
   cursor: grab;
   touch-action: none; /* Required for proper touch drag on mobile */
-  will-change: transform; /* Optimize for animations */
-  transition: transform 150ms ease, opacity 150ms ease;
   display: flex;
   align-items: center;
   position: relative; /* Create stacking context */

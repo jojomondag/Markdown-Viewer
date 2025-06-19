@@ -210,11 +210,7 @@ const FileSearch = ({ files, folders, onFileSelect }) => {
       </div>
       
       <div className="search-results flex-grow overflow-auto p-2">
-        {isLoading ? (
-          <div className="flex justify-center items-center py-4">
-            <IconLoader2 size={24} className="animate-spin text-primary-500 dark:text-primary-400" />
-          </div>
-        ) : searchTerm && searchResults.length === 0 ? (
+        {searchTerm && searchResults.length === 0 ? (
           <div className="text-sm text-surface-600 dark:text-surface-400 italic text-center py-4">
             No results found
           </div>

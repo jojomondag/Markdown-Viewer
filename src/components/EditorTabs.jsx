@@ -143,7 +143,7 @@ const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, 
           }}
           // Prevent drag initiation when clicking close button
           onPointerDown={(e) => e.stopPropagation()}
-          className="absolute right-1 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out flex-shrink-0 focus:outline-none pointer-events-auto z-10"
+          className="absolute right-1 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 flex-shrink-0 focus:outline-none pointer-events-auto z-10"
           title={`Close tab: ${file.name}`}
         >
           <IconX size={12} />
@@ -249,7 +249,7 @@ const EditorTabs = ({
                 e.preventDefault();
             }
           }}
-          className="absolute right-0.5 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-in-out flex-shrink-0 focus:outline-none pointer-events-auto z-10"
+          className="absolute right-0.5 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 flex-shrink-0 focus:outline-none pointer-events-auto z-10"
           title={`Close tab: ${file.name}`}
         >
           <IconX size={12} />

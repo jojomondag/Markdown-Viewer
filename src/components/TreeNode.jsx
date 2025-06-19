@@ -300,7 +300,7 @@ const TreeNode = ({
 
   return (
     <div
-      className={`flex flex-col transition-all duration-100 ease-in-out ${isDragging ? 'opacity-70' : ''} ${dragOverPath === node.path ? getDragOverClasses() : ''}`}
+      className={`flex flex-col ${isDragging ? 'opacity-70' : ''} ${dragOverPath === node.path ? getDragOverClasses() : ''}`}
       style={{ paddingLeft: level * 16 }}
       onContextMenu={handleContextMenu}
     >

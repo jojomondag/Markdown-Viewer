@@ -29,8 +29,7 @@ const LoadingSpinner = ({
           ${sizeClasses[size]} 
           ${colorClasses[color]} 
           border-t-transparent 
-          rounded-full 
-          animate-spin
+          rounded-full
         `}
         role="status"
         aria-label="Loading"
