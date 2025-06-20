@@ -82,11 +82,14 @@ export const SortableItem = ({
         }
       }}
       onClick={(e) => { 
-        e.preventDefault();
-        e.stopPropagation();
-        
-        if (!isDragging && onClick) {
-          onClick(e, item);
+        // Only prevent default/propagation if we're not dragging
+        if (!isDragging) {
+          if (onClick) {
+            onClick(e, item);
+          }
+        } else {
+          e.preventDefault();
+          e.stopPropagation();
         }
       }}
       onContextMenu={(e) => {
@@ -118,7 +121,7 @@ export const SortableTabs = ({
   renderItem,
   activeItemId = null,
   className = "sortable-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto",
-  dragConstraints = { distance: 5, tolerance: 5, delay: 100 },
+  dragConstraints = { distance: 8, tolerance: 10, delay: 100 },
   extraContent = null,
   customAttributes = {},
   isItemDraggingDisabled = () => false // Function to determine if a specific item should have dragging disabled

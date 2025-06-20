@@ -284,6 +284,7 @@ body.modal-open {
   display: flex;
   align-items: center;
   position: relative; /* Create stacking context */
+  pointer-events: auto; /* Ensure drag events can be captured */
 }
 
 /* Style while dragging */
@@ -291,20 +292,15 @@ body.modal-open {
   cursor: grabbing;
   opacity: 0.5;
   z-index: 999;
-  pointer-events: none; /* Prevents issues with hover states during drag */
+  /* Keep pointer events enabled during drag for proper drop detection */
 }
 
-/* Ensure all elements in the tabs have proper pointer events */
-.editor-tabs * {
-  pointer-events: auto;
-}
-
-/* Make sure the tab content is not blocking drag events */
+/* Ensure the tab content allows interaction */
 .sortable-tab > div {
-  pointer-events: none; /* Allow drag events to pass through to the parent div */
+  pointer-events: auto; /* Allow interaction with tab content */
 }
 
-/* But allow pointer events on the close button */
+/* Ensure close button can be clicked */
 .sortable-tab > div > button {
   pointer-events: auto; /* Re-enable pointer events for the close button */
 }

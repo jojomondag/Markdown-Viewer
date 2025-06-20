@@ -17,141 +17,13 @@ import React, { useState, useEffect } from 'react';
  * - Reset click intent when a drag operation starts
  * - Only process tab changes when we're confident it's a click operation
  */
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  rectSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+
 import { IconX, IconEye, IconEyeOff, IconPlus, IconExternalLink } from '@tabler/icons-react';
 import useNotification from '../hooks/useNotification';
 import SortableTabs from './common/SortableTabs';
 import ContextMenu from './common/ContextMenu';
 
-// New SortableTab component - Refactored structure
-const SortableTab = ({ id, file, isActive, isDirty, onTabChange, onContextMenu, handleCloseClick }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
-    id,
-    transition: {
-      duration: 150,
-      easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
-    },
-  });
 
-  // Add debug log when dragging starts
-  React.useEffect(() => {
-    if (isDragging) {
-      console.log('[SortableTab] Drag started for:', file.path);
-    }
-  }, [isDragging, file.path]);
-  
-  // Track if we're handling a click vs. a drag
-  const [isClickIntent, setIsClickIntent] = React.useState(false);
-  
-  // Reset click intent when dragging starts
-  React.useEffect(() => {
-    if (isDragging && isClickIntent) {
-      setIsClickIntent(false);
-    }
-  }, [isDragging, isClickIntent]);
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    // Ensure the wrapper takes up necessary space but doesn't shrink
-    flexShrink: 0,
-    touchAction: 'none', // Prevent touch events from interfering with drag
-    opacity: isDragging ? 0.5 : 1, // Visual feedback for dragging
-    pointerEvents: 'auto', // Ensure pointer events are enabled
-    cursor: 'grab', // Show grab cursor to indicate draggability
-    position: 'relative', // Ensure proper stacking context
-    zIndex: isDragging ? 1000 : 1, // Higher z-index when dragging
-    userSelect: 'none', // Prevent text selection during drag
-  };
-
-  // Calculate dynamic padding style
-  const paddingStyle = {
-    paddingRight: isDirty ? '1.1rem' : '1.6rem'
-  };
-
-  return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
-      tabIndex={0}
-      {...attributes} 
-      {...listeners} 
-      onMouseDown={(e) => {
-        // Use mouse down instead of click for better drag detection
-        if (e.button === 0) { // Left click only
-          setIsClickIntent(true);
-        }
-      }}
-      onClick={(e) => { 
-        // Prevent default browser behavior to ensure our handler takes priority
-        e.preventDefault();
-        e.stopPropagation();
-        
-        console.log(`[SortableTab] onClick triggered for file: ${file.path}, isDragging=${isDragging}`);
-        
-        // Immediately handle click if we're not dragging
-        if (!isDragging) {
-          console.log(`[SortableTab] Directly calling onTabChange for: ${file.path}`);
-          onTabChange(file);
-        } else {
-          console.log(`[SortableTab] Click ignored because dragging is in progress`);
-        }
-      }}
-      onContextMenu={(e) => onContextMenu(e, file)}
-      role="tab" 
-      aria-selected={isActive} 
-      className="sortable-tab pointer-events-auto"
-    >
-      {/* Tab content without nested button that could interfere with drag */}
-      <div
-        style={paddingStyle}
-        className={`
-          flex-shrink-0 px-2 py-1 border-b-2 text-xs whitespace-nowrap transition-colors duration-150 ease-in-out group relative flex items-center w-full h-full
-          ${isActive
-            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-            : 'border-transparent hover:border-surface-400 dark:hover:border-surface-500 text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100'}
-        `}
-        title={file.path}
-      >
-        {/* Make sure span doesn't interfere with button clicks/context menu */}
-        <span className="truncate flex-grow text-left pointer-events-none">{file.name}</span>
-
-        {isDirty && (
-          <span className="ml-1 mr-0.5 w-1.5 h-1.5 rounded-full bg-warning-500 flex-shrink-0" />
-        )}
-
-        {/* Close button with stopPropagation to prevent drag when clicking close */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation(); // Prevent SortableTab onClick/onContextMenu
-            handleCloseClick(e, file); // Call the original close handler
-          }}
-          // Prevent drag initiation when clicking close button
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute right-1 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 flex-shrink-0 focus:outline-none pointer-events-auto z-10"
-          title={`Close tab: ${file.name}`}
-        >
-          <IconX size={12} />
-        </button>
-      </div>
-    </div>
-  );
-};
 
 const EditorTabs = ({
   currentFile,
@@ -229,11 +101,14 @@ const EditorTabs = ({
             ? 'border-primary-500 text-primary-600 dark:text-primary-400'
             : 'border-transparent hover:border-surface-400 dark:hover:border-surface-500 text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100'}
         `}
-        style={{ paddingRight: isDirty ? '1.1rem' : '1.6rem' }}
+        style={{ 
+          paddingRight: isDirty ? '1.1rem' : '1.6rem',
+          pointerEvents: 'auto' // Ensure the tab content area can receive events
+        }}
         title={file.path}
       >
-        {/* Tab name */}
-        <span className="truncate flex-grow text-left pointer-events-none mr-1">{file.name}</span>
+        {/* Tab name - allow pointer events for drag area */}
+        <span className="truncate flex-grow text-left mr-1">{file.name}</span>
 
         {/* Dirty indicator */}
         {isDirty && (
@@ -242,12 +117,18 @@ const EditorTabs = ({
 
         {/* Close button */}
         <button
-          onClick={(e) => handleCloseClick(e, file)}
-          onPointerDown={(e) => {
+          onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
-             if (e.button === 2) { // Prevent context menu on close button
-                e.preventDefault();
-            }
+            handleCloseClick(e, file);
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
           }}
           className="absolute right-0.5 top-1/2 transform -translate-y-1/2 p-0.5 rounded-full text-surface-400 dark:text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-200 opacity-0 group-hover:opacity-100 flex-shrink-0 focus:outline-none pointer-events-auto z-10"
           title={`Close tab: ${file.name}`}
@@ -313,7 +194,7 @@ const EditorTabs = ({
             renderItem={renderTabContent}
             activeItemId={currentFile?.path}
             className="editor-tabs min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-400 dark:scrollbar-thumb-surface-600"
-            dragConstraints={{ delay: 150, distance: 5, tolerance: 5 }}        
+            dragConstraints={{ delay: 100, distance: 8, tolerance: 10 }}        
           />        </div>
         {/* Action buttons fixed at right edge */}
         <div className="flex-shrink-0 flex items-center px-2">
