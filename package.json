@@ -43,8 +43,8 @@
     "editor",
     "viewer"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Josef Nobach",
+  "license": "MIT",
   "description": "A Markdown Viewer and Editor application",
   "build": {
     "appId": "com.markdownviewer.app",
