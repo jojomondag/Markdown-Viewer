@@ -4,6 +4,10 @@ A powerful, cross-platform desktop application for viewing and editing Markdown 
 
 ![Markdown Viewer](assets/icon-256.png)
 
+## 📸 Preview
+
+![Application Preview](Repo Images/Preview 1.png)
+
 ## ✨ Features
 
 ### 📝 Editing & Preview
