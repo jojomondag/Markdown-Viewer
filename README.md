@@ -1,6 +1,6 @@
 # Markdown Viewer
 
-![Application Preview](Repo Images/Preview 1.png)
+![Application Preview](Repo%20Images/Preview%201.png)
 
 A powerful, cross-platform desktop application for viewing and editing Markdown files with a rich set of features designed for productivity and ease of use.
 
