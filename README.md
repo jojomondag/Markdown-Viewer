@@ -88,18 +88,24 @@ Download the latest release for your platform from the [Releases page](https://g
 3. **Edit**: Click any Markdown file to start editing
 4. **Preview**: The preview pane automatically updates as you type
 
-### Keyboard Shortcuts
-| Action | Shortcut |
-|--------|----------|
-| Open Folder | `Ctrl+O` |
-| New File | `Ctrl+N` |
-| Save File | `Ctrl+S` |
-| Find | `Ctrl+F` |
-| Replace | `Ctrl+H` |
-| Toggle Preview | `Ctrl+Shift+P` |
-| Toggle Sidebar | `Ctrl+B` |
-| New Tab | `Ctrl+T` |
-| Close Tab | `Ctrl+W` |
+### Keyboard & Mouse Shortcuts
+| Action | Keyboard Shortcut | Mouse Shortcut |
+|--------|-------------------|----------------|
+| Open Folder | `Ctrl+O` | Click folder icon |
+| New File | `Ctrl+N` | Right-click → New File |
+| Save File | `Ctrl+S` | - |
+| Find | `Ctrl+F` | - |
+| Replace | `Ctrl+H` | - |
+| Toggle Preview | `Ctrl+Shift+P` | Click preview toggle button |
+| Toggle Sidebar | `Ctrl+B` | Click sidebar toggle button |
+| New Tab | `Ctrl+T` | Click + tab button |
+| Close Tab | `Ctrl+W` | Click × on tab |
+| Open File | - | Double-click file in explorer |
+| Rename File | - | Right-click → Rename |
+| Delete File | - | Right-click → Delete |
+| Create Folder | - | Right-click → New Folder |
+| Zoom In/Out | `Ctrl+Plus/Minus` | Mouse wheel + Ctrl |
+| Switch Tabs | `Ctrl+Tab` | Click tab |
 
 ### Markdown Toolbar
 The toolbar provides quick access to common Markdown formatting:
