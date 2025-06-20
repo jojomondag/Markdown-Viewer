@@ -32,7 +32,8 @@
     "fix-icon": "node scripts/fix-icon.js",
     "test-ico": "node scripts/test-ico.js",
     "build-explicit-icon": "node scripts/build-with-explicit-icon.js",
-    "build-portable": "node build-portable.js"
+    "build-portable": "node build-portable.js",
+    "create-release": "node scripts/create-release.js"
   },
   "keywords": [
     "electron",
@@ -133,7 +134,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "your-github-username",
+      "owner": "jojomondag",
       "repo": "Viewer"
     }
   },

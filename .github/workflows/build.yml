@@ -28,15 +28,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate icons
-        run: npm run generate-icons
-
       - name: Build webpack bundle
         run: npm run build
 
-      - name: Build Electron app (Windows)
+      - name: Build Portable Executable (Windows)
         if: matrix.os == 'windows-latest'
-        run: npm run dist:win
+        run: npm run build-portable
 
       - name: Build Electron app (macOS)
         if: matrix.os == 'macos-latest'
@@ -46,7 +43,28 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: npm run dist:linux
 
-      - name: Upload artifacts
+      - name: Prepare Windows artifacts
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          mkdir -p artifacts
+          if (Test-Path "Markdown Viewer 1.0.0.exe") {
+            Copy-Item "Markdown Viewer 1.0.0.exe" "artifacts/"
+            Write-Host "✅ Copied Markdown Viewer 1.0.0.exe to artifacts"
+          } else {
+            Write-Host "❌ Markdown Viewer 1.0.0.exe not found"
+            exit 1
+          }
+
+      - name: Upload Windows artifacts
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-portable
+          path: artifacts/
+
+      - name: Upload artifacts (Mac/Linux)
+        if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}-build
@@ -64,14 +82,34 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
 
+      - name: List downloaded artifacts
+        run: |
+          echo "📁 Available artifacts:"
+          find . -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" | head -20
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            windows-portable/*
             ubuntu-latest-build/*
-            windows-latest-build/*
             macos-latest-build/*
           draft: false
           prerelease: false
+          body: |
+            ## 🚀 Markdown Viewer Release
+            
+            ### Downloads:
+            - **Windows**: `Markdown Viewer 1.0.0.exe` (Portable - no installation required)
+            - **macOS**: `.dmg` installer
+            - **Linux**: `.AppImage` and `.deb` packages
+            
+            ### Features:
+            - ✅ Markdown editor with live preview
+            - ✅ Custom application icon
+            - ✅ Portable executable for Windows
+            - ✅ Cross-platform support
+            
+            Simply download and run the executable for your platform!
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

@@ -112,52 +112,12 @@ async function buildPortableApp() {
         process.exit(1);
     }
     
-    // Step 7: Create/Update Portable folder
-    console.log('📦 Creating Markdown Viewer Portable folder...');
-    const portableDir = './Markdown Viewer Portable';
-    
-    if (!fs.existsSync(portableDir)) {
-        fs.mkdirSync(portableDir, { recursive: true });
-    }
-    
-    copyFile('./dist/win-unpacked/Markdown Viewer.exe', `${portableDir}/Markdown Viewer.exe`, 'Copying executable to portable folder');
-    
-    // Step 8: Create README for portable version
-    const readmeContent = `# Markdown Viewer Portable
-
-This is a portable version of Markdown Viewer.
-
-## How to use:
-1. Run "Markdown Viewer.exe"
-2. The application will start with your custom icon
-3. No installation required - completely portable
-
-## Features:
-- Custom icon embedded using electron-builder auto-detection
-- Portable - no installation required
-- Built following Erik Martin Jordan's blog post method
-
-## Build Information:
-- Built on: ${new Date().toISOString()}
-- Method: electron-builder with /build folder icon auto-detection
-- Reference: https://erikmartinjordan.com/electron-builder-custom-icon
-
-Enjoy your Markdown Viewer!
-`;
-    
-    try {
-        fs.writeFileSync(`${portableDir}/README.txt`, readmeContent);
-        console.log('✅ Created README.txt in portable folder\n');
-    } catch (error) {
-        console.error('⚠️  Warning: Could not create README.txt:', error.message);
-    }
+    // Step 7: Skip creating portable folder (not needed - .exe is already portable)
     
     // Final summary
     console.log('🎉 BUILD COMPLETED SUCCESSFULLY!\n');
     console.log('📁 Files created:');
-    console.log(`   • ${builtExeName} (Root directory)`);
-    console.log(`   • ${portableDir}/Markdown Viewer.exe`);
-    console.log(`   • ${portableDir}/README.txt`);
+    console.log(`   • ${builtExeName} (Root directory) - This is your portable executable`);
     console.log('\n🚀 To test the application:');
     console.log(`   & ".\\${builtExeName}"`);
     console.log('\n🔧 Icon embedding method:');
