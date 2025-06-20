@@ -4,7 +4,9 @@
 
 A powerful, cross-platform desktop application for viewing and editing Markdown files with a rich set of features designed for productivity and ease of use.
 
-![Markdown Viewer](assets/icon-256.png)
+<div align="center">
+  <img src="assets/icon-256.png" alt="Markdown Viewer" width="256" height="256">
+</div>
 
 ## ✨ Features
 
