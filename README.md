@@ -176,21 +176,10 @@ The application stores settings in your system's user data directory:
 - **macOS**: macOS 10.13 or later
 - **Linux**: Ubuntu 18.04+ or equivalent
 
-## 🐛 Troubleshooting
-
-### Common Issues
-1. **App won't start**: Ensure you have the latest version and sufficient permissions
-2. **Files not loading**: Check file permissions and path validity
-3. **Performance issues**: Try closing unused tabs and clearing workspace state
-
-### Getting Help
-- Check the [Issues page](https://github.com/jojomondag/Viewer/issues) for known problems
-- Create a new issue with detailed information about your problem
-- Include your operating system, app version, and steps to reproduce
 
 ## 📄 License
 
-This project is licensed under the ISC License. See the `LICENSE` file for details.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
 
 ## 🙏 Acknowledgments
 
