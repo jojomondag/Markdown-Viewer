@@ -31,9 +31,19 @@ jobs:
       - name: Build webpack bundle
         run: npm run build
 
-      - name: Build Portable Executable (Windows)
+      - name: Check for existing portable executable (Windows)
         if: matrix.os == 'windows-latest'
-        run: npm run build-portable
+        shell: powershell
+        run: |
+          Write-Host "🔍 Checking for existing executable..."
+          if (Test-Path "Markdown Viewer 1.0.0.exe") {
+            Write-Host "✅ Found existing Markdown Viewer 1.0.0.exe"
+            $size = (Get-Item "Markdown Viewer 1.0.0.exe").Length / 1MB
+            Write-Host "📏 Size: $([math]::Round($size, 2)) MB"
+          } else {
+            Write-Host "❌ Markdown Viewer 1.0.0.exe not found, building..."
+            npm run build-portable
+          }
 
       - name: Build Electron app (macOS)
         if: matrix.os == 'macos-latest'
@@ -47,12 +57,24 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
-          mkdir -p artifacts
+          Write-Host "📦 Preparing Windows artifacts..."
+          mkdir -Force artifacts
+          
           if (Test-Path "Markdown Viewer 1.0.0.exe") {
             Copy-Item "Markdown Viewer 1.0.0.exe" "artifacts/"
             Write-Host "✅ Copied Markdown Viewer 1.0.0.exe to artifacts"
+            
+            # Verify the copy
+            if (Test-Path "artifacts/Markdown Viewer 1.0.0.exe") {
+              $size = (Get-Item "artifacts/Markdown Viewer 1.0.0.exe").Length / 1MB
+              Write-Host "✅ Verified: Artifact size $([math]::Round($size, 2)) MB"
+            } else {
+              Write-Host "❌ Failed to copy to artifacts folder"
+              exit 1
+            }
           } else {
-            Write-Host "❌ Markdown Viewer 1.0.0.exe not found"
+            Write-Host "❌ Markdown Viewer 1.0.0.exe not found in root"
+            Get-ChildItem -Name "*.exe"
             exit 1
           }
 
@@ -60,8 +82,9 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v3
         with:
-          name: windows-portable
-          path: artifacts/
+          name: windows-portable-exe
+          path: artifacts/Markdown Viewer 1.0.0.exe
+          retention-days: 30
 
       - name: Upload artifacts (Mac/Linux)
         if: matrix.os != 'windows-latest'
@@ -85,31 +108,40 @@ jobs:
       - name: List downloaded artifacts
         run: |
           echo "📁 Available artifacts:"
-          find . -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" | head -20
+          find . -name "*" -type f | head -20
+          echo ""
+          echo "🔍 Looking for executable:"
+          find . -name "*.exe" -type f
+          ls -la
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            windows-portable/*
+            windows-portable-exe/Markdown Viewer 1.0.0.exe
             ubuntu-latest-build/*
             macos-latest-build/*
           draft: false
           prerelease: false
+          name: Markdown Viewer ${{ github.ref_name }}
           body: |
-            ## 🚀 Markdown Viewer Release
+            ## 🚀 Markdown Viewer Release ${{ github.ref_name }}
             
-            ### Downloads:
-            - **Windows**: `Markdown Viewer 1.0.0.exe` (Portable - no installation required)
+            ### 📥 Downloads:
+            - **Windows (Portable)**: `Markdown Viewer 1.0.0.exe` - No installation required!
             - **macOS**: `.dmg` installer
             - **Linux**: `.AppImage` and `.deb` packages
             
-            ### Features:
+            ### ✨ Features:
             - ✅ Markdown editor with live preview
+            - ✅ File explorer and tabs
             - ✅ Custom application icon
-            - ✅ Portable executable for Windows
+            - ✅ Portable executable for Windows (no installation needed)
             - ✅ Cross-platform support
             
-            Simply download and run the executable for your platform!
+            ### 🚀 How to use:
+            **Windows**: Just download and run `Markdown Viewer 1.0.0.exe` - it's completely portable!
+            
+            **macOS/Linux**: Download and install the appropriate package for your system.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
