@@ -19,6 +19,7 @@ jspm_packages/
 # Build output
 dist/
 out/
+build/
 simple-dist/
 *.tgz
 *.tar.gz
@@ -26,9 +27,30 @@ simple-dist/
 # Electron-builder output
 release/
 
+# Compiled executables - these should never be committed
+*.exe
+*.dmg
+*.AppImage
+*.snap
+*.deb
+*.rpm
+*.pkg
+
+# Electron specific
+.electron-prebuilt/
+.electron-rebuild/
+app-update.yml
+
+# Bundle files and maps
+bundle.js
+bundle.js.map
+*.bundle.js
+*.bundle.js.map
+
 # OS specific files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # IDE files
 .idea/
@@ -41,6 +63,26 @@ Thumbs.db
 .env.local
 .env.development.local
 .env.test.local
-.env.production.local 
-build/bundle.js
-build/bundle.js.map
+.env.production.local
+
+# Temporary files
+*.tmp
+*.temp
+
+# Cache directories
+.cache/
+.parcel-cache/
+.webpack-cache/
+
+# Coverage reports
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# ESLint cache
+.eslintcache
+
+# Optional npm cache directory
+.npm
