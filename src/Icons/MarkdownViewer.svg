@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- License: CC Attribution. Made by wishforge.games: https://www.wishforge.games/ -->
+<svg version="1.1" id="Icons" xmlns="http://www.w3.org/2000/svg" 
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 32 32" xml:space="preserve">
+  <style type="text/css">
+    .st0{fill:none;stroke:#000000;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
+    .md-icon-text {
+      font-family: sans-serif;
+      font-size: 9px;
+      fill: #000;
+      font-weight: bold;
+      dominant-baseline: middle;
+      text-anchor: middle;
+    }
+  </style>
+
+  <!-- Book Shape -->
+  <path class="st0" d="M22.6,5C20.3,5,18,5.7,16,7c-2-1.3-4.3-2-6.6-2H3v18h6.4c2.4,0,4.6,0.7,6.6,2c2-1.3,4.3-2,6.6-2H29V5H22.6z"/>
+  <path class="st0" d="M5,27h4.4c2.4,0,4.6,0.7,6.6,2c2-1.3,4.3-2,6.6-2H27"/>
+
+  <!-- Larger </> icon centered inside the book -->
+  <text x="16" y="16" class="md-icon-text">&lt;/&gt;</text>
+</svg>

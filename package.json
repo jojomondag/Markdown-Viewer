@@ -2,6 +2,7 @@
   "name": "markdown-viewer",
   "version": "1.0.0",
   "main": "electron/main.js",
+  "homepage": "./",
   "scripts": {
     "start": "electron .",
     "webpack": "webpack --mode development",
@@ -9,7 +10,29 @@
     "electron:dev": "concurrently \"npm run watch\" \"electron . --inspect\"",
     "build": "webpack --mode production",
     "analyze": "ANALYZE=true npm run build",
-    "test": "jest"
+    "test": "jest",
+    "generate-icons": "node scripts/generate-icons.js",
+    "create-ico": "node scripts/create-better-ico.js",
+    "create-simple-ico": "node scripts/create-simple-ico.js",
+    "embed-icon": "node scripts/embed-icon-manually.js",
+    "build-with-icon": "node scripts/create-simple-ico.js && npm run build && npx electron-builder --config electron-builder-config.json && node scripts/embed-icon-manually.js",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "pack": "npm run build && electron-builder --dir",
+    "release": "npm run build && electron-builder --publish=always",
+    "build-release": "node scripts/build-release.js",
+    "build-simple": "node scripts/simple-build.js",
+    "build-installer": "node scripts/build-installer.js",
+    "build-win-installer": "node scripts/build-windows-installer.js",
+    "create-inno-installer": "node scripts/create-inno-installer.js",
+    "create-zip-installer": "node scripts/create-zip-installer.js",
+    "build-truly-portable": "node scripts/build-truly-portable.js",
+    "fix-icon": "node scripts/fix-icon.js",
+    "test-ico": "node scripts/test-ico.js",
+    "build-explicit-icon": "node scripts/build-with-explicit-icon.js",
+    "build-portable": "node build-portable.js"
   },
   "keywords": [
     "electron",
@@ -22,10 +45,103 @@
   "author": "",
   "license": "ISC",
   "description": "A Markdown Viewer and Editor application",
+  "build": {
+    "appId": "com.markdownviewer.app",
+    "productName": "Markdown Viewer",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "index.html",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Markdown Viewer",
+      "uninstallDisplayName": "Markdown Viewer",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "your-github-username",
+      "repo": "Viewer"
+    }
+  },
   "devDependencies": {
     "@babel/core": "^7.26.10",
     "@babel/preset-env": "^7.26.9",
     "@babel/preset-react": "^7.26.3",
+    "@svgr/webpack": "^8.1.0",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.4",
     "@tailwindcss/typography": "^0.5.16",
@@ -34,16 +150,24 @@
     "@vitejs/plugin-react": "^4.4.1",
     "babel-loader": "^10.0.0",
     "concurrently": "^9.1.2",
+    "copy-webpack-plugin": "^13.0.0",
     "css-loader": "^7.1.2",
     "electron": "^35.2.1",
+    "electron-builder": "^26.0.12",
+    "electron-icon-maker": "^0.0.5",
     "electron-reload": "^2.0.0-alpha.1",
+    "file-loader": "^6.2.0",
     "jest": "^29.7.0",
     "npm-check-updates": "^18.0.1",
     "postcss": "^8.5.3",
     "postcss-loader": "^8.1.1",
+    "rcedit": "^4.0.1",
     "rollup": "^4.40.0",
+    "sharp": "^0.34.2",
     "style-loader": "^4.0.0",
     "tailwindcss": "^4.1.4",
+    "to-ico": "^1.1.5",
+    "url-loader": "^4.1.1",
     "vite": "^6.3.3",
     "webpack": "^5.99.7",
     "webpack-bundle-analyzer": "^4.10.2",

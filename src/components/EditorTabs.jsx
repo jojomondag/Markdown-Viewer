@@ -300,7 +300,7 @@ const EditorTabs = ({
     { label: 'Close Others', onClick: handleMenuCloseOthers, disabled: openFiles.length <= 1 },
     { label: 'Close All', onClick: handleMenuCloseAll, disabled: openFiles.length === 0 },  ] : [];
   return (
-    <>      <div className="editor-tabs-bar-wrapper flex items-center justify-between min-h-[38px] w-full bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto">
+    <>      <div className="editor-tabs-bar-wrapper flex items-center justify-between p-2 w-full bg-surface-100 dark:bg-surface-800 border-b border-surface-300 dark:border-surface-700 relative z-10 shadow-sm pointer-events-auto">
         <div className="flex flex-grow items-center min-w-0 overflow-hidden">
           {fullscreenToggleButton}
           

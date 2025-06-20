@@ -35,23 +35,17 @@ function getStoredWindowBounds() {
   const defaultBounds = { width: 1200, height: 800, x: undefined, y: undefined };
   const bounds = store.get('windowBounds', defaultBounds);
   
-  // Ensure the window is visible on a connected display
-  const displays = require('electron').screen.getAllDisplays();
-  const isVisibleOnDisplay = displays.some(display => {
-    return (
-      bounds.x >= display.bounds.x &&
-      bounds.y >= display.bounds.y &&
-      bounds.x + bounds.width <= display.bounds.x + display.bounds.width &&
-      bounds.y + bounds.height <= display.bounds.y + display.bounds.height
-    );
-  });
-
-  // If not visible, return default bounds
-  if (!isVisibleOnDisplay) {
-    return defaultBounds;
-  }
-
-  return bounds;
+  // Always center the window to avoid off-screen issues
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  
+  return {
+    width: bounds.width || 1200,
+    height: bounds.height || 800,
+    x: Math.floor((screenWidth - (bounds.width || 1200)) / 2),
+    y: Math.floor((screenHeight - (bounds.height || 800)) / 2)
+  };
 }
 
 // Create main window
@@ -64,6 +58,10 @@ function createWindow() {
     height: windowBounds.height,
     x: windowBounds.x,
     y: windowBounds.y,
+    show: false, // Don't show until ready
+    icon: path.join(__dirname, '../assets/icon.ico'),
+    autoHideMenuBar: true, // Hide the menu bar
+    menuBarVisible: false, // Completely hide menu bar on Windows/Linux
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -115,19 +113,37 @@ function createWindow() {
   });
 
   // Load the app - in development or production
-  const startUrl = process.env.ELECTRON_START_URL || 
-                  `file://${path.join(__dirname, '../index.html')}`;
+  let startUrl;
+  if (process.env.NODE_ENV === 'development') {
+    startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../index.html')}`;
+  } else {
+    // In production, the app is packaged and we need to load from the root index.html
+    startUrl = `file://${path.join(__dirname, '../index.html')}`;
+  }
+  
   mainWindow.loadURL(startUrl);
 
-  // Apply maximized state if previously maximized
-  if (store.get('isMaximized', false)) {
-    mainWindow.maximize();
-  }
+  // Show window when ready to prevent flash of white content
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    
+    // Apply maximized state if previously maximized
+    if (store.get('isMaximized', false)) {
+      mainWindow.maximize();
+    }
+    
+    // Focus and bring to front
+    mainWindow.focus();
+    mainWindow.setAlwaysOnTop(true);
+    mainWindow.setAlwaysOnTop(false);
+  });
 
-  // Open DevTools in development
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
-  }
+  // Add error handling for loading failures
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Failed to load:', errorCode, errorDescription, validatedURL);
+    // Show window anyway so user can see the error
+    mainWindow.show();
+  });
 
   return mainWindow;
 }
@@ -143,6 +159,9 @@ function createDetachedWindow(options) {
     width,
     height,
     title: windowTitle,
+    icon: path.join(__dirname, '../assets/icon.ico'),
+    autoHideMenuBar: true, // Hide the menu bar
+    menuBarVisible: false, // Completely hide menu bar on Windows/Linux
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -151,8 +170,13 @@ function createDetachedWindow(options) {
   });
 
   // Load the app with query parameters to identify this as a detached window
-  const startUrl = process.env.ELECTRON_START_URL || 
-                  `file://${path.join(__dirname, '../index.html')}`;
+  let startUrl;
+  if (process.env.NODE_ENV === 'development') {
+    startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../index.html')}`;
+  } else {
+    // In production, the app is packaged and we need to load from the root index.html
+    startUrl = `file://${path.join(__dirname, '../index.html')}`;
+  }
   
   // Add query parameters to indicate this is a detached window
   const url = new URL(startUrl);

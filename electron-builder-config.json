@@ -1,0 +1,32 @@
+{
+  "appId": "com.example.markdownviewer",
+  "productName": "Markdown Viewer",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "build/**/*",
+    "electron/**/*",
+    "assets/**/*",
+    "index.html",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+
+    "artifactName": "${productName}-${version}-Portable.${ext}",
+    "requestedExecutionLevel": "asInvoker",
+    "signAndEditExecutable": false,
+    "forceCodeSigning": false
+  },
+  "compression": "normal",
+  "asar": false,
+  "nodeGypRebuild": false,
+  "npmRebuild": true
+} 

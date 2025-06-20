@@ -1,5 +1,6 @@
 const path = require('path');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   mode: 'development',
@@ -9,6 +10,7 @@ module.exports = {
   output: {
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'build'),
+    publicPath: './',
   },
   module: {
     rules: [
@@ -25,6 +27,29 @@ module.exports = {
       {
         test: /\.css$/,
         use: ['style-loader', 'css-loader', 'postcss-loader']
+      },
+      {
+        test: /\.svg$/,
+        use: [
+          {
+            loader: '@svgr/webpack',
+            options: {
+              svgoConfig: {
+                plugins: [
+                  {
+                    name: 'preset-default',
+                    params: {
+                      overrides: {
+                        removeViewBox: false,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+          'url-loader',
+        ],
       }
     ]
   },
@@ -48,7 +73,20 @@ module.exports = {
       analyzerMode: 'json', // Output JSON instead of starting a server
       reportFilename: path.resolve(__dirname, 'build/stats.json'), // Specify output path
       openAnalyzer: false // Don't open the browser
-    }) : null
+    }) : null,
+    // Copy icons to the build directory
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: 'src/Icons/MarkdownViewer.svg',
+          to: 'src/Icons/MarkdownViewer.svg'
+        },
+        {
+          from: 'assets/*.png',
+          to: 'assets/[name][ext]'
+        }
+      ]
+    })
   ].filter(Boolean), // Filter out null values if ANALYZE is not set
   // Add performance hints configuration
   performance: {

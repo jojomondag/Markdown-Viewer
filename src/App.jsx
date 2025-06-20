@@ -22,6 +22,7 @@ import {
   IconArrowsMinimize, // For exit fullscreen
   IconExternalLink, // Add this for detach button
 } from '@tabler/icons-react';
+import MarkdownViewerIcon from './Icons/MarkdownViewerIcon';
 import Split from 'react-split';
 import FileExplorer from './components/ArboristFileExplorer'; // Use Arborist explorer
 import FileHistory from './components/FileHistory';

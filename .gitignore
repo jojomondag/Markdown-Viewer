@@ -19,6 +19,12 @@ jspm_packages/
 # Build output
 dist/
 out/
+simple-dist/
+*.tgz
+*.tar.gz
+
+# Electron-builder output
+release/
 
 # OS specific files
 .DS_Store
